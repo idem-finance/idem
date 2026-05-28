@@ -1,3 +1,6 @@
 spring:
   application:
     name: idem
+
+server:
+  port: 8081
