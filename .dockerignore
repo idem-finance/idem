@@ -1,0 +1,5 @@
+.git
+.idea
+**/*.iml
+**/target/
+compose.override.yaml
