@@ -18,8 +18,9 @@
 
     <licenses>
         <license>
-            <name>Functional Source License 1.1, Apache 2.0 Future License</name>
-            <url>https://fsl.software</url>
+            <name>Functional Source License, Version 1.1, Apache 2.0 Future License</name>
+            <url>https://fsl.software/FSL-1.1-Apache-2.0</url>
+            <distribution>repo</distribution>
         </license>
     </licenses>
     <developers>
