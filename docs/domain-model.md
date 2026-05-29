@@ -1,8 +1,7 @@
 # Idem — Core Domain Model
 
-> Reference spec for the `core` module. Read before implementing issues #4–#8.
-> Every class here must be pure Kotlin — zero Spring, JPA, or Kafka imports.
-> Spring Modulith enforces this at build time and fails CI on violation.
+> Reference specification for the `core` module.
+> Every class here is pure Kotlin — zero Spring, JPA, or framework imports.
 
 ---
 
@@ -18,7 +17,7 @@
 
 ---
 
-## Layer 1 — Primitives (Issue #4)
+## Layer 1 — Primitives
 
 **Package:** `finance.idem.core`
 
@@ -35,7 +34,7 @@ allocation overhead.
 
 **`MonetaryAmount`** wraps `BigDecimal`, enforces scale ≤ 18 (covers any stablecoin mantissa),
 and exposes `plus`, `minus`, `isZero`. All monetary arithmetic goes through here — once,
-centrally, with consistent scale rules.
+centrally, with consistent scale rules. Equality is numeric (`0 == 0.00`), not scale-sensitive.
 
 **Enums:**
 
@@ -55,7 +54,7 @@ reconciliation engine must distinguish them.
 
 ---
 
-## Layer 2 — MonetaryEntry (Issue #5)
+## Layer 2 — MonetaryEntry
 
 **Package:** `finance.idem.core.monetary`
 
@@ -86,7 +85,7 @@ Both flow through the same `JournalLine → Transaction` path.
 
 ---
 
-## Layer 3 — Account (Issue #6)
+## Layer 3 — Account
 
 **Package:** `finance.idem.core.ledger`
 
@@ -113,7 +112,7 @@ directly. Prevents an ASSET account from being constructed with CREDIT as its no
 
 ---
 
-## Layer 3 — JournalLine (Issue #6)
+## Layer 3 — JournalLine
 
 **Package:** `finance.idem.core.ledger`
 
@@ -142,7 +141,7 @@ Credits: USDC 180 + BRL 1000 ✓  (balanced per currency)
 
 ---
 
-## Layer 4 — Transaction aggregate (Issue #7)
+## Layer 4 — Transaction aggregate
 
 **Package:** `finance.idem.core.ledger`
 
@@ -174,7 +173,7 @@ log and webhook outbox writes in the same `@Transactional`.
 
 ---
 
-## Layer 5 — Repository interfaces (Issue #8)
+## Layer 5 — Repository interfaces
 
 **Package:** `finance.idem.core.ledger`
 
@@ -203,21 +202,11 @@ makes the multi-tenancy contract visible to every caller.
 
 ---
 
-## Implementation order
-
-Dependency order — each layer depends on the one above it:
-
-1. **#4** primitives + enums (no dependencies)
-2. **#5** `MonetaryEntry` (depends on `MonetaryAmount`, currency/token/rail enums)
-3. **#6** `Account` + `JournalLine` (depends on all enums + `MonetaryEntry`)
-4. **#7** `Transaction` aggregate (depends on `JournalLine`, typed IDs)
-5. **#8** repository interfaces (depends on `Account`, `Transaction`, typed IDs)
-
----
-
 ## Verification
 
 ```bash
-rtk test mvn test -pl core          # after each issue
-rtk test mvn verify                 # full reactor — Modulith boundary check runs here
+mvn test -pl core          # unit tests for core domain
+mvn verify                 # full reactor — Spring Modulith boundary check runs here
 ```
+
+The Modulith boundary check fails the build if any `core` class imports a Spring type.
