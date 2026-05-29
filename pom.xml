@@ -144,6 +144,7 @@
                                     -->
                                     <excludes>
                                         <exclude>finance.idem.IdemApplication</exclude>
+                                        <exclude>finance.idem.IdemApplicationKt</exclude>
                                         <exclude>finance.idem.TestIdemApplication</exclude>
                                         <exclude>finance.idem.TestcontainersConfiguration</exclude>
                                         <exclude>finance.idem.core.AccountId</exclude>
