@@ -39,6 +39,24 @@ class ValueObjectsTest {
     }
 
     @Test
+    fun `TransactionId of() parses string`() {
+        val uuid = UUID.randomUUID()
+        assertEquals(TransactionId(uuid), TransactionId.of(uuid.toString()))
+    }
+
+    @Test
+    fun `TenantId of() parses string`() {
+        val uuid = UUID.randomUUID()
+        assertEquals(TenantId(uuid), TenantId.of(uuid.toString()))
+    }
+
+    @Test
+    fun `WorkflowPlanId of() parses string`() {
+        val uuid = UUID.randomUUID()
+        assertEquals(WorkflowPlanId(uuid), WorkflowPlanId.of(uuid.toString()))
+    }
+
+    @Test
     fun `generate() produces unique ids`() {
         assertNotEquals(AccountId.generate(), AccountId.generate())
         assertNotEquals(TransactionId.generate(), TransactionId.generate())

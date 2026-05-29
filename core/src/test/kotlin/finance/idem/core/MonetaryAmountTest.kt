@@ -58,6 +58,19 @@ class MonetaryAmountTest {
     }
 
     @Test
+    fun `of(Long) creates amount from long value`() {
+        val amount = MonetaryAmount.of(100L)
+        assertEquals(MonetaryAmount.of("100"), amount)
+        assertTrue(amount.isPositive())
+    }
+
+    @Test
+    fun `toString includes the value`() {
+        val amount = MonetaryAmount.of("42.50")
+        assertTrue(amount.toString().contains("42.50"))
+    }
+
+    @Test
     fun `equality is numeric — different scales are equal`() {
         assertEquals(MonetaryAmount.of("0"), MonetaryAmount.of("0.00"))
         assertEquals(MonetaryAmount.ZERO, MonetaryAmount.of("0.00"))
