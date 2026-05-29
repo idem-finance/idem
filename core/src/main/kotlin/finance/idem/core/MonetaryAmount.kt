@@ -1,9 +1,8 @@
 package finance.idem.core
 
 import java.math.BigDecimal
-import java.math.RoundingMode
 
-data class MonetaryAmount(val value: BigDecimal) {
+class MonetaryAmount private constructor(val value: BigDecimal) {
 
     init {
         require(value.scale() <= MAX_SCALE) {
@@ -22,6 +21,18 @@ data class MonetaryAmount(val value: BigDecimal) {
     fun isPositive(): Boolean = value > BigDecimal.ZERO
 
     operator fun compareTo(other: MonetaryAmount): Int = value.compareTo(other.value)
+
+    // Numeric equality: 0 == 0.00 == 0.000 (scale-insensitive)
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is MonetaryAmount) return false
+        return value.compareTo(other.value) == 0
+    }
+
+    // Canonical scale so equal values produce identical hash codes
+    override fun hashCode(): Int = value.setScale(MAX_SCALE).hashCode()
+
+    override fun toString(): String = "MonetaryAmount($value)"
 
     companion object {
         const val MAX_SCALE = 18

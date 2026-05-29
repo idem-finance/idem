@@ -46,20 +46,37 @@ class MonetaryAmountTest {
     fun `scale exceeding 18 is rejected`() {
         val tooManyDecimals = BigDecimal("0.1234567890123456789") // 19 decimal places
         assertThrows<IllegalArgumentException> {
-            MonetaryAmount(tooManyDecimals)
+            MonetaryAmount.of(tooManyDecimals)
         }
     }
 
     @Test
     fun `scale of exactly 18 is accepted`() {
         val maxScale = BigDecimal("0.123456789012345678") // 18 decimal places
-        val amount = MonetaryAmount(maxScale)
+        val amount = MonetaryAmount.of(maxScale)
         assertEquals(18, amount.value.scale())
     }
 
     @Test
-    fun `equality is based on value`() {
-        assertEquals(MonetaryAmount.of("1.00"), MonetaryAmount.of("1.00"))
+    fun `equality is numeric — different scales are equal`() {
+        assertEquals(MonetaryAmount.of("0"), MonetaryAmount.of("0.00"))
+        assertEquals(MonetaryAmount.ZERO, MonetaryAmount.of("0.00"))
+        assertEquals(MonetaryAmount.of("1"), MonetaryAmount.of("1.00"))
+        assertEquals(MonetaryAmount.of("1.5"), MonetaryAmount.of("1.50"))
+    }
+
+    @Test
+    fun `hashCode is consistent across scales`() {
+        assertEquals(MonetaryAmount.of("0").hashCode(), MonetaryAmount.of("0.00").hashCode())
+        assertEquals(MonetaryAmount.ZERO.hashCode(), MonetaryAmount.of("0.000").hashCode())
+        assertEquals(MonetaryAmount.of("1.5").hashCode(), MonetaryAmount.of("1.50").hashCode())
+    }
+
+    @Test
+    fun `equal amounts behave correctly as map keys`() {
+        val map = hashMapOf(MonetaryAmount.of("1.00") to "one")
+        assertEquals("one", map[MonetaryAmount.of("1")])
+        assertEquals("one", map[MonetaryAmount.of("1.0")])
     }
 
     @Test
