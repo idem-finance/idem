@@ -115,6 +115,24 @@ class AccountTest {
     }
 
     @Test
+    fun `normalBalance re-derives when type changes via copy`() {
+        val asset = Account.create(
+            id = accountId,
+            tenantId = tenantId,
+            name = "Test Account",
+            currency = FiatCurrency.USD,
+            type = AccountType.ASSET,
+            createdAt = now,
+            createdBy = "system",
+        )
+        assertEquals(EntryType.DEBIT, asset.normalBalance)
+
+        // copy with different type re-derives normalBalance automatically
+        val liability = asset.copy(type = AccountType.LIABILITY)
+        assertEquals(EntryType.CREDIT, liability.normalBalance)
+    }
+
+    @Test
     fun `all AccountType values produce correct normalBalance`() {
         val expectations = mapOf(
             AccountType.ASSET to EntryType.DEBIT,

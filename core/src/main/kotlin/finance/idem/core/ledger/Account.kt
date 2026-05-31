@@ -13,12 +13,15 @@ data class Account internal constructor(
     val description: String? = null,
     val currency: FiatCurrency,
     val type: AccountType,
-    val normalBalance: EntryType,
     val createdAt: Instant,
     val createdBy: String,
     val updatedAt: Instant? = null,
     val updatedBy: String? = null,
 ) {
+    // Computed — not a constructor parameter, so copy(normalBalance=...) cannot compile.
+    // Changing type via copy() automatically re-derives the correct normal balance.
+    val normalBalance: EntryType get() = type.normalBalance()
+
     companion object {
         fun create(
             id: AccountId,
@@ -36,7 +39,6 @@ data class Account internal constructor(
             description = description,
             currency = currency,
             type = type,
-            normalBalance = type.normalBalance(),
             createdAt = createdAt,
             createdBy = createdBy,
         )

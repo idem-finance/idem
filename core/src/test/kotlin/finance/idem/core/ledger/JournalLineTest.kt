@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 class JournalLineTest {
@@ -79,11 +80,9 @@ class JournalLineTest {
             createdAt = now,
             createdBy = "system",
         )
-        // Verify the data class has exactly the fields we expect — no mutable audit fields
-        // If this compiles and runs, the class structure is correct
         val fields = line::class.members.map { it.name }.toSet()
-        assert("updatedAt" !in fields) { "JournalLine must not have updatedAt — it is immutable" }
-        assert("updatedBy" !in fields) { "JournalLine must not have updatedBy — it is immutable" }
+        assertFalse("updatedAt" in fields, "JournalLine must not have updatedAt — it is immutable")
+        assertFalse("updatedBy" in fields, "JournalLine must not have updatedBy — it is immutable")
     }
 
     @Test
