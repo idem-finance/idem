@@ -43,10 +43,15 @@ class TransactionTest {
         tokenContract = "0xContract",
     )
 
-    private fun line(entryType: EntryType, monetaryEntry: MonetaryEntry) = JournalLine(
+    private fun line(
+        entryType: EntryType,
+        monetaryEntry: MonetaryEntry,
+        tenantId: TenantId = this.tenantId,
+    ) = JournalLine(
         id = UUID.randomUUID(),
         transactionId = TransactionId.generate(),
         accountId = AccountId.generate(),
+        tenantId = tenantId,
         entryType = entryType,
         monetaryEntry = monetaryEntry,
         createdAt = now,
@@ -184,6 +189,62 @@ class TransactionTest {
                 line(EntryType.CREDIT, usdcOnChain("180.00")),
                 line(EntryType.DEBIT,  brlFiat("1000.00")),
                 line(EntryType.CREDIT, brlFiat("999.99")),   // off by 0.01
+            ))
+        }
+    }
+
+    // ── Invariant 3: single-tenant ────────────────────────────────────────────
+
+    @Test
+    fun `rejects lines belonging to a different tenant`() {
+        val otherTenant = TenantId.generate()
+        assertThrows<LedgerInvariantViolation> {
+            createTx(listOf(
+                line(EntryType.DEBIT, brlFiat("500")),
+                line(EntryType.CREDIT, brlFiat("500"), tenantId = otherTenant),
+            ))
+        }
+    }
+
+    // ── On-chain currency key includes chainId ────────────────────────────────
+
+    @Test
+    fun `valid transaction with same token balanced per chain`() {
+        // EVM USDC leg balanced; Solana USDC leg balanced independently
+        val solanaOnChain = MonetaryEntry.OnChainEntry(
+            amount = MonetaryAmount.of("180.00"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.SOLANA,
+            txHash = "solana-sig-abc",
+            blockNumber = 250_000_000L,
+            walletAddress = "SolWallet",
+            tokenContract = "SolContract",
+        )
+        val tx = createTx(listOf(
+            line(EntryType.DEBIT,  usdcOnChain("180.00")),  // EVM debit
+            line(EntryType.CREDIT, usdcOnChain("180.00")),  // EVM credit
+            line(EntryType.DEBIT,  solanaOnChain),           // Solana debit
+            line(EntryType.CREDIT, solanaOnChain),           // Solana credit
+        ))
+        assertEquals(4, tx.lines.size)
+    }
+
+    @Test
+    fun `rejects cross-chain USDC imbalance — chains are separate currency groups`() {
+        // EVM debit cannot be balanced by Solana credit — different currency keys
+        val solanaUsdc = MonetaryEntry.OnChainEntry(
+            amount = MonetaryAmount.of("180.00"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.SOLANA,
+            txHash = "solana-sig-abc",
+            blockNumber = 250_000_000L,
+            walletAddress = "SolWallet",
+            tokenContract = "SolContract",
+        )
+        assertThrows<LedgerInvariantViolation> {
+            createTx(listOf(
+                line(EntryType.DEBIT,  usdcOnChain("180.00")),  // ONCHAIN:EVM:USDC
+                line(EntryType.CREDIT, solanaUsdc),              // ONCHAIN:SOLANA:USDC — different group
             ))
         }
     }

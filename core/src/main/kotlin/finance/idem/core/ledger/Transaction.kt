@@ -26,8 +26,15 @@ data class Transaction internal constructor(
             "Transaction must have at least 2 journal lines, got ${lines.size}"
         )
 
+        val crossTenant = lines.filter { it.tenantId != tenantId }
+        if (crossTenant.isNotEmpty()) throw LedgerInvariantViolation(
+            "All journal lines must belong to tenant ${tenantId.value}; " +
+                "${crossTenant.size} line(s) belong to a different tenant"
+        )
+
         // Per-currency: sum of debits must equal sum of credits.
-        // FiatEntry and OnChainEntry are keyed separately — USD fiat ≠ USDC stablecoin.
+        // Fiat and on-chain are keyed separately (FIAT:BRL ≠ ONCHAIN:USDC).
+        // On-chain key includes chainId — USDC on EVM ≠ USDC on Solana.
         lines
             .groupBy { it.monetaryEntry.currencyKey() }
             .forEach { (currencyKey, currencyLines) ->
@@ -58,7 +65,7 @@ data class Transaction internal constructor(
                 lines = lines.toList(),
                 status = TransactionStatus.PENDING,
                 agentContext = agentContext,
-                metadata = metadata,
+                metadata = metadata.toMap(),
                 occurredAt = occurredAt,
                 createdAt = createdAt,
                 createdBy = createdBy,
@@ -71,7 +78,7 @@ data class Transaction internal constructor(
 
 private fun MonetaryEntry.currencyKey(): String = when (this) {
     is MonetaryEntry.FiatEntry -> "FIAT:${currency.name}"
-    is MonetaryEntry.OnChainEntry -> "ONCHAIN:${token.name}"
+    is MonetaryEntry.OnChainEntry -> "ONCHAIN:${chainId.name}:${token.name}"
 }
 
 private fun List<JournalLine>.sumAmounts(type: EntryType): MonetaryAmount =
