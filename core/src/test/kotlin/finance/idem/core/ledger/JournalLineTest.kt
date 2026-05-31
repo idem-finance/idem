@@ -5,6 +5,7 @@ import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
+import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.monetary.MonetaryEntry
 import org.junit.jupiter.api.Test
@@ -17,6 +18,7 @@ import kotlin.test.assertNull
 class JournalLineTest {
 
     private val now = Instant.now()
+    private val tenantId = TenantId.generate()
     private val fiatEntry = MonetaryEntry.FiatEntry(
         amount = MonetaryAmount.of("1000.00"),
         currency = FiatCurrency.BRL,
@@ -29,6 +31,7 @@ class JournalLineTest {
             id = UUID.randomUUID(),
             transactionId = TransactionId.generate(),
             accountId = AccountId.generate(),
+            tenantId = tenantId,
             entryType = EntryType.DEBIT,
             monetaryEntry = fiatEntry,
             createdAt = now,
@@ -46,6 +49,7 @@ class JournalLineTest {
             id = UUID.randomUUID(),
             transactionId = TransactionId.generate(),
             accountId = AccountId.generate(),
+            tenantId = tenantId,
             entryType = EntryType.CREDIT,
             monetaryEntry = fiatEntry,
             createdAt = now,
@@ -60,6 +64,7 @@ class JournalLineTest {
             id = UUID.randomUUID(),
             transactionId = TransactionId.generate(),
             accountId = AccountId.generate(),
+            tenantId = tenantId,
             entryType = EntryType.CREDIT,
             monetaryEntry = fiatEntry,
             description = "Nostro BRL PIX leg",
@@ -75,6 +80,7 @@ class JournalLineTest {
             id = UUID.randomUUID(),
             transactionId = TransactionId.generate(),
             accountId = AccountId.generate(),
+            tenantId = tenantId,
             entryType = EntryType.DEBIT,
             monetaryEntry = fiatEntry,
             createdAt = now,
@@ -90,8 +96,8 @@ class JournalLineTest {
         val id = UUID.randomUUID()
         val txId = TransactionId.generate()
         val accId = AccountId.generate()
-        val line1 = JournalLine(id, txId, accId, EntryType.DEBIT, fiatEntry, null, now, "system")
-        val line2 = JournalLine(id, txId, accId, EntryType.DEBIT, fiatEntry, null, now, "system")
+        val line1 = JournalLine(id, txId, accId, tenantId, EntryType.DEBIT, fiatEntry, null, now, "system")
+        val line2 = JournalLine(id, txId, accId, tenantId, EntryType.DEBIT, fiatEntry, null, now, "system")
         assertEquals(line1, line2)
     }
 }
