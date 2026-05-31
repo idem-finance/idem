@@ -17,6 +17,21 @@
 
 ---
 
+## Audit field convention
+
+All domain entities carry `createdAt: Instant` and `createdBy: String`. `createdBy` is the actor
+string — API key prefix (e.g. `sk_live_xxxx`), agent ID, or `"system"` for seeded data.
+
+`updatedAt: Instant?` and `updatedBy: String?` are present **only on mutable entities**:
+
+| Entity | updatedAt / updatedBy | Rationale |
+|---|---|---|
+| `Account` | ✅ nullable | Name and description can be changed |
+| `JournalLine` | — | Immutable — part of a committed transaction |
+| `Transaction` | — | Status changes via domain events, not field mutations |
+
+---
+
 ## Layer 1 — Primitives
 
 **Package:** `finance.idem.core`
@@ -93,9 +108,14 @@ A named slot in the chart of accounts. **No balance field** — balance is alway
 summing journal lines. The account record is metadata; journal lines are the source of truth.
 
 ```
-Account(id: AccountId, tenantId: TenantId, name: String, currency: FiatCurrency,
-        type: AccountType, normalBalance: EntryType, createdAt: Instant)
+Account(id: AccountId, tenantId: TenantId, name: String, description: String? = null,
+        currency: FiatCurrency, type: AccountType, normalBalance: EntryType,
+        createdAt: Instant, createdBy: String,
+        updatedAt: Instant? = null, updatedBy: String? = null)
 ```
+
+`createdBy` is the actor string — API key prefix (e.g. `sk_live_xxxx`) or `"system"`.
+`updatedAt`/`updatedBy` are nullable; set only when the account is mutated after creation.
 
 **`AccountType` and what each means for a stablecoin PSP:**
 
@@ -121,8 +141,11 @@ with at least one counterpart.
 
 ```
 JournalLine(id: UUID, transactionId: TransactionId, accountId: AccountId,
-            entryType: EntryType, monetaryEntry: MonetaryEntry, description: String? = null)
+            entryType: EntryType, monetaryEntry: MonetaryEntry, description: String? = null,
+            createdAt: Instant, createdBy: String)
 ```
+
+No `updatedAt`/`updatedBy` — `JournalLine` is immutable once part of a committed `Transaction`.
 
 **Concrete example — USDC → BRL offramp:**
 
@@ -152,8 +175,10 @@ double-entry invariant.
 Transaction(id: TransactionId, tenantId: TenantId, idempotencyKey: String,
             lines: List<JournalLine>, status: TransactionStatus,
             agentContext: AgentContext? = null, metadata: Map<String, String> = emptyMap(),
-            occurredAt: Instant)
+            occurredAt: Instant, createdAt: Instant, createdBy: String)
 ```
+
+`occurredAt` ≠ `createdAt`: `occurredAt` is the business event time (can be backdated for reconciliation); `createdAt` is when the system record was persisted. No `updatedAt`/`updatedBy` — status transitions are tracked via the `TransactionCommitted` domain event.
 
 **`TransactionStatus`:** `PENDING` → `COMMITTED` | `ROLLED_BACK`
 
