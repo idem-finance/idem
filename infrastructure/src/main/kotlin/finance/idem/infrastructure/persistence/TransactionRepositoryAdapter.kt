@@ -25,9 +25,9 @@ class TransactionRepositoryAdapter(
 ) : TransactionRepository {
 
     private fun setTenantId(tenantId: TenantId) {
-        entityManager.createNativeQuery("SELECT set_config('app.tenant_id', :tid, true)")
-            .setParameter("tid", tenantId.value.toString())
-            .singleResult
+        // UUID contains only hex digits and dashes — safe to interpolate without binding
+        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
+            .executeUpdate()
     }
 
     @Transactional(readOnly = true)
