@@ -21,7 +21,9 @@ import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
 import org.mockito.kotlin.whenever
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -37,11 +39,12 @@ class QueryBalanceUseCaseTest {
 
     private val tenantId = TenantId.generate()
     private val accountId = AccountId.generate()
-    private val now = Instant.now()
+    private val now = Instant.parse("2026-06-01T12:00:00Z")
+    private val fixedClock = Clock.fixed(now, ZoneOffset.UTC)
 
     @BeforeEach
     fun setUp() {
-        useCase = QueryBalanceUseCase(accountRepository, transactionRepository)
+        useCase = QueryBalanceUseCase(accountRepository, transactionRepository, fixedClock)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -72,9 +75,14 @@ class QueryBalanceUseCaseTest {
         rail = PaymentRail.PIX,
     )
 
-    private fun line(entryType: EntryType, amount: String, accId: AccountId = accountId) = JournalLine(
+    private fun line(
+        txId: TransactionId,
+        entryType: EntryType,
+        amount: String,
+        accId: AccountId = accountId,
+    ) = JournalLine(
         id = UUID.randomUUID(),
-        transactionId = TransactionId.generate(),
+        transactionId = txId,
         accountId = accId,
         tenantId = tenantId,
         entryType = entryType,
@@ -84,7 +92,7 @@ class QueryBalanceUseCaseTest {
     )
 
     private fun tx(
-        vararg lines: JournalLine,
+        lineBuilder: (TransactionId) -> List<JournalLine>,
         occurredAt: Instant = now,
     ): Transaction {
         val txId = TransactionId.generate()
@@ -92,7 +100,7 @@ class QueryBalanceUseCaseTest {
             id = txId,
             tenantId = tenantId,
             idempotencyKey = UUID.randomUUID().toString(),
-            lines = lines.toList(),
+            lines = lineBuilder(txId),
             occurredAt = occurredAt,
             createdAt = now,
             createdBy = "system",
@@ -137,7 +145,7 @@ class QueryBalanceUseCaseTest {
         val other = otherAccountId()
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx(line(EntryType.DEBIT, "1000", accountId), line(EntryType.CREDIT, "1000", other)),
+            tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
         ))
 
         val result = useCase.execute(QueryBalanceQuery(accountId, tenantId))
@@ -150,8 +158,8 @@ class QueryBalanceUseCaseTest {
         val other = otherAccountId()
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx(line(EntryType.DEBIT, "1000", accountId), line(EntryType.CREDIT, "1000", other)),
-            tx(line(EntryType.CREDIT, "400", accountId), line(EntryType.DEBIT, "400", other)),
+            tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
+            tx({ id -> listOf(line(id, EntryType.CREDIT, "400", accountId), line(id, EntryType.DEBIT, "400", other)) }),
         ))
 
         val result = useCase.execute(QueryBalanceQuery(accountId, tenantId))
@@ -167,7 +175,7 @@ class QueryBalanceUseCaseTest {
         val other = otherAccountId()
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(liabilityAccount())
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx(line(EntryType.CREDIT, "500", accountId), line(EntryType.DEBIT, "500", other)),
+            tx({ id -> listOf(line(id, EntryType.CREDIT, "500", accountId), line(id, EntryType.DEBIT, "500", other)) }),
         ))
 
         val result = useCase.execute(QueryBalanceQuery(accountId, tenantId))
@@ -183,12 +191,11 @@ class QueryBalanceUseCaseTest {
         val other = otherAccountId()
         val cutoff = now.minusSeconds(3600)
         val before = now.minusSeconds(7200)
-        val after = now
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx(line(EntryType.DEBIT, "1000", accountId), line(EntryType.CREDIT, "1000", other), occurredAt = before),
-            tx(line(EntryType.DEBIT, "500", accountId), line(EntryType.CREDIT, "500", other), occurredAt = after),
+            tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }, occurredAt = before),
+            tx({ id -> listOf(line(id, EntryType.DEBIT, "500", accountId), line(id, EntryType.CREDIT, "500", other)) }, occurredAt = now),
         ))
 
         val result = useCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = cutoff))
@@ -204,7 +211,7 @@ class QueryBalanceUseCaseTest {
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx(line(EntryType.DEBIT, "750", accountId), line(EntryType.CREDIT, "750", other), occurredAt = cutoff),
+            tx({ id -> listOf(line(id, EntryType.DEBIT, "750", accountId), line(id, EntryType.CREDIT, "750", other)) }, occurredAt = cutoff),
         ))
 
         val result = useCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = cutoff))
@@ -219,14 +226,51 @@ class QueryBalanceUseCaseTest {
         val other = otherAccountId()
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx(
-                line(EntryType.DEBIT,  "1000", accountId),
-                line(EntryType.CREDIT, "1000", other),      // other account — must NOT be counted
-            ),
+            tx({ id -> listOf(
+                line(id, EntryType.DEBIT,  "1000", accountId),
+                line(id, EntryType.CREDIT, "1000", other),   // other account — must NOT be counted
+            )}),
         ))
 
         val result = useCase.execute(QueryBalanceQuery(accountId, tenantId))
 
         assertEquals(MonetaryAmount.of("1000"), result.getOrThrow().amount)
+    }
+
+    @Test
+    fun `on-chain entries are excluded from fiat balance`() {
+        val other = otherAccountId()
+        val onChainEntry = MonetaryEntry.OnChainEntry(
+            amount = MonetaryAmount.of("180.00"),
+            token = finance.idem.core.StablecoinToken.USDC,
+            chainId = finance.idem.core.ChainId.EVM,
+            txHash = "0xabc",
+            blockNumber = 19_000_000L,
+            walletAddress = "0xWallet",
+            tokenContract = "0xContract",
+        )
+        // Both lines are USDC on EVM so the transaction balances — one for each account
+        whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
+            tx({ id -> listOf(
+                JournalLine(UUID.randomUUID(), id, accountId, tenantId, EntryType.DEBIT,  onChainEntry, null, now, "system"),
+                JournalLine(UUID.randomUUID(), id, other,     tenantId, EntryType.CREDIT, onChainEntry, null, now, "system"),
+            )}),
+        ))
+
+        val result = useCase.execute(QueryBalanceQuery(accountId, tenantId))
+
+        // OnChainEntry lines are skipped — fiat balance remains zero
+        assertTrue(result.getOrThrow().amount.isZero())
+    }
+
+    @Test
+    fun `computedAt reflects the injected clock`() {
+        whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(emptyList())
+
+        val result = useCase.execute(QueryBalanceQuery(accountId, tenantId))
+
+        assertEquals(now, result.getOrThrow().computedAt)
     }
 }
