@@ -1,6 +1,10 @@
 spring:
   application:
     name: idem
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
 
 server:
   port: 8081
