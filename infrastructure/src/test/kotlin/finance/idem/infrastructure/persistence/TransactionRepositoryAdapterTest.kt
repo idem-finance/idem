@@ -177,6 +177,35 @@ class TransactionRepositoryAdapterTest {
     }
 
     @Test
+    fun `agentContext round-trip preserves all fields`() {
+        val txId = TransactionId.generate()
+        val agentCtx = finance.idem.core.agentic.AgentContext(
+            agentId = "agent-1",
+            sessionId = "sess-abc",
+            workflowPlanId = finance.idem.core.WorkflowPlanId.generate(),
+            intent = "post_offramp",
+        )
+        val tx = Transaction.create(
+            id = txId, tenantId = tenantA, idempotencyKey = UUID.randomUUID().toString(),
+            lines = listOf(
+                brlLine(txId, debitAccountId, EntryType.DEBIT, "500"),
+                brlLine(txId, creditAccountId, EntryType.CREDIT, "500"),
+            ),
+            occurredAt = now, createdAt = now, createdBy = "test",
+            agentContext = agentCtx,
+            metadata = mapOf("source" to "api", "ref" to "TX-001"),
+        )
+        adapter.save(tx)
+
+        val found = adapter.findById(tx.id, tenantA)!!
+        assertNotNull(found.agentContext)
+        assertEquals("agent-1", found.agentContext!!.agentId)
+        assertEquals("sess-abc", found.agentContext!!.sessionId)
+        assertEquals("post_offramp", found.agentContext!!.intent)
+        assertEquals(mapOf("source" to "api", "ref" to "TX-001"), found.metadata)
+    }
+
+    @Test
     fun `findByAccountId returns transactions containing the account`() {
         adapter.save(createTx())
         adapter.save(createTx())
