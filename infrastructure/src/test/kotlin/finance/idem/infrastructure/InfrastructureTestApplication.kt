@@ -1,0 +1,6 @@
+package finance.idem.infrastructure
+
+import org.springframework.boot.autoconfigure.SpringBootApplication
+
+@SpringBootApplication
+class InfrastructureTestApplication

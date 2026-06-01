@@ -73,6 +73,25 @@ data class Transaction internal constructor(
             tx.validate()
             return tx
         }
+
+        /** Rebuilds a Transaction from persisted data — skips double-entry validation. */
+        fun reconstitute(
+            id: TransactionId,
+            tenantId: TenantId,
+            idempotencyKey: String,
+            lines: List<JournalLine>,
+            status: TransactionStatus,
+            occurredAt: Instant,
+            createdAt: Instant,
+            createdBy: String,
+            agentContext: AgentContext? = null,
+            metadata: Map<String, String> = emptyMap(),
+        ): Transaction = Transaction(
+            id = id, tenantId = tenantId, idempotencyKey = idempotencyKey,
+            lines = lines, status = status, agentContext = agentContext,
+            metadata = metadata, occurredAt = occurredAt,
+            createdAt = createdAt, createdBy = createdBy,
+        )
     }
 }
 
