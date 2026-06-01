@@ -102,7 +102,7 @@ class PostTransactionUseCaseTest {
 
     @Test
     fun `executes successfully and returns TransactionId`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         val saved = stubSave()
 
@@ -115,7 +115,7 @@ class PostTransactionUseCaseTest {
 
     @Test
     fun `all four writes are performed on success`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         stubSave()
 
@@ -124,12 +124,12 @@ class PostTransactionUseCaseTest {
         verify(transactionRepository).save(any())
         verify(auditRepository).save(any<AuditEntry>())
         verify(webhookOutboxRepository).save(any<WebhookOutboxEntry>())
-        verify(idempotencyStore).record(any(), any(), any())
+        verify(idempotencyStore).tryRecord(any(), any(), any())
     }
 
     @Test
     fun `saved transaction has PENDING status`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         val saved = stubSave()
 
@@ -140,7 +140,7 @@ class PostTransactionUseCaseTest {
 
     @Test
     fun `saved transaction carries correct tenant and idempotency key`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         val saved = stubSave()
 
@@ -186,6 +186,7 @@ class PostTransactionUseCaseTest {
             createdBy = "system",
         ).copy(status = TransactionStatus.COMMITTED)
 
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(false)
         whenever(idempotencyStore.find("idem-001", tenantId)).thenReturn(existingId)
         whenever(transactionRepository.findById(existingId, tenantId)).thenReturn(existingTx)
 
@@ -231,6 +232,7 @@ class PostTransactionUseCaseTest {
             createdBy = "system",
         )
 
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(false)
         whenever(idempotencyStore.find("idem-001", tenantId)).thenReturn(existingId)
         whenever(transactionRepository.findById(existingId, tenantId)).thenReturn(pendingTx)
 
@@ -240,11 +242,53 @@ class PostTransactionUseCaseTest {
         assertIs<PostTransactionError.IdempotencyConflict>(result.exceptionOrNull())
     }
 
+    @Test
+    fun `proceeds when previous transaction was ROLLED_BACK — releases and retries key`() {
+        val rolledBackId = TransactionId.generate()
+        val rolledBackTx = Transaction.create(
+            id = rolledBackId,
+            tenantId = tenantId,
+            idempotencyKey = "idem-001",
+            lines = listOf(
+                finance.idem.core.ledger.JournalLine(
+                    id = java.util.UUID.randomUUID(), transactionId = rolledBackId,
+                    accountId = debitAccountId, tenantId = tenantId,
+                    entryType = EntryType.DEBIT,
+                    monetaryEntry = MonetaryEntry.FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX),
+                    createdAt = Instant.now(), createdBy = "system",
+                ),
+                finance.idem.core.ledger.JournalLine(
+                    id = java.util.UUID.randomUUID(), transactionId = rolledBackId,
+                    accountId = creditAccountId, tenantId = tenantId,
+                    entryType = EntryType.CREDIT,
+                    monetaryEntry = MonetaryEntry.FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX),
+                    createdAt = Instant.now(), createdBy = "system",
+                ),
+            ),
+            occurredAt = Instant.now(), createdAt = Instant.now(), createdBy = "system",
+        ).copy(status = TransactionStatus.ROLLED_BACK)
+
+        // First tryRecord fails (key exists), second succeeds after release
+        whenever(idempotencyStore.tryRecord(any(), any(), any()))
+            .thenReturn(false)
+            .thenReturn(true)
+        whenever(idempotencyStore.find("idem-001", tenantId)).thenReturn(rolledBackId)
+        whenever(transactionRepository.findById(rolledBackId, tenantId)).thenReturn(rolledBackTx)
+        stubAccountsExist()
+        stubSave()
+
+        val result = useCase.execute(command())
+
+        assertTrue(result.isSuccess)
+        verify(idempotencyStore).release("idem-001", tenantId)
+        verify(transactionRepository).save(any())
+    }
+
     // ── Account validation ────────────────────────────────────────────────────
 
     @Test
     fun `returns AccountNotFound when an account does not exist`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         // Only credit account exists — debit account is missing
         whenever(accountRepository.findExistingIds(any(), any()))
             .thenReturn(setOf(creditAccountId))
@@ -262,7 +306,7 @@ class PostTransactionUseCaseTest {
 
     @Test
     fun `returns InvariantViolation for unbalanced lines`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         whenever(accountRepository.findExistingIds(any(), any())).thenAnswer { inv ->
             inv.getArgument<Set<*>>(0).toSet()
         }
@@ -287,7 +331,7 @@ class PostTransactionUseCaseTest {
 
     @Test
     fun `returns InvariantViolation for single line`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         whenever(accountRepository.findExistingIds(any(), any())).thenAnswer { inv ->
             inv.getArgument<Set<*>>(0).toSet()
         }
@@ -303,7 +347,7 @@ class PostTransactionUseCaseTest {
 
     @Test
     fun `AuditEntry saved with correct transaction and actor fields`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         stubSave()
         val captor = argumentCaptor<AuditEntry>()
@@ -320,7 +364,7 @@ class PostTransactionUseCaseTest {
 
     @Test
     fun `InvariantViolation detail is accessible`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         whenever(accountRepository.findExistingIds(any(), any())).thenAnswer { inv ->
             inv.getArgument<Set<*>>(0).toSet()
         }
@@ -336,7 +380,7 @@ class PostTransactionUseCaseTest {
 
     @Test
     fun `WebhookOutboxEntry transactionCommitted carries correct fields`() {
-        whenever(idempotencyStore.find(any(), any())).thenReturn(null)
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         val saved = stubSave()
 

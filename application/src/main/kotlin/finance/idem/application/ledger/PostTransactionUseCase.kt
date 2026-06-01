@@ -23,12 +23,28 @@ class PostTransactionUseCase(
     private val idempotencyStore: IdempotencyStore,
 ) {
     fun execute(cmd: PostTransactionCommand): Result<TransactionId> {
-        // 1. Idempotency check — short-circuit on duplicate key
-        idempotencyStore.find(cmd.idempotencyKey, cmd.tenantId)?.let { existingId ->
+        val txId = TransactionId.generate()
+        val now = Instant.now()
+
+        // 1. Atomically claim the idempotency key BEFORE any ledger writes.
+        //    Infrastructure uses INSERT ON CONFLICT to enforce uniqueness —
+        //    concurrent requests with the same key are serialised here.
+        if (!idempotencyStore.tryRecord(cmd.idempotencyKey, cmd.tenantId, txId)) {
+            val existingId = idempotencyStore.find(cmd.idempotencyKey, cmd.tenantId)
+                ?: return Result.failure(PostTransactionError.IdempotencyConflict(cmd.idempotencyKey))
             val existing = transactionRepository.findById(existingId, cmd.tenantId)
-            return when (existing?.status) {
-                TransactionStatus.COMMITTED -> Result.success(existingId)
-                else -> Result.failure(PostTransactionError.IdempotencyConflict(cmd.idempotencyKey))
+            when (existing?.status) {
+                TransactionStatus.COMMITTED ->
+                    return Result.success(existingId)
+                TransactionStatus.PENDING ->
+                    return Result.failure(PostTransactionError.IdempotencyConflict(cmd.idempotencyKey))
+                TransactionStatus.ROLLED_BACK -> {
+                    // Terminal failure — release the key so this request can proceed.
+                    idempotencyStore.release(cmd.idempotencyKey, cmd.tenantId)
+                    idempotencyStore.tryRecord(cmd.idempotencyKey, cmd.tenantId, txId)
+                }
+                null ->
+                    return Result.failure(PostTransactionError.IdempotencyConflict(cmd.idempotencyKey))
             }
         }
 
@@ -41,8 +57,6 @@ class PostTransactionUseCase(
         }
 
         // 3. Build the transaction — double-entry invariant enforced here
-        val txId = TransactionId.generate()
-        val now = Instant.now()
         val lines = cmd.lines.map { req ->
             JournalLine(
                 id = UUID.randomUUID(),
@@ -77,9 +91,6 @@ class PostTransactionUseCase(
         transactionRepository.save(transaction)
         auditRepository.save(AuditEntry.from(transaction, cmd.agentContext, cmd.createdBy))
         webhookOutboxRepository.save(WebhookOutboxEntry.transactionCommitted(transaction))
-
-        // 7. Record idempotency result — after successful writes
-        idempotencyStore.record(cmd.idempotencyKey, cmd.tenantId, transaction.id)
 
         return Result.success(transaction.id)
     }
