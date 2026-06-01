@@ -1,8 +1,7 @@
 package finance.idem.api.ledger
 
 import finance.idem.application.ledger.PostTransactionError
-import finance.idem.application.ledger.PostTransactionUseCase
-import finance.idem.core.LedgerInvariantViolation
+import finance.idem.application.port.PostTransactionPort
 import finance.idem.core.TenantId
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -18,11 +17,13 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
+data class PostTransactionResponse(val transactionId: UUID)
+
 @RestController
 @RequestMapping("/api/v1/transactions")
 @Tag(name = "Transactions", description = "Double-entry transaction posting")
 class TransactionController(
-    private val postTransactionUseCase: PostTransactionUseCase,
+    private val postTransactionPort: PostTransactionPort,
 ) {
 
     @PostMapping
@@ -40,9 +41,9 @@ class TransactionController(
         @RequestHeader("Idempotency-Key") idempotencyKey: String,
         @RequestBody request: PostTransactionRequest,
     ): ResponseEntity<Any> {
-        if (idempotencyKey.isBlank() || idempotencyKey.length > 255) {
+        if (idempotencyKey.length > 255) {
             return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be non-blank and at most 255 characters"))
+                .body(ErrorResponse("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be at most 255 characters"))
         }
 
         val tenantId = try {
@@ -52,17 +53,9 @@ class TransactionController(
                 .body(ErrorResponse("INVALID_TENANT_ID", "X-Tenant-Id must be a valid UUID"))
         }
 
-        val cmd = try {
-            request.toCommand(tenantId, idempotencyKey)
-        } catch (e: LedgerInvariantViolation) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_REQUEST", e.message ?: "Invalid monetary entry"))
-        } catch (e: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_REQUEST", e.message ?: "Invalid request"))
-        }
+        val cmd = request.toCommand(tenantId, idempotencyKey)
 
-        return postTransactionUseCase.execute(cmd).fold(
+        return postTransactionPort.execute(cmd).fold(
             onSuccess = { txId ->
                 ResponseEntity.status(HttpStatus.CREATED)
                     .body(PostTransactionResponse(txId.value))
