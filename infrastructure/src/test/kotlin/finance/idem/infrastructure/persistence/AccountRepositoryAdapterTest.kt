@@ -130,4 +130,10 @@ class AccountRepositoryAdapterTest {
 
         assertEquals(setOf(acc1.id, acc2.id), result)
     }
+
+    @Test
+    fun `findExistingIds with empty set returns empty set without hitting the database`() {
+        val result = adapter.findExistingIds(emptySet(), tenantA)
+        assertTrue(result.isEmpty())
+    }
 }

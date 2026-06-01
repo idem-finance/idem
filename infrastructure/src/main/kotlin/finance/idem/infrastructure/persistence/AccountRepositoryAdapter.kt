@@ -52,6 +52,7 @@ class AccountRepositoryAdapter(
 
     @Transactional(readOnly = true)
     override fun findExistingIds(ids: Set<AccountId>, tenantId: TenantId): Set<AccountId> {
+        if (ids.isEmpty()) return emptySet()
         setTenantId(tenantId)
         return jpaRepository.findExistingIds(ids.map { it.value }, tenantId.value)
             .map { AccountId(it) }
