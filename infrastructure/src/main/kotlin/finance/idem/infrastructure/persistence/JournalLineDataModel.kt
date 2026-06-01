@@ -15,13 +15,13 @@ import java.util.UUID
 
 @Entity
 @Table(name = "journal_lines")
-class JournalLineJpaEntity(
+class JournalLineDataModel(
     @Id
     val id: UUID,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "transaction_id", nullable = false)
-    val transaction: TransactionJpaEntity,
+    val transaction: TransactionDataModel,
 
     @Column(name = "account_id", nullable = false)
     val accountId: UUID,
@@ -54,7 +54,7 @@ class JournalLineJpaEntity(
     val createdBy: String,
 ) {
     protected constructor() : this(
-        UUID.randomUUID(), TransactionJpaEntity(), UUID.randomUUID(), UUID.randomUUID(),
+        UUID.randomUUID(), TransactionDataModel(), UUID.randomUUID(), UUID.randomUUID(),
         "", BigDecimal.ZERO, "", "", "{}", null, Instant.now(), "",
     )
 }

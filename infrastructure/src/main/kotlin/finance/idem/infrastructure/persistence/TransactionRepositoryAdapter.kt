@@ -60,7 +60,7 @@ class TransactionRepositoryAdapter(
 
 // ── Entity → Domain ────────────────────────────────────────────────────────────
 
-private fun TransactionJpaEntity.toDomain(mapper: ObjectMapper): Transaction {
+private fun TransactionDataModel.toDomain(mapper: ObjectMapper): Transaction {
     val txId = TransactionId(id)
     val tenantId = TenantId(tenantId)
     return Transaction.reconstitute(
@@ -77,7 +77,7 @@ private fun TransactionJpaEntity.toDomain(mapper: ObjectMapper): Transaction {
     )
 }
 
-private fun JournalLineJpaEntity.toDomain(
+private fun JournalLineDataModel.toDomain(
     txId: TransactionId,
     tenantId: TenantId,
     mapper: ObjectMapper,
@@ -113,8 +113,8 @@ private fun ObjectMapper.readAgentContext(json: String): AgentContext {
 
 // ── Domain → Entity ────────────────────────────────────────────────────────────
 
-private fun Transaction.toEntity(mapper: ObjectMapper): TransactionJpaEntity {
-    val entity = TransactionJpaEntity(
+private fun Transaction.toEntity(mapper: ObjectMapper): TransactionDataModel {
+    val entity = TransactionDataModel(
         id = id.value,
         tenantId = tenantId.value,
         idempotencyKey = idempotencyKey,
@@ -136,9 +136,9 @@ private fun Transaction.toEntity(mapper: ObjectMapper): TransactionJpaEntity {
     return entity
 }
 
-private fun JournalLine.toEntity(transaction: TransactionJpaEntity, mapper: ObjectMapper): JournalLineJpaEntity {
+private fun JournalLine.toEntity(transaction: TransactionDataModel, mapper: ObjectMapper): JournalLineDataModel {
     val cols = monetaryEntry.toColumns(mapper)
-    return JournalLineJpaEntity(
+    return JournalLineDataModel(
         id = id,
         transaction = transaction,
         accountId = accountId.value,

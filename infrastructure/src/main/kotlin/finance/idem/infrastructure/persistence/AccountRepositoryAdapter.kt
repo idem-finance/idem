@@ -60,7 +60,7 @@ class AccountRepositoryAdapter(
     }
 }
 
-private fun AccountJpaEntity.toDomain(): Account = Account.reconstitute(
+private fun AccountDataModel.toDomain(): Account = Account.reconstitute(
     id = AccountId(id),
     tenantId = TenantId(tenantId),
     name = name,
@@ -73,7 +73,7 @@ private fun AccountJpaEntity.toDomain(): Account = Account.reconstitute(
     updatedBy = updatedBy,
 )
 
-private fun Account.toEntity(): AccountJpaEntity = AccountJpaEntity(
+private fun Account.toEntity(): AccountDataModel = AccountDataModel(
     id = id.value,
     tenantId = tenantId.value,
     name = name,
