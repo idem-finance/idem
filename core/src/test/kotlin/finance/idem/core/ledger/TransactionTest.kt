@@ -249,6 +249,29 @@ class TransactionTest {
         }
     }
 
+    // ── reconstitute factory ──────────────────────────────────────────────────
+
+    @Test
+    fun `reconstitute rebuilds transaction from persisted data without re-validating`() {
+        val txId = TransactionId.generate()
+        val tx = Transaction.reconstitute(
+            id = txId,
+            tenantId = tenantId,
+            idempotencyKey = "idem-reconstitute",
+            lines = listOf(
+                line(EntryType.DEBIT,  brlFiat("500")),
+                line(EntryType.CREDIT, brlFiat("500")),
+            ),
+            status = TransactionStatus.COMMITTED,
+            occurredAt = now,
+            createdAt = now,
+            createdBy = "system",
+        )
+        assertEquals(txId, tx.id)
+        assertEquals(TransactionStatus.COMMITTED, tx.status)
+        assertEquals(2, tx.lines.size)
+    }
+
     // ── TransactionCommitted event ────────────────────────────────────────────
 
     @Test
