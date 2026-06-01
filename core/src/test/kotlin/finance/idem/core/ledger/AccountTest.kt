@@ -133,6 +133,46 @@ class AccountTest {
     }
 
     @Test
+    fun `reconstitute rebuilds account from persisted data with all fields`() {
+        val updatedAt = now.plusSeconds(3600)
+        val account = Account.reconstitute(
+            id = accountId,
+            tenantId = tenantId,
+            name = "Reconstructed",
+            currency = FiatCurrency.USD,
+            type = AccountType.LIABILITY,
+            createdAt = now,
+            createdBy = "system",
+            description = "From DB",
+            updatedAt = updatedAt,
+            updatedBy = "sk_live_yyyy",
+        )
+        assertEquals(accountId, account.id)
+        assertEquals("Reconstructed", account.name)
+        assertEquals("From DB", account.description)
+        assertEquals(EntryType.CREDIT, account.normalBalance)
+        assertEquals(updatedAt, account.updatedAt)
+        assertEquals("sk_live_yyyy", account.updatedBy)
+    }
+
+    @Test
+    fun `reconstitute with only required fields uses null defaults`() {
+        val account = Account.reconstitute(
+            id = accountId,
+            tenantId = tenantId,
+            name = "Minimal",
+            currency = FiatCurrency.BRL,
+            type = AccountType.ASSET,
+            createdAt = now,
+            createdBy = "system",
+        )
+        assertNull(account.description)
+        assertNull(account.updatedAt)
+        assertNull(account.updatedBy)
+        assertEquals(EntryType.DEBIT, account.normalBalance)
+    }
+
+    @Test
     fun `all AccountType values produce correct normalBalance`() {
         val expectations = mapOf(
             AccountType.ASSET to EntryType.DEBIT,

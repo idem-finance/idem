@@ -42,5 +42,23 @@ data class Account internal constructor(
             createdAt = createdAt,
             createdBy = createdBy,
         )
+
+        /** Rebuilds an Account from persisted data — skips creation-time validation. */
+        fun reconstitute(
+            id: AccountId,
+            tenantId: TenantId,
+            name: String,
+            currency: FiatCurrency,
+            type: AccountType,
+            createdAt: Instant,
+            createdBy: String,
+            description: String? = null,
+            updatedAt: Instant? = null,
+            updatedBy: String? = null,
+        ): Account = Account(
+            id = id, tenantId = tenantId, name = name, description = description,
+            currency = currency, type = type, createdAt = createdAt, createdBy = createdBy,
+            updatedAt = updatedAt, updatedBy = updatedBy,
+        )
     }
 }

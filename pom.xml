@@ -151,6 +151,12 @@
                                         <exclude>finance.idem.core.TransactionId</exclude>
                                         <exclude>finance.idem.core.TenantId</exclude>
                                         <exclude>finance.idem.core.WorkflowPlanId</exclude>
+                                        <!--
+                                          Kotlin inline extension functions (e.g. ObjectMapper.readValue<T>)
+                                          generate synthetic anonymous classes that JaCoCo cannot instrument.
+                                          Pattern matches e.g. TransactionRepositoryAdapterKt$..inlined..1
+                                        -->
+                                        <exclude>*..inlined..*</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>
