@@ -85,8 +85,8 @@ class PostTransactionUseCaseTest {
     )
 
     private fun stubAccountsExist() {
-        whenever(accountRepository.existsById(debitAccountId, tenantId)).thenReturn(true)
-        whenever(accountRepository.existsById(creditAccountId, tenantId)).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any()))
+            .thenReturn(setOf(debitAccountId, creditAccountId))
     }
 
     private fun stubSave(capturedTx: MutableList<Transaction> = mutableListOf()): MutableList<Transaction> {
@@ -243,9 +243,11 @@ class PostTransactionUseCaseTest {
     // ── Account validation ────────────────────────────────────────────────────
 
     @Test
-    fun `returns AccountNotFound when debit account does not exist`() {
+    fun `returns AccountNotFound when an account does not exist`() {
         whenever(idempotencyStore.find(any(), any())).thenReturn(null)
-        whenever(accountRepository.existsById(debitAccountId, tenantId)).thenReturn(false)
+        // Only credit account exists — debit account is missing
+        whenever(accountRepository.findExistingIds(any(), any()))
+            .thenReturn(setOf(creditAccountId))
 
         val result = useCase.execute(command())
 
@@ -261,7 +263,9 @@ class PostTransactionUseCaseTest {
     @Test
     fun `returns InvariantViolation for unbalanced lines`() {
         whenever(idempotencyStore.find(any(), any())).thenReturn(null)
-        whenever(accountRepository.existsById(any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any())).thenAnswer { inv ->
+            inv.getArgument<Set<*>>(0).toSet()
+        }
 
         val result = useCase.execute(command(lines = listOf(
             JournalLineRequest(
@@ -284,7 +288,9 @@ class PostTransactionUseCaseTest {
     @Test
     fun `returns InvariantViolation for single line`() {
         whenever(idempotencyStore.find(any(), any())).thenReturn(null)
-        whenever(accountRepository.existsById(any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any())).thenAnswer { inv ->
+            inv.getArgument<Set<*>>(0).toSet()
+        }
 
         val result = useCase.execute(command(lines = listOf(
             brlLine(debitAccountId, EntryType.DEBIT),
@@ -315,7 +321,9 @@ class PostTransactionUseCaseTest {
     @Test
     fun `InvariantViolation detail is accessible`() {
         whenever(idempotencyStore.find(any(), any())).thenReturn(null)
-        whenever(accountRepository.existsById(any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any())).thenAnswer { inv ->
+            inv.getArgument<Set<*>>(0).toSet()
+        }
 
         val result = useCase.execute(command(lines = listOf(
             brlLine(debitAccountId, EntryType.DEBIT),

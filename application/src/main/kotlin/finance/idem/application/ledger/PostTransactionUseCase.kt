@@ -32,11 +32,12 @@ class PostTransactionUseCase(
             }
         }
 
-        // 2. Validate all account IDs exist for this tenant
-        for (req in cmd.lines) {
-            if (!accountRepository.existsById(req.accountId, cmd.tenantId)) {
-                return Result.failure(PostTransactionError.AccountNotFound(req.accountId))
-            }
+        // 2. Validate all account IDs exist — single query regardless of line count
+        val requestedIds = cmd.lines.map { it.accountId }.toSet()
+        val existingIds = accountRepository.findExistingIds(requestedIds, cmd.tenantId)
+        val missingId = requestedIds.firstOrNull { it !in existingIds }
+        if (missingId != null) {
+            return Result.failure(PostTransactionError.AccountNotFound(missingId))
         }
 
         // 3. Build the transaction — double-entry invariant enforced here

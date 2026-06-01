@@ -8,4 +8,5 @@ interface AccountRepository {
     fun save(account: Account): Account
     fun findAllByTenantId(tenantId: TenantId): List<Account>
     fun existsById(id: AccountId, tenantId: TenantId): Boolean
+    fun findExistingIds(ids: Set<AccountId>, tenantId: TenantId): Set<AccountId>
 }
