@@ -14,8 +14,11 @@ CREATE TABLE accounts (
 );
 
 CREATE INDEX idx_accounts_tenant ON accounts (tenant_id);
+-- Composite unique needed for journal_lines FK: (account_id, tenant_id)
+CREATE UNIQUE INDEX uq_accounts_id_tenant ON accounts (id, tenant_id);
 
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE accounts FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON accounts
     FOR ALL

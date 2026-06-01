@@ -29,3 +29,7 @@ CREATE POLICY tenant_read ON audit_log
 CREATE POLICY tenant_insert ON audit_log
     FOR INSERT
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::UUID);
+
+-- Belt-and-suspenders: revoke UPDATE/DELETE at the privilege level as well.
+-- FORCE RLS denies the table owner; REVOKE denies all other roles.
+REVOKE UPDATE, DELETE ON audit_log FROM PUBLIC;

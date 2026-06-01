@@ -60,6 +60,9 @@ class FlywayMigrationTest {
             val tenantId = "a0000000-0000-0000-0000-000000000001"
             val txId     = "b0000000-0000-0000-0000-000000000001"
 
+            // FORCE RLS requires app.tenant_id to be set for DML
+            conn.createStatement().execute("SET LOCAL app.tenant_id = '$tenantId'")
+
             conn.prepareStatement(
                 "INSERT INTO idempotency_keys (tenant_id, idempotency_key, transaction_id, expires_at) VALUES (?::UUID, ?, ?::UUID, now() + interval '24 hours')"
             ).use { it.setString(1, tenantId); it.setString(2, "key-001"); it.setString(3, txId); it.executeUpdate() }
@@ -81,6 +84,9 @@ class FlywayMigrationTest {
         postgres.createConnection("").use { conn ->
             conn.autoCommit = false
             val tenantId = "a0000000-0000-0000-0000-000000000002"
+
+            // FORCE RLS requires app.tenant_id to be set for DML
+            conn.createStatement().execute("SET LOCAL app.tenant_id = '$tenantId'")
 
             fun insertTx(key: String) = conn.prepareStatement(
                 "INSERT INTO transactions (tenant_id, idempotency_key, status, occurred_at, created_at, created_by) VALUES (?::UUID, ?, 'PENDING', now(), now(), 'test')"

@@ -14,6 +14,7 @@ CREATE TABLE idempotency_keys (
 CREATE INDEX idx_idempotency_keys_expiry ON idempotency_keys (expires_at);
 
 ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE idempotency_keys FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON idempotency_keys
     FOR ALL

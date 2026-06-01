@@ -16,8 +16,11 @@ CREATE TABLE transactions (
 
 CREATE INDEX idx_transactions_tenant ON transactions (tenant_id);
 CREATE INDEX idx_transactions_occurred_at ON transactions (tenant_id, occurred_at DESC);
+-- Composite unique needed for journal_lines FK: (transaction_id, tenant_id)
+CREATE UNIQUE INDEX uq_transactions_id_tenant ON transactions (id, tenant_id);
 
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON transactions
     FOR ALL

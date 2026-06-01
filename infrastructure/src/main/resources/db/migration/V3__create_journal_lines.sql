@@ -3,8 +3,8 @@
 -- monetary_entry_data JSONB preserves the full sealed-class payload for reconstruction.
 CREATE TABLE journal_lines (
     id                   UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
-    transaction_id       UUID           NOT NULL REFERENCES transactions (id),
-    account_id           UUID           NOT NULL REFERENCES accounts (id),
+    transaction_id       UUID           NOT NULL,
+    account_id           UUID           NOT NULL,
     tenant_id            UUID           NOT NULL,
     entry_type           TEXT           NOT NULL,
     amount               NUMERIC(38,18) NOT NULL,
@@ -16,10 +16,19 @@ CREATE TABLE journal_lines (
     created_by           TEXT           NOT NULL
 );
 
+-- Composite FKs enforce that lines cannot reference a transaction/account from a different tenant.
+-- Requires UNIQUE(id, tenant_id) on both parent tables (added in V1 and V2).
+ALTER TABLE journal_lines
+    ADD CONSTRAINT fk_journal_lines_transaction
+        FOREIGN KEY (transaction_id, tenant_id) REFERENCES transactions (id, tenant_id),
+    ADD CONSTRAINT fk_journal_lines_account
+        FOREIGN KEY (account_id, tenant_id)    REFERENCES accounts     (id, tenant_id);
+
 CREATE INDEX idx_journal_lines_transaction ON journal_lines (transaction_id);
 CREATE INDEX idx_journal_lines_account     ON journal_lines (account_id, tenant_id);
 
 ALTER TABLE journal_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE journal_lines FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON journal_lines
     FOR ALL

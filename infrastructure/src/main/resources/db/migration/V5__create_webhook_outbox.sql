@@ -18,6 +18,7 @@ CREATE INDEX idx_webhook_outbox_pending ON webhook_outbox (tenant_id, dispatched
     WHERE dispatched = false;
 
 ALTER TABLE webhook_outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE webhook_outbox FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON webhook_outbox
     FOR ALL
