@@ -6,7 +6,6 @@ import finance.idem.application.port.AuditRepository
 import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.LedgerInvariantViolation
-import org.springframework.transaction.annotation.Transactional
 import finance.idem.core.TransactionId
 import finance.idem.core.ledger.AccountRepository
 import finance.idem.core.ledger.JournalLine
@@ -23,7 +22,6 @@ class PostTransactionUseCase(
     private val webhookOutboxRepository: WebhookOutboxRepository,
     private val idempotencyStore: IdempotencyStore,
 ) {
-    @Transactional
     fun execute(cmd: PostTransactionCommand): Result<TransactionId> {
         val txId = TransactionId.generate()
         val now = Instant.now()
@@ -89,7 +87,8 @@ class PostTransactionUseCase(
             return Result.failure(PostTransactionError.InvariantViolation(e.message ?: "Ledger invariant violated"))
         }
 
-        // 4-6. Three writes — atomic within the @Transactional boundary declared on this method
+        // 4-6. Three writes — caller is responsible for @Transactional boundary
+        //      (PostTransactionService in infrastructure wraps this with @Service @Transactional)
         transactionRepository.save(transaction)
         auditRepository.save(AuditEntry.from(transaction, cmd.agentContext, cmd.createdBy))
         webhookOutboxRepository.save(WebhookOutboxEntry.transactionCommitted(transaction))
