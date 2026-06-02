@@ -73,15 +73,32 @@ class WebhookOutboxRepositoryAdapterTest {
     }
 
     @Test
-    fun `findPending returns only undispatched rows`() {
-        val first = outboxEntry()
-        val second = outboxEntry()
-        adapter.save(first)
-        adapter.save(second)
+    fun `findPending returns only undispatched rows ordered by created_at ascending`() {
+        val older = outboxEntry()
+        val newer = outboxEntry()
+
+        // Insert with explicit timestamps to guarantee deterministic order
+        val session = entityManager.unwrap(org.hibernate.Session::class.java)
+        session.doWork { conn ->
+            conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantA.value}'")
+            listOf(older to "now() - interval '5 seconds'", newer to "now()").forEach { (e, ts) ->
+                conn.prepareStatement(
+                    "INSERT INTO webhook_outbox (id, tenant_id, transaction_id, event_type, payload, dispatched, retry_count, created_at) VALUES (?::uuid, ?::uuid, ?::uuid, ?, '{}', false, 0, $ts)"
+                ).use { stmt ->
+                    stmt.setString(1, e.id.toString())
+                    stmt.setString(2, tenantA.value.toString())
+                    stmt.setString(3, e.transactionId.value.toString())
+                    stmt.setString(4, e.eventType)
+                    stmt.executeUpdate()
+                }
+            }
+        }
+        entityManager.clear()
 
         val pending = adapter.findPending(tenantA)
         assertEquals(2, pending.size)
-        assertTrue(pending.map { it.id }.containsAll(listOf(first.id, second.id)))
+        assertEquals(older.id, pending[0].id, "Older entry must come first")
+        assertEquals(newer.id, pending[1].id, "Newer entry must come second")
     }
 
     @Test

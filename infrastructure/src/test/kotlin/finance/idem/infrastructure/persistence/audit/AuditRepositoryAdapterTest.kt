@@ -6,6 +6,7 @@ import finance.idem.core.TransactionId
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
@@ -15,6 +16,8 @@ import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import java.sql.DriverManager
+import java.sql.SQLException
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -28,6 +31,9 @@ import kotlin.test.assertTrue
 class AuditRepositoryAdapterTest {
 
     companion object {
+        private const val APP_ROLE = "idem_app_role"
+        private const val APP_ROLE_PASSWORD = "app_role_pass"
+
         @Container
         val postgres = PostgreSQLContainer("postgres:16")
             .withDatabaseName("idem_test")
@@ -41,6 +47,27 @@ class AuditRepositoryAdapterTest {
             registry.add("spring.datasource.username", postgres::getUsername)
             registry.add("spring.datasource.password", postgres::getPassword)
         }
+
+        fun ensureRestrictedRole() {
+            // Runs after Flyway — called lazily from tests that need the restricted role
+            DriverManager.getConnection(postgres.jdbcUrl, "idem", "idem").use { conn ->
+                conn.createStatement().use { stmt ->
+                    try {
+                        stmt.execute("CREATE ROLE $APP_ROLE NOSUPERUSER LOGIN PASSWORD '$APP_ROLE_PASSWORD'")
+                    } catch (_: SQLException) {
+                        // Role already exists — idempotent
+                    }
+                    stmt.execute("GRANT CONNECT ON DATABASE idem_test TO $APP_ROLE")
+                    stmt.execute("GRANT USAGE ON SCHEMA public TO $APP_ROLE")
+                    // append-only: SELECT + INSERT only — no UPDATE or DELETE
+                    stmt.execute("GRANT SELECT, INSERT ON audit_log TO $APP_ROLE")
+                }
+            }
+        }
+
+        fun restrictedConn() = DriverManager.getConnection(
+            postgres.jdbcUrl, APP_ROLE, APP_ROLE_PASSWORD
+        )
     }
 
     @Autowired
@@ -137,9 +164,40 @@ class AuditRepositoryAdapterTest {
         assertEquals(1L, countB, "Tenant B should see exactly its own 1 row")
     }
 
-    // NOTE: Cross-tenant RLS isolation (tenant B can't read tenant A rows) cannot be
-    // verified here because Testcontainers PostgreSQL grants the 'idem' user SUPERUSER
-    // privilege, and PostgreSQL superusers bypass RLS even with FORCE ROW LEVEL SECURITY.
-    // This policy IS enforced in production where the application role is non-privileged.
-    // The FlywayMigrationTest verifies the policy SQL itself; production tests cover isolation.
+    @Test
+    fun `audit_log is append-only — UPDATE denied for non-superuser role`() {
+        ensureRestrictedRole()
+        val entry = auditEntry()
+        adapter.save(entry)
+        entityManager.flush()
+
+        restrictedConn().use { conn ->
+            conn.autoCommit = false
+            conn.createStatement().execute("SET LOCAL app.tenant_id = '${entry.tenantId.value}'")
+            assertThrows<SQLException>("Non-superuser UPDATE must be denied") {
+                conn.createStatement().executeUpdate(
+                    "UPDATE audit_log SET action = 'TAMPERED' WHERE id = '${entry.id}'"
+                )
+            }
+            conn.rollback()
+        }
+    }
+
+    @Test
+    fun `cross-tenant RLS isolation — non-superuser cannot read another tenant rows`() {
+        ensureRestrictedRole()
+        adapter.save(auditEntry(tenantA))
+        entityManager.flush()
+
+        restrictedConn().use { conn ->
+            conn.autoCommit = false
+            // Authenticate as tenantB — should not see tenantA's rows
+            conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantB.value}'")
+            val rs = conn.createStatement()
+                .executeQuery("SELECT COUNT(*) FROM audit_log WHERE tenant_id = '${tenantA.value}'")
+            rs.next()
+            assertEquals(0L, rs.getLong(1), "Non-superuser with tenantB context must see 0 of tenantA rows")
+            conn.rollback()
+        }
+    }
 }

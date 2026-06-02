@@ -5,6 +5,7 @@ import finance.idem.application.audit.AuditEntry
 import finance.idem.application.port.AuditRepository
 import finance.idem.core.TenantId
 import jakarta.persistence.EntityManager
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.util.Base64
@@ -16,6 +17,9 @@ class AuditRepositoryAdapter(
     private val jpaRepository: AuditLogJpaRepository,
     private val entityManager: EntityManager,
     private val objectMapper: ObjectMapper,
+    // Must be overridden with a strong secret in production via idem.audit.hmac-secret
+    @Value("\${idem.audit.hmac-secret:dev-only-insecure-change-in-production}")
+    private val hmacSecret: String,
 ) : AuditRepository {
 
     private fun setTenantId(tenantId: TenantId) {
@@ -46,7 +50,7 @@ class AuditRepositoryAdapter(
                 action = entry.action,
                 createdBy = entry.createdBy,
                 payload = payload,
-                hmac = hmacSha256(payload, entry.tenantId.value.toString()),
+                hmac = hmacSha256(payload, hmacSecret),
                 occurredAt = entry.occurredAt,
             )
         )
