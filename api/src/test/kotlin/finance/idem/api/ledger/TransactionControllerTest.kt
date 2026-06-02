@@ -2,7 +2,7 @@ package finance.idem.api.ledger
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import finance.idem.application.ledger.PostTransactionError
-import finance.idem.application.port.PostTransactionPort
+import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.TransactionId
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -25,7 +25,7 @@ class TransactionControllerTest {
     lateinit var objectMapper: ObjectMapper
 
     @MockitoBean
-    lateinit var postTransactionPort: PostTransactionPort
+    lateinit var postTransactionUseCase: PostTransactionUseCase
 
     private val tenantId = UUID.randomUUID().toString()
     private val idempotencyKey = "test-key-001"
@@ -51,7 +51,7 @@ class TransactionControllerTest {
     @Test
     fun `happy path returns 201 with transaction id`() {
         val txId = TransactionId.generate()
-        whenever(postTransactionPort.execute(any())).thenReturn(Result.success(txId))
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(txId))
 
         mockMvc.post("/api/v1/transactions") {
             header("X-Tenant-Id", tenantId)
@@ -159,7 +159,7 @@ class TransactionControllerTest {
 
     @Test
     fun `invariant violation returns 422`() {
-        whenever(postTransactionPort.execute(any()))
+        whenever(postTransactionUseCase.execute(any()))
             .thenReturn(Result.failure(PostTransactionError.InvariantViolation("Debits != credits")))
 
         mockMvc.post("/api/v1/transactions") {
@@ -175,7 +175,7 @@ class TransactionControllerTest {
 
     @Test
     fun `idempotency conflict returns 409`() {
-        whenever(postTransactionPort.execute(any()))
+        whenever(postTransactionUseCase.execute(any()))
             .thenReturn(Result.failure(PostTransactionError.IdempotencyConflict(idempotencyKey)))
 
         mockMvc.post("/api/v1/transactions") {
@@ -192,7 +192,7 @@ class TransactionControllerTest {
     @Test
     fun `account not found returns 422`() {
         val accountId = finance.idem.core.AccountId(UUID.randomUUID())
-        whenever(postTransactionPort.execute(any()))
+        whenever(postTransactionUseCase.execute(any()))
             .thenReturn(Result.failure(PostTransactionError.AccountNotFound(accountId)))
 
         mockMvc.post("/api/v1/transactions") {

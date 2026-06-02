@@ -1,7 +1,7 @@
 package finance.idem.api.ledger
 
 import finance.idem.application.ledger.PostTransactionError
-import finance.idem.application.port.PostTransactionPort
+import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TenantId
 import io.swagger.v3.oas.annotations.Operation
@@ -22,7 +22,7 @@ import java.util.UUID
 @RequestMapping("/api/v1/transactions")
 @Tag(name = "Transactions", description = "Double-entry transaction posting")
 class TransactionController(
-    private val postTransactionPort: PostTransactionPort,
+    private val postTransactionUseCase: PostTransactionUseCase,
 ) {
 
     @PostMapping
@@ -62,7 +62,7 @@ class TransactionController(
                 .body(ErrorResponse("INVALID_REQUEST", e.message ?: "Invalid request"))
         }
 
-        return postTransactionPort.execute(cmd).fold(
+        return postTransactionUseCase.execute(cmd).fold(
             onSuccess = { txId ->
                 ResponseEntity.status(HttpStatus.CREATED)
                     .body(PostTransactionResponse(txId.value))
