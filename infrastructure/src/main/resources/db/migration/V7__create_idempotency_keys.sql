@@ -1,13 +1,14 @@
 -- Idempotency key store. tryRecord() uses INSERT ON CONFLICT DO NOTHING to atomically
 -- claim a key before any ledger writes, preventing concurrent duplicate transactions.
+-- Composite PK (tenant_id, key) eliminates the surrogate id column and makes the
+-- uniqueness invariant structural rather than a secondary constraint.
 CREATE TABLE idempotency_keys (
-    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id       UUID        NOT NULL,
-    idempotency_key TEXT        NOT NULL,
+    key             TEXT        NOT NULL,
     transaction_id  UUID        NOT NULL,
     expires_at      TIMESTAMPTZ NOT NULL,
 
-    CONSTRAINT uq_idempotency_keys_tenant_key UNIQUE (tenant_id, idempotency_key)
+    PRIMARY KEY (tenant_id, key)
 );
 
 -- TTL cleanup job scans by expires_at
