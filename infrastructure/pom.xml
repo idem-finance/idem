@@ -72,4 +72,21 @@
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <configuration>
+                    <!-- JPA @Entity data model classes — Kotlin-generated copy/equals/hashCode
+                         synthetic bytecode produces unexercisable branches -->
+                    <excludes>
+                        <exclude>finance/idem/infrastructure/persistence/audit/AuditLogDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/persistence/outbox/WebhookOutboxDataModel*</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>

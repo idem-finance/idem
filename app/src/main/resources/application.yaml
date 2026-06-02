@@ -8,3 +8,8 @@ spring:
 
 server:
   port: 8081
+
+idem:
+  audit:
+    # Must be set to a strong secret in production — rotate via secret manager
+    hmac-secret: dev-only-insecure-change-in-production
