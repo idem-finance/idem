@@ -14,7 +14,6 @@ class PostgresIdempotencyStore(
 ) : IdempotencyStore {
 
     private fun setTenantId(tenantId: TenantId) {
-        // UUID contains only hex digits and dashes — safe to interpolate without binding
         entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
             .executeUpdate()
     }
@@ -22,7 +21,7 @@ class PostgresIdempotencyStore(
     @Transactional(readOnly = true)
     override fun find(key: String, tenantId: TenantId): TransactionId? {
         setTenantId(tenantId)
-        // Expiry evaluated by DB CURRENT_TIMESTAMP — avoids app/DB clock skew
+
         return jpaRepository.findActiveByKeyAndTenantId(key, tenantId.value)
             ?.transactionId?.let { TransactionId(it) }
     }
