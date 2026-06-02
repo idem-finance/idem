@@ -5,6 +5,31 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: false
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
 
 server:
   port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,modulith
+
+idem:
+  audit:
+    # Must be set to a strong secret in production — rotate via secret manager
+    hmac-secret: dev-only-insecure-change-in-production
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:postgresql://localhost:5432/idem_dev
+    username: idem
+    password: idem
