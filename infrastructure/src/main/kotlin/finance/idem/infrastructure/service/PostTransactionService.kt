@@ -90,10 +90,11 @@ class PostTransactionService(
             return Result.failure(PostTransactionError.InvariantViolation(e.message ?: "Ledger invariant violated"))
         }
 
-        transactionRepository.save(transaction)
-        auditRepository.save(AuditEntry.from(transaction, cmd.agentContext, cmd.createdBy))
-        webhookOutboxRepository.save(WebhookOutboxEntry.transactionCommitted(transaction))
+        val committed = transaction.commit()
+        transactionRepository.save(committed)
+        auditRepository.save(AuditEntry.from(committed, cmd.agentContext, cmd.createdBy))
+        webhookOutboxRepository.save(WebhookOutboxEntry.transactionCommitted(committed))
 
-        return Result.success(transaction.id)
+        return Result.success(committed.id)
     }
 }

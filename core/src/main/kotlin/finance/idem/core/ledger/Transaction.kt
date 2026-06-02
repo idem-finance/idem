@@ -21,6 +21,8 @@ data class Transaction internal constructor(
     val createdAt: Instant,
     val createdBy: String,
 ) {
+    fun commit(): Transaction = copy(status = TransactionStatus.COMMITTED)
+
     fun validate() {
         if (lines.size < 2) throw LedgerInvariantViolation(
             "Transaction must have at least 2 journal lines, got ${lines.size}"
