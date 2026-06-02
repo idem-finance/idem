@@ -52,7 +52,7 @@ class FlywayMigrationTest {
     }
 
     @Test
-    fun `idempotency_keys has unique constraint on tenant_id and idempotency_key`() {
+    fun `idempotency_keys has composite PK on tenant_id and key`() {
         flyway().migrate()
 
         postgres.createConnection("").use { conn ->
@@ -64,12 +64,12 @@ class FlywayMigrationTest {
             conn.createStatement().execute("SET LOCAL app.tenant_id = '$tenantId'")
 
             conn.prepareStatement(
-                "INSERT INTO idempotency_keys (tenant_id, idempotency_key, transaction_id, expires_at) VALUES (?::UUID, ?, ?::UUID, now() + interval '24 hours')"
+                "INSERT INTO idempotency_keys (tenant_id, key, transaction_id, expires_at) VALUES (?::UUID, ?, ?::UUID, now() + interval '24 hours')"
             ).use { it.setString(1, tenantId); it.setString(2, "key-001"); it.setString(3, txId); it.executeUpdate() }
 
             assertFailsWith<SQLException>("Duplicate key should be rejected") {
                 conn.prepareStatement(
-                    "INSERT INTO idempotency_keys (tenant_id, idempotency_key, transaction_id, expires_at) VALUES (?::UUID, ?, ?::UUID, now() + interval '24 hours')"
+                    "INSERT INTO idempotency_keys (tenant_id, key, transaction_id, expires_at) VALUES (?::UUID, ?, ?::UUID, now() + interval '24 hours')"
                 ).use { it.setString(1, tenantId); it.setString(2, "key-001"); it.setString(3, txId); it.executeUpdate() }
             }
 

@@ -6,7 +6,6 @@ import finance.idem.core.TransactionId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
-import java.time.Instant
 
 @Component
 class PostgresIdempotencyStore(
@@ -23,7 +22,8 @@ class PostgresIdempotencyStore(
     @Transactional(readOnly = true)
     override fun find(key: String, tenantId: TenantId): TransactionId? {
         setTenantId(tenantId)
-        return jpaRepository.findActiveByKeyAndTenantId(key, tenantId.value, Instant.now())
+        // Expiry evaluated by DB CURRENT_TIMESTAMP — avoids app/DB clock skew
+        return jpaRepository.findActiveByKeyAndTenantId(key, tenantId.value)
             ?.transactionId?.let { TransactionId(it) }
     }
 
@@ -31,9 +31,9 @@ class PostgresIdempotencyStore(
     override fun tryRecord(key: String, tenantId: TenantId, transactionId: TransactionId): Boolean {
         setTenantId(tenantId)
         val affected = entityManager.createNativeQuery("""
-            INSERT INTO idempotency_keys (id, tenant_id, idempotency_key, transaction_id, expires_at)
-            VALUES (gen_random_uuid(), CAST(:tenantId AS uuid), :key, CAST(:transactionId AS uuid), now() + interval '24 hours')
-            ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
+            INSERT INTO idempotency_keys (tenant_id, key, transaction_id, expires_at)
+            VALUES (CAST(:tenantId AS uuid), :key, CAST(:transactionId AS uuid), now() + interval '24 hours')
+            ON CONFLICT (tenant_id, key) DO NOTHING
         """)
             .setParameter("tenantId", tenantId.value.toString())
             .setParameter("key", key)
@@ -45,6 +45,6 @@ class PostgresIdempotencyStore(
     @Transactional
     override fun release(key: String, tenantId: TenantId) {
         setTenantId(tenantId)
-        jpaRepository.deleteByIdempotencyKeyAndTenantId(key, tenantId.value)
+        jpaRepository.deleteByKeyAndTenantId(key, tenantId.value)
     }
 }

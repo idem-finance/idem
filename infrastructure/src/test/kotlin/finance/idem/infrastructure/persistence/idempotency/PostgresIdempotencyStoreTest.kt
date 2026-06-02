@@ -116,8 +116,8 @@ class PostgresIdempotencyStoreTest {
         val txId = TransactionId.generate()
         entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
         entityManager.createNativeQuery("""
-            INSERT INTO idempotency_keys (id, tenant_id, idempotency_key, transaction_id, expires_at)
-            VALUES (gen_random_uuid(), CAST(:tenantId AS uuid), :key, CAST(:txId AS uuid), now() - interval '1 second')
+            INSERT INTO idempotency_keys (tenant_id, key, transaction_id, expires_at)
+            VALUES (CAST(:tenantId AS uuid), :key, CAST(:txId AS uuid), now() - interval '1 second')
         """)
             .setParameter("tenantId", tenantA.value.toString())
             .setParameter("key", "expired-key")

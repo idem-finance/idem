@@ -3,21 +3,28 @@ package finance.idem.infrastructure.persistence.idempotency
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
+import jakarta.persistence.IdClass
 import jakarta.persistence.Table
+import java.io.Serializable
 import java.time.Instant
 import java.util.UUID
 
+data class IdempotencyKeyId(
+    val tenantId: UUID = UUID.randomUUID(),
+    val key: String = "",
+) : Serializable
+
 @Entity
 @Table(name = "idempotency_keys")
+@IdClass(IdempotencyKeyId::class)
 class IdempotencyKeyDataModel(
     @Id
-    val id: UUID,
-
     @Column(name = "tenant_id", nullable = false)
     val tenantId: UUID,
 
-    @Column(name = "idempotency_key", nullable = false)
-    val idempotencyKey: String,
+    @Id
+    @Column(name = "key", nullable = false)
+    val key: String,
 
     @Column(name = "transaction_id", nullable = false)
     val transactionId: UUID,
@@ -25,5 +32,5 @@ class IdempotencyKeyDataModel(
     @Column(name = "expires_at", nullable = false)
     val expiresAt: Instant,
 ) {
-    protected constructor() : this(UUID.randomUUID(), UUID.randomUUID(), "", UUID.randomUUID(), Instant.now())
+    protected constructor() : this(UUID.randomUUID(), "", UUID.randomUUID(), Instant.now())
 }
