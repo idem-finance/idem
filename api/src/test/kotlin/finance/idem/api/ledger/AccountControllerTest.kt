@@ -2,7 +2,7 @@ package finance.idem.api.ledger
 
 import finance.idem.application.ledger.Balance
 import finance.idem.application.ledger.QueryBalanceError
-import finance.idem.application.port.QueryBalancePort
+import finance.idem.application.ledger.QueryBalanceUseCase
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
@@ -25,7 +25,7 @@ class AccountControllerTest {
     lateinit var mockMvc: MockMvc
 
     @MockitoBean
-    lateinit var queryBalancePort: QueryBalancePort
+    lateinit var queryBalancePort: QueryBalanceUseCase
 
     private val tenantId = UUID.randomUUID().toString()
     private val accountId = UUID.randomUUID()
