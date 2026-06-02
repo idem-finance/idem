@@ -100,9 +100,21 @@ class TransactionControllerTest {
     }
 
     @Test
+    fun `blank idempotency key returns 400`() {
+        mockMvc.post("/api/v1/transactions") {
+            header("X-Tenant-Id", tenantId)
+            header("Idempotency-Key", "   ")
+            contentType = MediaType.APPLICATION_JSON
+            content = validBody
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_IDEMPOTENCY_KEY") }
+        }
+    }
+
+    @Test
     fun `idempotency key longer than 255 chars returns 400`() {
         val longKey = "k".repeat(256)
-        whenever(postTransactionPort.execute(any())).thenReturn(Result.success(TransactionId.generate()))
 
         mockMvc.post("/api/v1/transactions") {
             header("X-Tenant-Id", tenantId)
@@ -112,6 +124,36 @@ class TransactionControllerTest {
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_IDEMPOTENCY_KEY") }
+        }
+    }
+
+    @Test
+    fun `invalid monetary entry in body returns 400`() {
+        val bodyWithNegativeAmount = """
+            {
+              "lines": [
+                {
+                  "accountId": "${UUID.randomUUID()}",
+                  "entryType": "DEBIT",
+                  "monetaryEntry": { "type": "FIAT", "amount": "-1.00", "currency": "BRL", "rail": "PIX" }
+                },
+                {
+                  "accountId": "${UUID.randomUUID()}",
+                  "entryType": "CREDIT",
+                  "monetaryEntry": { "type": "FIAT", "amount": "-1.00", "currency": "BRL", "rail": "PIX" }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        mockMvc.post("/api/v1/transactions") {
+            header("X-Tenant-Id", tenantId)
+            header("Idempotency-Key", idempotencyKey)
+            contentType = MediaType.APPLICATION_JSON
+            content = bodyWithNegativeAmount
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_REQUEST") }
         }
     }
 
