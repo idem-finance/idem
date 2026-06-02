@@ -49,4 +49,20 @@
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <configuration>
+                    <!-- Kotlin sealed/data class inner DTOs — generated copy$default synthetic
+                         methods produce unexercisable bytecode branches; excluded from coverage -->
+                    <excludes>
+                        <exclude>finance/idem/api/ledger/MonetaryEntryRequestDto$*</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>

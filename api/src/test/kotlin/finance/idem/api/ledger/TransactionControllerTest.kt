@@ -190,6 +190,57 @@ class TransactionControllerTest {
     }
 
     @Test
+    fun `onchain entry is deserialized and routed correctly`() {
+        val txId = TransactionId.generate()
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(txId))
+
+        val onchainBody = """
+            {
+              "lines": [
+                {
+                  "accountId": "${UUID.randomUUID()}",
+                  "entryType": "DEBIT",
+                  "monetaryEntry": {
+                    "type": "ONCHAIN",
+                    "amount": "180.00",
+                    "token": "USDC",
+                    "chainId": "EVM",
+                    "txHash": "0xabc123",
+                    "blockNumber": 19000000,
+                    "walletAddress": "0xWallet",
+                    "tokenContract": "0xContract"
+                  }
+                },
+                {
+                  "accountId": "${UUID.randomUUID()}",
+                  "entryType": "CREDIT",
+                  "monetaryEntry": {
+                    "type": "ONCHAIN",
+                    "amount": "180.00",
+                    "token": "USDC",
+                    "chainId": "EVM",
+                    "txHash": "0xabc123",
+                    "blockNumber": 19000000,
+                    "walletAddress": "0xWallet",
+                    "tokenContract": "0xContract"
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        mockMvc.post("/api/v1/transactions") {
+            header("X-Tenant-Id", tenantId)
+            header("Idempotency-Key", idempotencyKey)
+            contentType = MediaType.APPLICATION_JSON
+            content = onchainBody
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.transactionId") { value(txId.value.toString()) }
+        }
+    }
+
+    @Test
     fun `account not found returns 422`() {
         val accountId = finance.idem.core.AccountId(UUID.randomUUID())
         whenever(postTransactionUseCase.execute(any()))
