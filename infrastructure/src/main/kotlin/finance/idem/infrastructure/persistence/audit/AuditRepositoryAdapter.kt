@@ -17,13 +17,12 @@ class AuditRepositoryAdapter(
     private val jpaRepository: AuditLogJpaRepository,
     private val entityManager: EntityManager,
     private val objectMapper: ObjectMapper,
-    // Must be overridden with a strong secret in production via idem.audit.hmac-secret
+
     @Value("\${idem.audit.hmac-secret:dev-only-insecure-change-in-production}")
     private val hmacSecret: String,
 ) : AuditRepository {
 
     private fun setTenantId(tenantId: TenantId) {
-        // UUID contains only hex digits and dashes — safe to interpolate without binding
         entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
             .executeUpdate()
     }
