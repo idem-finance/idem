@@ -131,14 +131,14 @@ class PostTransactionServiceTest {
     }
 
     @Test
-    fun `saved transaction has PENDING status`() {
+    fun `saved transaction has COMMITTED status`() {
         whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         val saved = stubSave()
 
         service.execute(command())
 
-        assertEquals(TransactionStatus.PENDING, saved.first().status)
+        assertEquals(TransactionStatus.COMMITTED, saved.first().status)
     }
 
     @Test
