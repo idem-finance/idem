@@ -11,7 +11,9 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Instant
@@ -27,13 +29,13 @@ class TransactionTest {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private fun brlFiat(amount: String) = MonetaryEntry.FiatEntry(
+    private fun brlFiat(amount: String) = FiatEntry(
         amount = MonetaryAmount.of(amount),
         currency = FiatCurrency.BRL,
         rail = PaymentRail.PIX,
     )
 
-    private fun usdcOnChain(amount: String) = MonetaryEntry.OnChainEntry(
+    private fun usdcOnChain(amount: String) = OnChainEntry(
         amount = MonetaryAmount.of(amount),
         token = StablecoinToken.USDC,
         chainId = ChainId.EVM,
@@ -211,7 +213,7 @@ class TransactionTest {
     @Test
     fun `valid transaction with same token balanced per chain`() {
         // EVM USDC leg balanced; Solana USDC leg balanced independently
-        val solanaOnChain = MonetaryEntry.OnChainEntry(
+        val solanaOnChain = OnChainEntry(
             amount = MonetaryAmount.of("180.00"),
             token = StablecoinToken.USDC,
             chainId = ChainId.SOLANA,
@@ -232,7 +234,7 @@ class TransactionTest {
     @Test
     fun `rejects cross-chain USDC imbalance — chains are separate currency groups`() {
         // EVM debit cannot be balanced by Solana credit — different currency keys
-        val solanaUsdc = MonetaryEntry.OnChainEntry(
+        val solanaUsdc = OnChainEntry(
             amount = MonetaryAmount.of("180.00"),
             token = StablecoinToken.USDC,
             chainId = ChainId.SOLANA,

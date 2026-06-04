@@ -1,5 +1,6 @@
 package finance.idem.api.ledger
 
+import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.QueryBalanceError
 import finance.idem.application.ledger.QueryBalanceQuery
 import finance.idem.application.ledger.QueryBalanceUseCase
@@ -61,7 +62,7 @@ class AccountController(
             },
             onFailure = { error ->
                 when (error) {
-                    is QueryBalanceError.AccountNotFound ->
+                    is BalanceAccountNotFound ->
                         ResponseEntity.notFound().build()
                     else ->
                         ResponseEntity.internalServerError()

@@ -3,7 +3,10 @@ package finance.idem.infrastructure.service
 import finance.idem.application.audit.AuditEntry
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionCommand
+import finance.idem.application.ledger.IdempotencyConflict
+import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.PostTransactionError
+import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AuditRepository
 import finance.idem.application.port.IdempotencyStore
@@ -20,7 +23,7 @@ import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.ledger.TransactionStatus
-import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -67,7 +70,7 @@ class PostTransactionServiceTest {
     private fun brlLine(accountId: AccountId, entryType: EntryType) = JournalLineRequest(
         accountId = accountId,
         entryType = entryType,
-        monetaryEntry = MonetaryEntry.FiatEntry(
+        monetaryEntry = FiatEntry(
             amount = MonetaryAmount.of("1000.00"),
             currency = FiatCurrency.BRL,
             rail = PaymentRail.PIX,
@@ -162,9 +165,9 @@ class PostTransactionServiceTest {
             id = existingId, tenantId = tenantId, idempotencyKey = "idem-001",
             lines = listOf(
                 JournalLine(UUID.randomUUID(), existingId, debitAccountId, tenantId, EntryType.DEBIT,
-                    MonetaryEntry.FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
+                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
                 JournalLine(UUID.randomUUID(), existingId, creditAccountId, tenantId, EntryType.CREDIT,
-                    MonetaryEntry.FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
+                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
             ),
             occurredAt = Instant.now(), createdAt = Instant.now(), createdBy = "system",
         ).copy(status = TransactionStatus.COMMITTED)
@@ -188,9 +191,9 @@ class PostTransactionServiceTest {
             id = existingId, tenantId = tenantId, idempotencyKey = "idem-001",
             lines = listOf(
                 JournalLine(UUID.randomUUID(), existingId, debitAccountId, tenantId, EntryType.DEBIT,
-                    MonetaryEntry.FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
+                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
                 JournalLine(UUID.randomUUID(), existingId, creditAccountId, tenantId, EntryType.CREDIT,
-                    MonetaryEntry.FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
+                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
             ),
             occurredAt = Instant.now(), createdAt = Instant.now(), createdBy = "system",
         )
@@ -202,7 +205,7 @@ class PostTransactionServiceTest {
         val result = service.execute(command())
 
         assertTrue(result.isFailure)
-        assertIs<PostTransactionError.IdempotencyConflict>(result.exceptionOrNull())
+        assertIs<IdempotencyConflict>(result.exceptionOrNull())
     }
 
     @Test
@@ -212,9 +215,9 @@ class PostTransactionServiceTest {
             id = rolledBackId, tenantId = tenantId, idempotencyKey = "idem-001",
             lines = listOf(
                 JournalLine(UUID.randomUUID(), rolledBackId, debitAccountId, tenantId, EntryType.DEBIT,
-                    MonetaryEntry.FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
+                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
                 JournalLine(UUID.randomUUID(), rolledBackId, creditAccountId, tenantId, EntryType.CREDIT,
-                    MonetaryEntry.FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
+                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
             ),
             occurredAt = Instant.now(), createdAt = Instant.now(), createdBy = "system",
         ).copy(status = TransactionStatus.ROLLED_BACK)
@@ -243,7 +246,7 @@ class PostTransactionServiceTest {
 
         assertTrue(result.isFailure)
         val error = result.exceptionOrNull()
-        assertIs<PostTransactionError.AccountNotFound>(error)
+        assertIs<TransactionAccountNotFound>(error)
         assertEquals(debitAccountId, error.accountId)
         verify(transactionRepository, never()).save(any())
     }
@@ -259,13 +262,13 @@ class PostTransactionServiceTest {
 
         val result = service.execute(command(lines = listOf(
             JournalLineRequest(debitAccountId, EntryType.DEBIT,
-                MonetaryEntry.FiatEntry(MonetaryAmount.of("1000"), FiatCurrency.BRL, PaymentRail.PIX)),
+                FiatEntry(MonetaryAmount.of("1000"), FiatCurrency.BRL, PaymentRail.PIX)),
             JournalLineRequest(creditAccountId, EntryType.CREDIT,
-                MonetaryEntry.FiatEntry(MonetaryAmount.of("999"), FiatCurrency.BRL, PaymentRail.PIX)),
+                FiatEntry(MonetaryAmount.of("999"), FiatCurrency.BRL, PaymentRail.PIX)),
         )))
 
         assertTrue(result.isFailure)
-        assertIs<PostTransactionError.InvariantViolation>(result.exceptionOrNull())
+        assertIs<InvariantViolation>(result.exceptionOrNull())
         verify(transactionRepository, never()).save(any())
     }
 
@@ -279,7 +282,7 @@ class PostTransactionServiceTest {
         val result = service.execute(command(lines = listOf(brlLine(debitAccountId, EntryType.DEBIT))))
 
         assertTrue(result.isFailure)
-        val error = assertIs<PostTransactionError.InvariantViolation>(result.exceptionOrNull())
+        val error = assertIs<InvariantViolation>(result.exceptionOrNull())
         assertNotNull(error.message)
     }
 
@@ -309,7 +312,7 @@ class PostTransactionServiceTest {
 
         val result = service.execute(command(lines = listOf(brlLine(debitAccountId, EntryType.DEBIT))))
 
-        val error = assertIs<PostTransactionError.InvariantViolation>(result.exceptionOrNull())
+        val error = assertIs<InvariantViolation>(result.exceptionOrNull())
         assertNotNull(error.detail)
         assertEquals(error.detail, error.message)
     }

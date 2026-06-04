@@ -3,7 +3,10 @@ package finance.idem.infrastructure.service
 import finance.idem.application.audit.AuditEntry
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionCommand
+import finance.idem.application.ledger.IdempotencyConflict
+import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.PostTransactionError
+import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AuditRepository
@@ -37,19 +40,19 @@ class PostTransactionService(
 
         if (!idempotencyStore.tryRecord(cmd.idempotencyKey, cmd.tenantId, txId)) {
             val existingId = idempotencyStore.find(cmd.idempotencyKey, cmd.tenantId)
-                ?: return Result.failure(PostTransactionError.IdempotencyConflict(cmd.idempotencyKey))
+                ?: return Result.failure(IdempotencyConflict(cmd.idempotencyKey))
             val existing = transactionRepository.findById(existingId, cmd.tenantId)
             when (existing?.status) {
                 TransactionStatus.COMMITTED ->
                     return Result.success(existingId)
                 TransactionStatus.PENDING ->
-                    return Result.failure(PostTransactionError.IdempotencyConflict(cmd.idempotencyKey))
+                    return Result.failure(IdempotencyConflict(cmd.idempotencyKey))
                 TransactionStatus.ROLLED_BACK -> {
                     idempotencyStore.release(cmd.idempotencyKey, cmd.tenantId)
                     idempotencyStore.tryRecord(cmd.idempotencyKey, cmd.tenantId, txId)
                 }
                 null ->
-                    return Result.failure(PostTransactionError.IdempotencyConflict(cmd.idempotencyKey))
+                    return Result.failure(IdempotencyConflict(cmd.idempotencyKey))
             }
         }
 
@@ -57,7 +60,7 @@ class PostTransactionService(
         val existingIds = accountRepository.findExistingIds(requestedIds, cmd.tenantId)
         val missingId = requestedIds.firstOrNull { it !in existingIds }
         if (missingId != null) {
-            return Result.failure(PostTransactionError.AccountNotFound(missingId))
+            return Result.failure(TransactionAccountNotFound(missingId))
         }
 
         val lines = cmd.lines.map { req: JournalLineRequest ->
@@ -87,7 +90,7 @@ class PostTransactionService(
                 metadata = cmd.metadata,
             )
         } catch (e: LedgerInvariantViolation) {
-            return Result.failure(PostTransactionError.InvariantViolation(e.message ?: "Ledger invariant violated"))
+            return Result.failure(InvariantViolation(e.message ?: "Ledger invariant violated"))
         }
 
         transactionRepository.save(transaction)

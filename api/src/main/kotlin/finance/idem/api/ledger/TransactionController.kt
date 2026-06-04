@@ -1,6 +1,9 @@
 package finance.idem.api.ledger
 
+import finance.idem.application.ledger.IdempotencyConflict
+import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.PostTransactionError
+import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TenantId
@@ -69,13 +72,13 @@ class TransactionController(
             },
             onFailure = { error ->
                 when (error) {
-                    is PostTransactionError.IdempotencyConflict ->
+                    is IdempotencyConflict ->
                         ResponseEntity.status(HttpStatus.CONFLICT)
                             .body(ErrorResponse("IDEMPOTENCY_CONFLICT", error.message ?: ""))
-                    is PostTransactionError.AccountNotFound ->
+                    is TransactionAccountNotFound ->
                         ResponseEntity.unprocessableEntity()
                             .body(ErrorResponse("ACCOUNT_NOT_FOUND", error.message ?: ""))
-                    is PostTransactionError.InvariantViolation ->
+                    is InvariantViolation ->
                         ResponseEntity.unprocessableEntity()
                             .body(ErrorResponse("INVARIANT_VIOLATION", error.message ?: ""))
                     else ->

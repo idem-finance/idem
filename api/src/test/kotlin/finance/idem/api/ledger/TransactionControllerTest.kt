@@ -1,7 +1,10 @@
 package finance.idem.api.ledger
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import finance.idem.application.ledger.IdempotencyConflict
+import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.PostTransactionError
+import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.TransactionId
 import org.junit.jupiter.api.Test
@@ -160,7 +163,7 @@ class TransactionControllerTest {
     @Test
     fun `invariant violation returns 422`() {
         whenever(postTransactionUseCase.execute(any()))
-            .thenReturn(Result.failure(PostTransactionError.InvariantViolation("Debits != credits")))
+            .thenReturn(Result.failure(InvariantViolation("Debits != credits")))
 
         mockMvc.post("/api/v1/transactions") {
             header("X-Tenant-Id", tenantId)
@@ -176,7 +179,7 @@ class TransactionControllerTest {
     @Test
     fun `idempotency conflict returns 409`() {
         whenever(postTransactionUseCase.execute(any()))
-            .thenReturn(Result.failure(PostTransactionError.IdempotencyConflict(idempotencyKey)))
+            .thenReturn(Result.failure(IdempotencyConflict(idempotencyKey)))
 
         mockMvc.post("/api/v1/transactions") {
             header("X-Tenant-Id", tenantId)
@@ -244,7 +247,7 @@ class TransactionControllerTest {
     fun `account not found returns 422`() {
         val accountId = finance.idem.core.AccountId(UUID.randomUUID())
         whenever(postTransactionUseCase.execute(any()))
-            .thenReturn(Result.failure(PostTransactionError.AccountNotFound(accountId)))
+            .thenReturn(Result.failure(TransactionAccountNotFound(accountId)))
 
         mockMvc.post("/api/v1/transactions") {
             header("X-Tenant-Id", tenantId)

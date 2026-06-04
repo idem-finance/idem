@@ -6,7 +6,8 @@ import finance.idem.core.FiatCurrency
 import finance.idem.core.PaymentRail
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
-import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.FiatEntry
+import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.util.UUID
@@ -17,13 +18,13 @@ class TransactionRequestTest {
 
     @Test
     fun `FiatEntryDto toDomain produces correct FiatEntry`() {
-        val dto = MonetaryEntryRequestDto.FiatEntryDto(
+        val dto = FiatEntryDto(
             amount = BigDecimal("100.00"),
             currency = FiatCurrency.BRL,
             rail = PaymentRail.PIX,
             bankReference = "ref-001",
         )
-        val entry = assertIs<MonetaryEntry.FiatEntry>(dto.toDomain())
+        val entry = assertIs<FiatEntry>(dto.toDomain())
         assertEquals(FiatCurrency.BRL, entry.currency)
         assertEquals(PaymentRail.PIX, entry.rail)
         assertEquals("ref-001", entry.bankReference)
@@ -31,7 +32,7 @@ class TransactionRequestTest {
 
     @Test
     fun `OnChainEntryDto toDomain produces correct OnChainEntry`() {
-        val dto = MonetaryEntryRequestDto.OnChainEntryDto(
+        val dto = OnChainEntryDto(
             amount = BigDecimal("180.00"),
             token = StablecoinToken.USDC,
             chainId = ChainId.EVM,
@@ -40,7 +41,7 @@ class TransactionRequestTest {
             walletAddress = "0xWallet",
             tokenContract = "0xContract",
         )
-        val entry = assertIs<MonetaryEntry.OnChainEntry>(dto.toDomain())
+        val entry = assertIs<OnChainEntry>(dto.toDomain())
         assertEquals(StablecoinToken.USDC, entry.token)
         assertEquals(ChainId.EVM, entry.chainId)
         assertEquals("0xabc", entry.txHash)
@@ -73,7 +74,7 @@ class TransactionRequestTest {
                 JournalLineRequestDto(
                     accountId = accountId,
                     entryType = EntryType.DEBIT,
-                    monetaryEntry = MonetaryEntryRequestDto.FiatEntryDto(
+                    monetaryEntry = FiatEntryDto(
                         BigDecimal("50"), FiatCurrency.USD, PaymentRail.ACH,
                     ),
                 ),
