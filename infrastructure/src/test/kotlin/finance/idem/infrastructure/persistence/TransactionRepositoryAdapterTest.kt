@@ -14,7 +14,8 @@ import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionStatus
-import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.FiatEntry
+import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -80,7 +81,7 @@ class TransactionRepositoryAdapterTest {
             accountId = accountId,
             tenantId = tenantA,
             entryType = entryType,
-            monetaryEntry = MonetaryEntry.FiatEntry(MonetaryAmount.of(amount), FiatCurrency.BRL, PaymentRail.PIX),
+            monetaryEntry = FiatEntry(MonetaryAmount.of(amount), FiatCurrency.BRL, PaymentRail.PIX),
             createdAt = now,
             createdBy = "test",
         )
@@ -122,7 +123,7 @@ class TransactionRepositoryAdapterTest {
 
         val found = adapter.findById(tx.id, tenantA)!!
         val entry = found.lines.first { it.entryType == EntryType.DEBIT }.monetaryEntry
-                as MonetaryEntry.FiatEntry
+                as FiatEntry
 
         assertEquals(MonetaryAmount.of("1000"), entry.amount)
         assertEquals(FiatCurrency.BRL, entry.currency)
@@ -132,7 +133,7 @@ class TransactionRepositoryAdapterTest {
     @Test
     fun `OnChainEntry round-trip preserves all fields`() {
         val txId = TransactionId.generate()
-        val onChainEntry = MonetaryEntry.OnChainEntry(
+        val onChainEntry = OnChainEntry(
             amount = MonetaryAmount.of("180.00"), token = StablecoinToken.USDC,
             chainId = ChainId.EVM, txHash = "0xabc123", blockNumber = 19_000_000L,
             walletAddress = "0xWallet", tokenContract = "0xContract",
@@ -142,7 +143,7 @@ class TransactionRepositoryAdapterTest {
             lines = listOf(
                 JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantA, EntryType.DEBIT, onChainEntry, null, now, "test"),
                 JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantA, EntryType.CREDIT,
-                    MonetaryEntry.OnChainEntry(MonetaryAmount.of("180.00"), StablecoinToken.USDC, ChainId.EVM, "0xabc123", 19_000_000L, "0xWallet2", "0xContract"),
+                    OnChainEntry(MonetaryAmount.of("180.00"), StablecoinToken.USDC, ChainId.EVM, "0xabc123", 19_000_000L, "0xWallet2", "0xContract"),
                     null, now, "test"),
             ),
             occurredAt = now, createdAt = now, createdBy = "test",
@@ -151,7 +152,7 @@ class TransactionRepositoryAdapterTest {
 
         val found = adapter.findById(tx.id, tenantA)!!
         val entry = found.lines.first { it.entryType == EntryType.DEBIT }.monetaryEntry
-                as MonetaryEntry.OnChainEntry
+                as OnChainEntry
 
         assertEquals(StablecoinToken.USDC, entry.token)
         assertEquals(ChainId.EVM, entry.chainId)

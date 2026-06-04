@@ -7,7 +7,7 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
-import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.UUID
@@ -19,7 +19,7 @@ class JournalLineTest {
 
     private val now = Instant.now()
     private val tenantId = TenantId.generate()
-    private val fiatEntry = MonetaryEntry.FiatEntry(
+    private val fiatEntry = FiatEntry(
         amount = MonetaryAmount.of("1000.00"),
         currency = FiatCurrency.BRL,
         rail = PaymentRail.PIX,

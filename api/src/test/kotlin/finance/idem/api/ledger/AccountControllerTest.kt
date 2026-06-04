@@ -1,6 +1,7 @@
 package finance.idem.api.ledger
 
 import finance.idem.application.ledger.Balance
+import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.QueryBalanceError
 import finance.idem.application.ledger.QueryBalanceUseCase
 import finance.idem.core.AccountId
@@ -72,7 +73,7 @@ class AccountControllerTest {
     @Test
     fun `account not found returns 404`() {
         whenever(queryBalancePort.execute(any()))
-            .thenReturn(Result.failure(QueryBalanceError.AccountNotFound(AccountId(accountId))))
+            .thenReturn(Result.failure(BalanceAccountNotFound(AccountId(accountId))))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance") {
             header("X-Tenant-Id", tenantId)

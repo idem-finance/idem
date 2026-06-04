@@ -17,7 +17,7 @@ class MonetaryEntryTest {
 
     @Test
     fun `FiatEntry valid with all fields`() {
-        val entry = MonetaryEntry.FiatEntry(
+        val entry = FiatEntry(
             amount = MonetaryAmount.of("1000.00"),
             currency = FiatCurrency.BRL,
             rail = PaymentRail.PIX,
@@ -31,7 +31,7 @@ class MonetaryEntryTest {
 
     @Test
     fun `FiatEntry valid without optional bankReference`() {
-        val entry = MonetaryEntry.FiatEntry(
+        val entry = FiatEntry(
             amount = MonetaryAmount.of("500"),
             currency = FiatCurrency.USD,
             rail = PaymentRail.WIRE,
@@ -42,7 +42,7 @@ class MonetaryEntryTest {
     @Test
     fun `FiatEntry rejects zero amount`() {
         assertThrows<LedgerInvariantViolation> {
-            MonetaryEntry.FiatEntry(
+            FiatEntry(
                 amount = MonetaryAmount.ZERO,
                 currency = FiatCurrency.BRL,
                 rail = PaymentRail.PIX,
@@ -53,7 +53,7 @@ class MonetaryEntryTest {
     @Test
     fun `FiatEntry rejects negative amount`() {
         assertThrows<LedgerInvariantViolation> {
-            MonetaryEntry.FiatEntry(
+            FiatEntry(
                 amount = MonetaryAmount.of("-1.00"),
                 currency = FiatCurrency.USD,
                 rail = PaymentRail.ACH,
@@ -114,7 +114,7 @@ class MonetaryEntryTest {
 
     @Test
     fun `when expression on MonetaryEntry is exhaustive without else`() {
-        val fiat: MonetaryEntry = MonetaryEntry.FiatEntry(
+        val fiat: MonetaryEntry = FiatEntry(
             amount = MonetaryAmount.of("100"),
             currency = FiatCurrency.BRL,
             rail = PaymentRail.PIX,
@@ -124,8 +124,8 @@ class MonetaryEntryTest {
         // If a new subtype were added and this when had no else, it would fail to compile.
         // This test documents and exercises both branches.
         fun label(entry: MonetaryEntry): String = when (entry) {
-            is MonetaryEntry.FiatEntry -> "fiat"
-            is MonetaryEntry.OnChainEntry -> "on-chain"
+            is FiatEntry -> "fiat"
+            is OnChainEntry -> "on-chain"
         }
 
         assertEquals("fiat", label(fiat))
@@ -139,7 +139,7 @@ class MonetaryEntryTest {
         txHash: String = "0xabc123",
         walletAddress: String = "0xWallet",
         tokenContract: String = "0xContract",
-    ) = MonetaryEntry.OnChainEntry(
+    ) = OnChainEntry(
         amount = amount,
         token = StablecoinToken.USDC,
         chainId = ChainId.EVM,

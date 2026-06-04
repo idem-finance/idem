@@ -6,7 +6,9 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.OnChainEntry
 import java.time.Instant
 
 data class Transaction internal constructor(
@@ -96,8 +98,8 @@ data class Transaction internal constructor(
 }
 
 private fun MonetaryEntry.currencyKey(): String = when (this) {
-    is MonetaryEntry.FiatEntry -> "FIAT:${currency.name}"
-    is MonetaryEntry.OnChainEntry -> "ONCHAIN:${chainId.name}:${token.name}"
+    is FiatEntry -> "FIAT:${currency.name}"
+    is OnChainEntry -> "ONCHAIN:${chainId.name}:${token.name}"
 }
 
 private fun List<JournalLine>.sumAmounts(type: EntryType): MonetaryAmount =

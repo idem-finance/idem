@@ -1,5 +1,6 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.QueryBalanceError
 import finance.idem.application.ledger.QueryBalanceQuery
 import finance.idem.core.AccountId
@@ -15,7 +16,8 @@ import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
-import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.FiatEntry
+import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -60,7 +62,7 @@ class QueryBalanceServiceTest {
         createdAt = now, createdBy = "system",
     )
 
-    private fun brlFiat(amount: String) = MonetaryEntry.FiatEntry(
+    private fun brlFiat(amount: String) = FiatEntry(
         amount = MonetaryAmount.of(amount), currency = FiatCurrency.BRL, rail = PaymentRail.PIX,
     )
 
@@ -82,7 +84,7 @@ class QueryBalanceServiceTest {
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(null)
         val result = service.execute(QueryBalanceQuery(accountId, tenantId))
         assertTrue(result.isFailure)
-        assertIs<QueryBalanceError.AccountNotFound>(result.exceptionOrNull())
+        assertIs<BalanceAccountNotFound>(result.exceptionOrNull())
     }
 
     @Test
@@ -162,7 +164,7 @@ class QueryBalanceServiceTest {
     @Test
     fun `on-chain entries are excluded from fiat balance`() {
         val other = otherAccountId()
-        val onChainEntry = MonetaryEntry.OnChainEntry(
+        val onChainEntry = OnChainEntry(
             amount = MonetaryAmount.of("180.00"), token = finance.idem.core.StablecoinToken.USDC,
             chainId = finance.idem.core.ChainId.EVM, txHash = "0xabc", blockNumber = 19_000_000L,
             walletAddress = "0xWallet", tokenContract = "0xContract",

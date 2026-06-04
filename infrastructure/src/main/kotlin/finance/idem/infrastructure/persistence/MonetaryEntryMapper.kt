@@ -7,7 +7,9 @@ import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
 import finance.idem.core.StablecoinToken
+import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.OnChainEntry
 import java.math.BigDecimal
 
 private const val TYPE_FIAT    = "FIAT"
@@ -21,7 +23,7 @@ data class MonetaryEntryColumns(
 )
 
 fun MonetaryEntry.toColumns(mapper: ObjectMapper): MonetaryEntryColumns = when (this) {
-    is MonetaryEntry.FiatEntry -> MonetaryEntryColumns(
+    is FiatEntry -> MonetaryEntryColumns(
         amount = amount.value,
         currency = currency.name,
         monetaryEntryType = TYPE_FIAT,
@@ -30,7 +32,7 @@ fun MonetaryEntry.toColumns(mapper: ObjectMapper): MonetaryEntryColumns = when (
             "bankReference" to bankReference,
         )),
     )
-    is MonetaryEntry.OnChainEntry -> MonetaryEntryColumns(
+    is OnChainEntry -> MonetaryEntryColumns(
         amount = amount.value,
         currency = token.name,
         monetaryEntryType = TYPE_ONCHAIN,
@@ -49,7 +51,7 @@ fun MonetaryEntryColumns.toDomain(mapper: ObjectMapper): MonetaryEntry {
     return when (monetaryEntryType) {
         TYPE_FIAT -> {
             val data: Map<String, String?> = mapper.readValue(monetaryEntryData)
-            MonetaryEntry.FiatEntry(
+            FiatEntry(
                 amount = monetaryAmount,
                 currency = FiatCurrency.valueOf(currency),
                 rail = PaymentRail.valueOf(data["rail"]!!),
@@ -58,7 +60,7 @@ fun MonetaryEntryColumns.toDomain(mapper: ObjectMapper): MonetaryEntry {
         }
         TYPE_ONCHAIN -> {
             val data: Map<String, Any?> = mapper.readValue(monetaryEntryData)
-            MonetaryEntry.OnChainEntry(
+            OnChainEntry(
                 amount = monetaryAmount,
                 token = StablecoinToken.valueOf(currency),
                 chainId = ChainId.valueOf(data["chainId"] as String),

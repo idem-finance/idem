@@ -11,7 +11,7 @@ import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
-import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.UUID
@@ -30,7 +30,7 @@ class PostTransactionModelsTest {
         val txId = TransactionId.generate()
         val line = { id: AccountId, type: EntryType ->
             JournalLine(UUID.randomUUID(), txId, id, tenantId, type,
-                MonetaryEntry.FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
+                FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
                 null, now, "system")
         }
         return Transaction.create(
@@ -73,21 +73,21 @@ class PostTransactionModelsTest {
     @Test
     fun `AccountNotFound carries accountId and message`() {
         val id = AccountId.generate()
-        val error = PostTransactionError.AccountNotFound(id)
+        val error = TransactionAccountNotFound(id)
         assertEquals(id, error.accountId)
         assertIs<PostTransactionError>(error)
     }
 
     @Test
     fun `IdempotencyConflict carries key and message`() {
-        val error = PostTransactionError.IdempotencyConflict("key-xyz")
+        val error = IdempotencyConflict("key-xyz")
         assertEquals("key-xyz", error.key)
         assertIs<PostTransactionError>(error)
     }
 
     @Test
     fun `InvariantViolation detail equals message`() {
-        val error = PostTransactionError.InvariantViolation("debits != credits")
+        val error = InvariantViolation("debits != credits")
         assertEquals("debits != credits", error.detail)
         assertEquals(error.detail, error.message)
     }
@@ -96,7 +96,7 @@ class PostTransactionModelsTest {
 
     @Test
     fun `PostTransactionCommand holds all fields`() {
-        val entry = MonetaryEntry.FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX)
+        val entry = FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX)
         val line = JournalLineRequest(debitId, EntryType.DEBIT, entry, "desc")
         val cmd = PostTransactionCommand(
             tenantId = tenantId,
@@ -115,7 +115,7 @@ class PostTransactionModelsTest {
 
     @Test
     fun `JournalLineRequest holds all fields`() {
-        val entry = MonetaryEntry.FiatEntry(MonetaryAmount.of("50"), FiatCurrency.BRL, PaymentRail.PIX)
+        val entry = FiatEntry(MonetaryAmount.of("50"), FiatCurrency.BRL, PaymentRail.PIX)
         val req = JournalLineRequest(creditId, EntryType.CREDIT, entry, "note")
 
         assertEquals(creditId, req.accountId)
@@ -126,7 +126,7 @@ class PostTransactionModelsTest {
 
     @Test
     fun `JournalLineRequest equality and copy`() {
-        val entry = MonetaryEntry.FiatEntry(MonetaryAmount.of("50"), FiatCurrency.BRL, PaymentRail.PIX)
+        val entry = FiatEntry(MonetaryAmount.of("50"), FiatCurrency.BRL, PaymentRail.PIX)
         val req = JournalLineRequest(creditId, EntryType.CREDIT, entry)
         val copy = req.copy(entryType = EntryType.DEBIT)
 
