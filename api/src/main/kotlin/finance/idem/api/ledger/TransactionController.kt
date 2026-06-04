@@ -14,12 +14,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import java.util.UUID
 
 @RestController
 @RequestMapping("/api/v1/transactions")
@@ -32,13 +32,12 @@ class TransactionController(
     @Operation(summary = "Post a balanced transaction")
     @ApiResponses(
         ApiResponse(responseCode = "201", description = "Transaction committed"),
-        ApiResponse(responseCode = "400", description = "Missing or invalid headers / malformed body"),
+        ApiResponse(responseCode = "400", description = "Missing or invalid Idempotency-Key or malformed body"),
+        ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "409", description = "Duplicate idempotency key for an in-progress transaction"),
         ApiResponse(responseCode = "422", description = "Account not found or double-entry invariant violated"),
     )
     fun postTransaction(
-        @Parameter(description = "Tenant UUID", required = true)
-        @RequestHeader("X-Tenant-Id") tenantIdStr: String,
         @Parameter(description = "Client-generated idempotency key, max 255 chars", required = true)
         @RequestHeader("Idempotency-Key") idempotencyKey: String,
         @RequestBody request: PostTransactionRequest,
@@ -48,12 +47,7 @@ class TransactionController(
                 .body(ErrorResponse("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be non-blank and at most 255 characters"))
         }
 
-        val tenantId = try {
-            TenantId(UUID.fromString(tenantIdStr))
-        } catch (_: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_TENANT_ID", "X-Tenant-Id must be a valid UUID"))
-        }
+        val tenantId = SecurityContextHolder.getContext().authentication.principal as TenantId
 
         val cmd = try {
             request.toCommand(tenantId, idempotencyKey)

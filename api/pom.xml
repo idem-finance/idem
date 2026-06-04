@@ -34,6 +34,11 @@
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
+        <!-- Spring Security — SecurityContextHolder access + @PreAuthorize support -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
 
         <!-- Test -->
         <dependency>
@@ -47,6 +52,11 @@
             <version>5.4.0</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -55,10 +65,11 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <configuration>
-                    <!-- Kotlin sealed/data class inner DTOs — generated copy$default synthetic
+                    <!-- Kotlin sealed/data class DTOs — generated copy$default synthetic
                          methods produce unexercisable bytecode branches; excluded from coverage -->
                     <excludes>
                         <exclude>finance/idem/api/ledger/MonetaryEntryRequestDto$*</exclude>
+                        <exclude>finance/idem/api/ledger/JournalLineRequestDto*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
