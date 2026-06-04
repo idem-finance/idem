@@ -157,6 +157,14 @@
                                           Pattern matches e.g. TransactionRepositoryAdapterKt$..inlined..1
                                         -->
                                         <exclude>*..inlined..*</exclude>
+                                        <!--
+                                          Kotlin data class DTOs — generated copy$default synthetic
+                                          methods contain unexercisable bytecode branches.
+                                          Previously inner classes excluded via MonetaryEntryRequestDto$*
+                                          in api/pom.xml; now top-level classes, listed here.
+                                        -->
+                                        <exclude>finance.idem.api.ledger.FiatEntryDto</exclude>
+                                        <exclude>finance.idem.api.ledger.OnChainEntryDto</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>
