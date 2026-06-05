@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.context.SecurityContextHolder
@@ -44,7 +45,8 @@ class AccountController(
         @Parameter(description = "Return balance as of this ISO-8601 instant (omit for current balance)")
         @RequestParam(required = false) asOf: Instant?,
     ): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication.principal as TenantId
+        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         val query = QueryBalanceQuery(
             accountId = AccountId(accountId),

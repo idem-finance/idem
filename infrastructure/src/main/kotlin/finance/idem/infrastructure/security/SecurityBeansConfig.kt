@@ -39,7 +39,7 @@ class SecurityBeansConfig {
                 ex.authenticationEntryPoint { _, response, _ ->
                     response.contentType = MediaType.APPLICATION_JSON_VALUE
                     response.status = HttpServletResponse.SC_UNAUTHORIZED
-                    response.writer.write("""{"error":"unauthorized"}""")
+                    response.writer.write("""{"code":"unauthorized","message":"Missing or invalid API key"}""")
                 }
             }
         return http.build()

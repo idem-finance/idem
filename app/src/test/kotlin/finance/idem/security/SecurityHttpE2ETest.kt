@@ -82,8 +82,7 @@ class SecurityHttpE2ETest {
         val (rawKey, _) = apiKeyService.generate(tenantA, setOf(ApiScope.ACCOUNTS_READ))
         val response = apiGet("/api/v1/accounts/$accountId/balance", rawKey)
 
-        // 200 if balance is computable — or any non-404/non-401/non-403 response
-        // The account exists but may have no journal lines yet; implementation determines exact status
+        // QueryBalanceService returns zero balance (not failure) when no journal lines exist, so 200 is expected.
         assertEquals(HttpStatus.OK, response.statusCode)
     }
 

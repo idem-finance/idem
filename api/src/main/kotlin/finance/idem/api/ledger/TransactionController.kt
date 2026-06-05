@@ -50,7 +50,8 @@ class TransactionController(
                 .body(ErrorResponse("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be non-blank and at most 255 characters"))
         }
 
-        val tenantId = SecurityContextHolder.getContext().authentication.principal as TenantId
+        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         val cmd = try {
             request.toCommand(tenantId, idempotencyKey)
