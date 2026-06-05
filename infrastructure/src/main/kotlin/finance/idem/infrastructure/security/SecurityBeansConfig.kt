@@ -31,7 +31,7 @@ class SecurityBeansConfig {
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers("/actuator/**").permitAll()
+                    .requestMatchers("/actuator/**", "/error").permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
