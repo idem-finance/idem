@@ -6,19 +6,26 @@ import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.PostTransactionError
 import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import finance.idem.api.security.TestSecurityConfig
+import org.springframework.security.authentication.TestingAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import java.util.UUID
 
 @WebMvcTest(TransactionController::class)
+@Import(TestSecurityConfig::class)
 class TransactionControllerTest {
 
     @Autowired
@@ -30,8 +37,14 @@ class TransactionControllerTest {
     @MockitoBean
     lateinit var postTransactionUseCase: PostTransactionUseCase
 
-    private val tenantId = UUID.randomUUID().toString()
+    private val tenantId = TenantId(UUID.randomUUID())
     private val idempotencyKey = "test-key-001"
+
+    private fun mockAuth(vararg scopes: String) = TestingAuthenticationToken(
+        tenantId,
+        null,
+        scopes.map { SimpleGrantedAuthority(it) },
+    ).apply { isAuthenticated = true }
 
     private val validBody = """
         {
@@ -57,7 +70,7 @@ class TransactionControllerTest {
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(txId))
 
         mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
             content = validBody
@@ -68,44 +81,31 @@ class TransactionControllerTest {
     }
 
     @Test
-    fun `missing X-Tenant-Id returns 400`() {
+    fun `no authentication returns 401`() {
         mockMvc.post("/api/v1/transactions") {
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
             content = validBody
         }.andExpect {
-            status { isBadRequest() }
+            status { isUnauthorized() }
         }
     }
 
     @Test
     fun `missing Idempotency-Key returns 400`() {
         mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
             contentType = MediaType.APPLICATION_JSON
             content = validBody
         }.andExpect {
             status { isBadRequest() }
-        }
-    }
-
-    @Test
-    fun `invalid UUID in X-Tenant-Id returns 400`() {
-        mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", "not-a-uuid")
-            header("Idempotency-Key", idempotencyKey)
-            contentType = MediaType.APPLICATION_JSON
-            content = validBody
-        }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("INVALID_TENANT_ID") }
         }
     }
 
     @Test
     fun `blank idempotency key returns 400`() {
         mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
             header("Idempotency-Key", "   ")
             contentType = MediaType.APPLICATION_JSON
             content = validBody
@@ -120,7 +120,7 @@ class TransactionControllerTest {
         val longKey = "k".repeat(256)
 
         mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
             header("Idempotency-Key", longKey)
             contentType = MediaType.APPLICATION_JSON
             content = validBody
@@ -150,7 +150,7 @@ class TransactionControllerTest {
         """.trimIndent()
 
         mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
             content = bodyWithNegativeAmount
@@ -166,7 +166,7 @@ class TransactionControllerTest {
             .thenReturn(Result.failure(InvariantViolation("Debits != credits")))
 
         mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
             content = validBody
@@ -182,7 +182,7 @@ class TransactionControllerTest {
             .thenReturn(Result.failure(IdempotencyConflict(idempotencyKey)))
 
         mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
             content = validBody
@@ -233,7 +233,7 @@ class TransactionControllerTest {
         """.trimIndent()
 
         mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
             content = onchainBody
@@ -250,13 +250,29 @@ class TransactionControllerTest {
             .thenReturn(Result.failure(TransactionAccountNotFound(accountId)))
 
         mockMvc.post("/api/v1/transactions") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
             content = validBody
         }.andExpect {
             status { isUnprocessableEntity() }
             jsonPath("$.code") { value("ACCOUNT_NOT_FOUND") }
+        }
+    }
+
+    @Test
+    fun `unexpected use case error returns 500`() {
+        whenever(postTransactionUseCase.execute(any()))
+            .thenReturn(Result.failure(RuntimeException("unexpected")))
+
+        mockMvc.post("/api/v1/transactions") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
+            header("Idempotency-Key", idempotencyKey)
+            contentType = MediaType.APPLICATION_JSON
+            content = validBody
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_ERROR") }
         }
     }
 }

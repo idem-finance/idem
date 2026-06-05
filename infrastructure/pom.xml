@@ -24,11 +24,16 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
-        <!-- BCrypt password hashing — lighter than spring-boot-starter-security;
-             web security autoconfiguration stays out until #43 -->
+        <!-- Full Spring Security stack — filter chain, method security, BCrypt -->
         <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-crypto</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <!-- Servlet API — provided at runtime by spring-boot-starter-web (via app/api modules) -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
         </dependency>
 
         <!-- Redis — API key cache (5-min TTL, prefix lookup) -->
@@ -93,9 +98,12 @@
                 <configuration>
                     <!-- JPA @Entity data model classes — Kotlin-generated copy/equals/hashCode
                          synthetic bytecode produces unexercisable branches -->
+                    <!-- SecurityBeansConfig — SecurityFilterChain DSL requires web context -->
                     <excludes>
                         <exclude>finance/idem/infrastructure/persistence/audit/AuditLogDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/outbox/WebhookOutboxDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/persistence/idempotency/IdempotencyKeyDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/security/SecurityBeansConfig*</exclude>
                     </excludes>
                 </configuration>
             </plugin>

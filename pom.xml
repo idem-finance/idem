@@ -45,7 +45,7 @@
         <kotlin.version>1.9.25</kotlin.version>
         <spring-modulith.version>1.4.11</spring-modulith.version>
         <springdoc.version>2.8.9</springdoc.version>
-        <jacoco.version>0.8.12</jacoco.version>
+        <jacoco.version>0.8.14</jacoco.version>
         <jacoco.minimum.coverage>0.80</jacoco.minimum.coverage>
     </properties>
 
@@ -169,6 +169,13 @@
                                         <!-- Kotlin data class — generated copy$default synthetic
                                              methods contain unexercisable bytecode branches. -->
                                         <exclude>finance.idem.core.security.ValidatedApiKey</exclude>
+                                        <!--
+                                          SecurityBeansConfig contains Spring Security wiring
+                                          (SecurityFilterChain DSL lambdas) that requires a full
+                                          servlet web context to exercise — covered by app-level
+                                          integration tests, not unit tests.
+                                        -->
+                                        <exclude>finance.idem.infrastructure.security.SecurityBeansConfig</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>

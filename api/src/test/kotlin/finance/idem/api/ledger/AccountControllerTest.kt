@@ -8,11 +8,17 @@ import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
+import finance.idem.core.TenantId
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
+import org.springframework.context.annotation.Import
+import finance.idem.api.security.TestSecurityConfig
+import org.springframework.security.authentication.TestingAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
@@ -20,6 +26,7 @@ import java.time.Instant
 import java.util.UUID
 
 @WebMvcTest(AccountController::class)
+@Import(TestSecurityConfig::class)
 class AccountControllerTest {
 
     @Autowired
@@ -28,8 +35,14 @@ class AccountControllerTest {
     @MockitoBean
     lateinit var queryBalancePort: QueryBalanceUseCase
 
-    private val tenantId = UUID.randomUUID().toString()
+    private val tenantId = TenantId(UUID.randomUUID())
     private val accountId = UUID.randomUUID()
+
+    private fun mockAuth(vararg scopes: String) = TestingAuthenticationToken(
+        tenantId,
+        null,
+        scopes.map { SimpleGrantedAuthority(it) },
+    ).apply { isAuthenticated = true }
 
     private fun balanceFor(accountId: UUID) = Balance(
         accountId = AccountId(accountId),
@@ -44,7 +57,7 @@ class AccountControllerTest {
         whenever(queryBalancePort.execute(any())).thenReturn(Result.success(balanceFor(accountId)))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isOk() }
             jsonPath("$.accountId") { value(accountId.toString()) }
@@ -55,19 +68,9 @@ class AccountControllerTest {
     }
 
     @Test
-    fun `missing X-Tenant-Id returns 400`() {
+    fun `no authentication returns 401`() {
         mockMvc.get("/api/v1/accounts/$accountId/balance")
-            .andExpect { status { isBadRequest() } }
-    }
-
-    @Test
-    fun `invalid UUID in X-Tenant-Id returns 400`() {
-        mockMvc.get("/api/v1/accounts/$accountId/balance") {
-            header("X-Tenant-Id", "not-a-uuid")
-        }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("INVALID_TENANT_ID") }
-        }
+            .andExpect { status { isUnauthorized() } }
     }
 
     @Test
@@ -76,7 +79,7 @@ class AccountControllerTest {
             .thenReturn(Result.failure(BalanceAccountNotFound(AccountId(accountId))))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isNotFound() }
         }
@@ -88,7 +91,7 @@ class AccountControllerTest {
         whenever(queryBalancePort.execute(any())).thenReturn(Result.success(balanceFor(accountId)))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance?asOf=$asOf") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isOk() }
         }
