@@ -6,3 +6,7 @@ spring:
     hibernate:
       ddl-auto: none
     open-in-view: false
+
+idem:
+  audit:
+    hmac-secret: test-only-insecure-hmac-secret

@@ -166,6 +166,9 @@
                                         -->
                                         <exclude>finance.idem.api.ledger.FiatEntryDto</exclude>
                                         <exclude>finance.idem.api.ledger.OnChainEntryDto</exclude>
+                                        <!-- Kotlin data class — generated copy$default synthetic
+                                             methods contain unexercisable bytecode branches. -->
+                                        <exclude>finance.idem.core.security.ValidatedApiKey</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>
