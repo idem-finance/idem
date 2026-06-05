@@ -96,6 +96,19 @@ class AccountControllerTest {
     }
 
     @Test
+    fun `unexpected use case error returns 500`() {
+        whenever(queryBalancePort.execute(any()))
+            .thenReturn(Result.failure(RuntimeException("unexpected")))
+
+        mockMvc.get("/api/v1/accounts/$accountId/balance") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_ERROR") }
+        }
+    }
+
+    @Test
     fun `asOf parameter is forwarded to query`() {
         val asOf = "2026-05-01T00:00:00Z"
         whenever(queryBalancePort.execute(any())).thenReturn(Result.success(balanceFor(accountId)))

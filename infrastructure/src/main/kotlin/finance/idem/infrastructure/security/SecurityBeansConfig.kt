@@ -31,7 +31,7 @@ class SecurityBeansConfig {
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers("/actuator/**").permitAll()
+                    .requestMatchers("/actuator/**", "/error").permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
@@ -39,7 +39,7 @@ class SecurityBeansConfig {
                 ex.authenticationEntryPoint { _, response, _ ->
                     response.contentType = MediaType.APPLICATION_JSON_VALUE
                     response.status = HttpServletResponse.SC_UNAUTHORIZED
-                    response.writer.write("""{"error":"unauthorized"}""")
+                    response.writer.write("""{"code":"unauthorized","message":"Missing or invalid API key"}""")
                 }
             }
         return http.build()
