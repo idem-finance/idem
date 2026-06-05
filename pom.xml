@@ -151,6 +151,7 @@
                                         <exclude>finance.idem.core.TransactionId</exclude>
                                         <exclude>finance.idem.core.TenantId</exclude>
                                         <exclude>finance.idem.core.WorkflowPlanId</exclude>
+                                        <exclude>finance.idem.core.security.ApiKeyId</exclude>
                                         <!--
                                           Kotlin inline extension functions (e.g. ObjectMapper.readValue<T>)
                                           generate synthetic anonymous classes that JaCoCo cannot instrument.
