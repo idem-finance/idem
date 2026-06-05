@@ -92,6 +92,19 @@ class TransactionControllerTest {
     }
 
     @Test
+    fun `wrong scope returns 403`() {
+        mockMvc.post("/api/v1/transactions") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
+            header("Idempotency-Key", idempotencyKey)
+            contentType = MediaType.APPLICATION_JSON
+            content = validBody
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("insufficient_scope") }
+        }
+    }
+
+    @Test
     fun `missing Idempotency-Key returns 400`() {
         mockMvc.post("/api/v1/transactions") {
             with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))

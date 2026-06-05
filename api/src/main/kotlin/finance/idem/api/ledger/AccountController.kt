@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -29,10 +30,12 @@ class AccountController(
 ) {
 
     @GetMapping("/{accountId}/balance")
+    @PreAuthorize("hasAuthority('ACCOUNTS_READ')")
     @Operation(summary = "Get account balance, optionally as of a past point in time")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Balance computed successfully"),
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
+        ApiResponse(responseCode = "403", description = "API key lacks ACCOUNTS_READ scope"),
         ApiResponse(responseCode = "404", description = "Account not found for this tenant"),
     )
     fun getBalance(

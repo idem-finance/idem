@@ -74,6 +74,16 @@ class AccountControllerTest {
     }
 
     @Test
+    fun `wrong scope returns 403`() {
+        mockMvc.get("/api/v1/accounts/$accountId/balance") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("insufficient_scope") }
+        }
+    }
+
+    @Test
     fun `account not found returns 404`() {
         whenever(queryBalancePort.execute(any()))
             .thenReturn(Result.failure(BalanceAccountNotFound(AccountId(accountId))))
