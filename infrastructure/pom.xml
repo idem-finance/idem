@@ -96,6 +96,8 @@
                     <excludes>
                         <exclude>finance/idem/infrastructure/persistence/audit/AuditLogDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/outbox/WebhookOutboxDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/persistence/idempotency/IdempotencyKeyDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/persistence/chain/ChainCheckpointDataModel*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
