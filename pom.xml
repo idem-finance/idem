@@ -45,7 +45,7 @@
         <kotlin.version>1.9.25</kotlin.version>
         <spring-modulith.version>1.4.11</spring-modulith.version>
         <springdoc.version>2.8.9</springdoc.version>
-        <jacoco.version>0.8.12</jacoco.version>
+        <jacoco.version>0.8.13</jacoco.version>
         <jacoco.minimum.coverage>0.80</jacoco.minimum.coverage>
     </properties>
 
@@ -166,9 +166,18 @@
                                         -->
                                         <exclude>finance.idem.api.ledger.FiatEntryDto</exclude>
                                         <exclude>finance.idem.api.ledger.OnChainEntryDto</exclude>
+                                        <exclude>finance.idem.api.ledger.JournalLineRequestDto</exclude>
                                         <!-- Kotlin data class — generated copy$default synthetic
                                              methods contain unexercisable bytecode branches. -->
                                         <exclude>finance.idem.core.security.ValidatedApiKey</exclude>
+                                        <!--
+                                          JPA @Entity classes — protected no-arg constructor required
+                                          by JPA is called by the ORM at runtime, never in unit tests.
+                                          Same pattern as AuditLogDataModel and WebhookOutboxDataModel
+                                          (excluded via agent config in infrastructure/pom.xml).
+                                        -->
+                                        <exclude>finance.idem.infrastructure.persistence.idempotency.IdempotencyKeyDataModel</exclude>
+                                        <exclude>finance.idem.infrastructure.persistence.chain.ChainCheckpointDataModel</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>
