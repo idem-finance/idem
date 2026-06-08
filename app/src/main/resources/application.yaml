@@ -30,6 +30,8 @@ idem:
       rpc-url: "https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY:}"
     evm-polygon:
       rpc-url: "https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY:}"
+    solana:
+      rpc-url: "${QUICKNODE_SOLANA_URL:}"
 
 ---
 spring:
