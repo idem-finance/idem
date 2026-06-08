@@ -3,11 +3,13 @@ package finance.idem.infrastructure.persistence.chain
 import finance.idem.core.StablecoinToken
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
@@ -40,10 +42,25 @@ class WatchedAddressRepositoryAdapterTest {
 
     @Autowired lateinit var jpaRepository: WatchedAddressJpaRepository
     @Autowired lateinit var adapter: WatchedAddressRepositoryAdapter
+    @Autowired lateinit var jdbcTemplate: JdbcTemplate
 
     private val tenantId = UUID.fromString("a1b2c3d4-0000-0000-0000-000000000001")
-    private val debitId = UUID.fromString("a1b2c3d4-0000-0000-0000-000000000002")
+    private val debitId  = UUID.fromString("a1b2c3d4-0000-0000-0000-000000000002")
     private val creditId = UUID.fromString("a1b2c3d4-0000-0000-0000-000000000003")
+
+    @BeforeEach
+    fun insertAccounts() {
+        // accounts has FORCE RLS — app.tenant_id must be set before any DML
+        jdbcTemplate.execute("SET LOCAL app.tenant_id = '$tenantId'")
+        jdbcTemplate.update(
+            "INSERT INTO accounts (id, tenant_id, name, currency, type, created_by) VALUES (?::UUID, ?::UUID, ?, ?, ?, ?)",
+            debitId.toString(), tenantId.toString(), "Debit Account", "USD", "ASSET", "test",
+        )
+        jdbcTemplate.update(
+            "INSERT INTO accounts (id, tenant_id, name, currency, type, created_by) VALUES (?::UUID, ?::UUID, ?, ?, ?, ?)",
+            creditId.toString(), tenantId.toString(), "Credit Account", "USD", "LIABILITY", "test",
+        )
+    }
 
     @Test
     fun `findByChainKey returns matching watched addresses`() {

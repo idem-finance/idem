@@ -8,7 +8,11 @@ CREATE TABLE watched_addresses (
     debit_account_id  UUID        NOT NULL,
     credit_account_id UUID        NOT NULL,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_watched_addresses UNIQUE (chain_key, wallet_address, token_contract, tenant_id)
+    CONSTRAINT uq_watched_addresses UNIQUE (chain_key, wallet_address, token_contract, tenant_id),
+    CONSTRAINT fk_watched_addresses_debit_account
+        FOREIGN KEY (debit_account_id,  tenant_id) REFERENCES accounts (id, tenant_id),
+    CONSTRAINT fk_watched_addresses_credit_account
+        FOREIGN KEY (credit_account_id, tenant_id) REFERENCES accounts (id, tenant_id)
 );
 
 CREATE INDEX idx_watched_addresses_chain_key ON watched_addresses (chain_key);
