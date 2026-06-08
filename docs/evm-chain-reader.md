@@ -127,7 +127,7 @@ sequenceDiagram
         loop for each LogObject
             ECR->>ECR: decodeTransfer(topics, data, txHash, blockNumber, logIndex, contractAddress)
             alt matches watched address + contract
-                ECR-->>Scheduler: DetectedTransfer
+                ECR-->>Orchestrator: DetectedTransfer
             end
         end
     end
