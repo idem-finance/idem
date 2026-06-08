@@ -73,8 +73,8 @@ graph TD
         ETH_GET_LOGS["ethGetLogs"]
     end
 
-    subgraph scheduler["ChainReaderScheduler (pending — not yet wired)"]
-        SCHED["@Scheduled poller\n→ calls poll() per reader\n→ advances ChainCheckpoint"]
+    subgraph orchestrator["ChainReaderOrchestrator (pending — #76)"]
+        ORCH["ApplicationStartedEvent\n→ replay missed blocks\nfrom last ChainCheckpoint\n(fallback/recovery only)"]
     end
 
     FACTORY -->|"creates one per\nnon-blank rpc-url"| ECR
@@ -88,7 +88,7 @@ graph TD
     ECR -->|"queries"| WAR
     ECR -->|"produces"| DT
     DT -->|"entry field"| OnChainEntry
-    SCHED -->|"calls poll(checkpoint)"| CR
+    ORCH -->|"calls poll(checkpoint)\non startup only"| CR
 ```
 
 `EvmChainReaderFactory` creates one `EvmChainReader` per non-blank RPC URL at startup.
@@ -99,17 +99,22 @@ configured — each has its own `Web3j` instance and its own checkpoint row.
 
 ## Polling workflow
 
+> **Architecture note (revised Jun 2026):** `EvmChainReader` is a **fallback/recovery reader**.
+> The primary EVM event source is `AlchemyWebhookReceiver` (issue #73).
+> `EvmChainReader.poll()` is called once on startup by `ChainReaderOrchestrator` (#76)
+> to replay any blocks missed while the application was down.
+
 ```mermaid
 sequenceDiagram
-    participant Scheduler
+    participant Orchestrator as ChainReaderOrchestrator\n(startup recovery)
     participant ECR as EvmChainReader
     participant W3J as Web3j / Alchemy
     participant WA as WatchedAddressRepository
     participant PS as PostTransactionService
     participant DB as PostgreSQL
 
-    Scheduler->>DB: findByChainKey("EVM_1") → lastBlock (checkpoint)
-    Scheduler->>ECR: poll(checkpoint)
+    Orchestrator->>DB: findByChainKey("EVM_1") → lastBlock (checkpoint)
+    Orchestrator->>ECR: poll(checkpoint)
     ECR->>WA: findByChainKey("EVM_1")
     WA-->>ECR: List<WatchedAddress>
     ECR->>W3J: eth_blockNumber
@@ -128,11 +133,11 @@ sequenceDiagram
     end
 
     loop for each DetectedTransfer
-        Scheduler->>PS: execute(PostTransactionCommand, idempotencyKey="EVM_1:{txHash}:{logIndex}")
+        Orchestrator->>PS: execute(PostTransactionCommand, idempotencyKey="EVM_1:{txHash}:{logIndex}")
         PS->>DB: save Transaction + AuditEntry + WebhookOutbox (one @Transactional)
     end
 
-    Scheduler->>DB: save ChainCheckpoint(lastBlock = latestBlock)
+    Orchestrator->>DB: save ChainCheckpoint(lastBlock = latestBlock)
 ```
 
 The checkpoint and ledger write must be atomic — a crash between them would either
@@ -299,6 +304,9 @@ rtk test mvn test -pl infrastructure
 2. Add the corresponding `idem.chain.evm-arbitrum.rpc-url` property.
 3. Register it in `EvmChainReaderFactory.chainReaders()` with the appropriate chain key
    (e.g. `"EVM_42161"`).
+   Also configure an Alchemy Address Activity webhook for the new network pointing to
+   `POST /internal/webhooks/alchemy` — the recovery reader alone is not sufficient for
+   production.
 4. Seed a `watched_addresses` row with `chain_key = 'EVM_42161'`.
 5. The checkpoint table auto-creates the row on the first write — no migration needed.
 
@@ -307,6 +315,6 @@ rtk test mvn test -pl infrastructure
 ## Related
 
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
-- `docs/solana-chain-reader.md` — Solana counterpart (raw JSON-RPC, pagination algorithm)
+- `docs/tron-chain-reader.md` — Tron counterpart (Tronscan REST polling)
 - `infrastructure/chain/EvmChainReaderFactory.kt` — factory that wires all chain readers
-- Issues [#46](https://github.com/idem-finance/idem/issues/46), [#48](https://github.com/idem-finance/idem/issues/48) — chain checkpoint and chain reader specs
+- Issues [#46](https://github.com/idem-finance/idem/issues/46), [#47](https://github.com/idem-finance/idem/issues/47), [#73](https://github.com/idem-finance/idem/issues/73), [#76](https://github.com/idem-finance/idem/issues/76)
