@@ -56,10 +56,23 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- EVM chain reader — Web3j -->
+        <dependency>
+            <groupId>org.web3j</groupId>
+            <artifactId>core</artifactId>
+            <version>${web3j.version}</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.github.tomakehurst</groupId>
+            <artifactId>wiremock-jre8-standalone</artifactId>
+            <version>${wiremock.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -98,6 +111,12 @@
                         <exclude>finance/idem/infrastructure/persistence/outbox/WebhookOutboxDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/idempotency/IdempotencyKeyDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/chain/ChainCheckpointDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/persistence/chain/WatchedAddressDataModel*</exclude>
+                        <!-- Kotlin data classes — generated copy$default synthetic branches -->
+                        <exclude>finance/idem/infrastructure/chain/EvmChainConfig*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/EvmNetworkConfig*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/WatchedAddress*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/DetectedTransfer*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
