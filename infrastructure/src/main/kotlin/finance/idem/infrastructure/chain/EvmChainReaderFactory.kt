@@ -9,20 +9,23 @@ import org.web3j.protocol.http.HttpService
 
 @Configuration
 @EnableConfigurationProperties(EvmChainConfig::class)
-class EvmChainReaderFactory(private val config: EvmChainConfig) {
+class EvmChainReaderFactory(
+    private val config: EvmChainConfig,
+    private val watchedAddressRepository: WatchedAddressRepository,
+) {
 
     private val web3jInstances = mutableListOf<Web3j>()
 
     @Bean
     fun evmChainReaders(): List<ChainReader> = buildList {
         if (config.evm.rpcUrl.isNotBlank()) {
-            add(EvmChainReader("EVM_1", buildWeb3j(config.evm.rpcUrl), config.watchedAddresses))
+            add(EvmChainReader("EVM_1", buildWeb3j(config.evm.rpcUrl), watchedAddressRepository))
         }
         if (config.evmBase.rpcUrl.isNotBlank()) {
-            add(EvmChainReader("EVM_8453", buildWeb3j(config.evmBase.rpcUrl), config.watchedAddresses))
+            add(EvmChainReader("EVM_8453", buildWeb3j(config.evmBase.rpcUrl), watchedAddressRepository))
         }
         if (config.evmPolygon.rpcUrl.isNotBlank()) {
-            add(EvmChainReader("EVM_137", buildWeb3j(config.evmPolygon.rpcUrl), config.watchedAddresses))
+            add(EvmChainReader("EVM_137", buildWeb3j(config.evmPolygon.rpcUrl), watchedAddressRepository))
         }
     }
 

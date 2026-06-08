@@ -15,14 +15,14 @@ import java.math.BigInteger
 class EvmChainReader(
     override val chainKey: String,
     private val web3j: Web3j,
-    private val watchedAddresses: List<WatchedAddress>,
+    private val watchedAddressRepository: WatchedAddressRepository,
     private val maxBlockRange: Long = MAX_BLOCK_RANGE,
 ) : ChainReader {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
     override fun poll(checkpoint: Long): List<DetectedTransfer> {
-        val relevant = watchedAddresses.filter { it.chainKey == chainKey }
+        val relevant = watchedAddressRepository.findByChainKey(chainKey)
         if (relevant.isEmpty()) return emptyList()
 
         val contractAddresses = relevant.map { it.tokenContract }.distinct()
@@ -82,7 +82,7 @@ class EvmChainReader(
         blockNumber: Long,
         logIndex: Int,
         contractAddress: String,
-        relevant: List<WatchedAddress> = watchedAddresses.filter { it.chainKey == chainKey },
+        relevant: List<WatchedAddress> = watchedAddressRepository.findByChainKey(chainKey),
     ): DetectedTransfer? {
         if (topics.size < 3) return null
         if (topics[0] != TRANSFER_EVENT_TOPIC) return null

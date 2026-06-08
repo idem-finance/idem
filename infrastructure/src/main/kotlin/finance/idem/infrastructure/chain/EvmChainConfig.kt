@@ -7,7 +7,6 @@ data class EvmChainConfig(
     val evm: EvmNetworkConfig = EvmNetworkConfig(),
     val evmBase: EvmNetworkConfig = EvmNetworkConfig(),
     val evmPolygon: EvmNetworkConfig = EvmNetworkConfig(),
-    val watchedAddresses: List<WatchedAddress> = emptyList(),
 )
 
 data class EvmNetworkConfig(

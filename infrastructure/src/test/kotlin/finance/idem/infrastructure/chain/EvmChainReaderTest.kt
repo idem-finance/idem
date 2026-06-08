@@ -5,8 +5,10 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.web3j.protocol.Web3j
 import java.math.BigDecimal
 
@@ -14,28 +16,31 @@ class EvmChainReaderTest {
 
     private val usdcContract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
     private val watchedWallet = "0xabcdef1234567890abcdef1234567890abcdef34"
+    private val tenantId = "a1b2c3d4-0000-0000-0000-000000000001"
 
     private val watchedAddress = WatchedAddress(
         chainKey = "EVM_1",
         walletAddress = watchedWallet,
         tokenContract = usdcContract,
         token = StablecoinToken.USDC,
-        tenantId = "tenant-1",
-        debitAccountId = "debit-1",
-        creditAccountId = "credit-1",
+        tenantId = tenantId,
+        debitAccountId = "a1b2c3d4-0000-0000-0000-000000000002",
+        creditAccountId = "a1b2c3d4-0000-0000-0000-000000000003",
     )
 
-    private val reader = EvmChainReader(
-        chainKey = "EVM_1",
-        web3j = mock<Web3j>(),
-        watchedAddresses = listOf(watchedAddress),
-    )
+    private val mockRepo = mock<WatchedAddressRepository>()
+    private val reader = EvmChainReader("EVM_1", mock<Web3j>(), mockRepo)
 
     private val transferTopic = EvmChainReader.TRANSFER_EVENT_TOPIC
     private val fromPadded = "0x000000000000000000000000abcdef1234567890abcdef1234567890abcdef12"
     private val toPadded = "0x000000000000000000000000abcdef1234567890abcdef1234567890abcdef34"
     private val oneUsdcData = "0x00000000000000000000000000000000000000000000000000000000000f4240"
     private val txHash = "0xabc123def456abc123def456abc123def456abc123def456abc123def456abc1"
+
+    @BeforeEach
+    fun setUp() {
+        whenever(mockRepo.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+    }
 
     @Test
     fun `decodes ERC20 Transfer event to watched address`() {
@@ -81,7 +86,7 @@ class EvmChainReaderTest {
             txHash = txHash,
             blockNumber = 19_000_000L,
             logIndex = 0,
-            contractAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7", // USDT contract
+            contractAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7",
         )
 
         assertNull(result)
@@ -169,12 +174,10 @@ class EvmChainReaderTest {
     }
 
     @Test
-    fun `poll returns empty list when no watched addresses match chain key`() {
-        val readerForOtherChain = EvmChainReader(
-            chainKey = "EVM_8453",
-            web3j = mock<Web3j>(),
-            watchedAddresses = listOf(watchedAddress), // only has EVM_1
-        )
+    fun `poll returns empty list when repository returns no addresses for chain key`() {
+        val emptyRepo = mock<WatchedAddressRepository>()
+        whenever(emptyRepo.findByChainKey("EVM_8453")).thenReturn(emptyList())
+        val readerForOtherChain = EvmChainReader("EVM_8453", mock<Web3j>(), emptyRepo)
 
         val result = readerForOtherChain.poll(0L)
 
@@ -192,22 +195,10 @@ class EvmChainReaderTest {
     @Test
     fun `decodes USDT Transfer with 6 decimal precision`() {
         val usdtContract = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
-        val tenantId = "tenant-1"
-        val usdtReader = EvmChainReader(
-            chainKey = "EVM_1",
-            web3j = mock<Web3j>(),
-            watchedAddresses = listOf(
-                WatchedAddress(
-                    chainKey = "EVM_1",
-                    walletAddress = watchedWallet,
-                    tokenContract = usdtContract,
-                    token = StablecoinToken.USDT,
-                    tenantId = tenantId,
-                    debitAccountId = "debit-1",
-                    creditAccountId = "credit-1",
-                )
-            ),
-        )
+        val usdtWatched = WatchedAddress("EVM_1", watchedWallet, usdtContract, StablecoinToken.USDT, tenantId, "debit-1", "credit-1")
+        val usdtRepo = mock<WatchedAddressRepository>()
+        whenever(usdtRepo.findByChainKey("EVM_1")).thenReturn(listOf(usdtWatched))
+        val usdtReader = EvmChainReader("EVM_1", mock<Web3j>(), usdtRepo)
 
         val result = usdtReader.decodeTransfer(
             topics = listOf(transferTopic, fromPadded, toPadded),
@@ -225,22 +216,10 @@ class EvmChainReaderTest {
     @Test
     fun `decodes PYUSD Transfer with 6 decimal precision`() {
         val pyusdContract = "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"
-        val tenantId = "tenant-1"
-        val pyusdReader = EvmChainReader(
-            chainKey = "EVM_1",
-            web3j = mock<Web3j>(),
-            watchedAddresses = listOf(
-                WatchedAddress(
-                    chainKey = "EVM_1",
-                    walletAddress = watchedWallet,
-                    tokenContract = pyusdContract,
-                    token = StablecoinToken.PYUSD,
-                    tenantId = tenantId,
-                    debitAccountId = "debit-1",
-                    creditAccountId = "credit-1",
-                )
-            ),
-        )
+        val pyusdWatched = WatchedAddress("EVM_1", watchedWallet, pyusdContract, StablecoinToken.PYUSD, tenantId, "debit-1", "credit-1")
+        val pyusdRepo = mock<WatchedAddressRepository>()
+        whenever(pyusdRepo.findByChainKey("EVM_1")).thenReturn(listOf(pyusdWatched))
+        val pyusdReader = EvmChainReader("EVM_1", mock<Web3j>(), pyusdRepo)
 
         val result = pyusdReader.decodeTransfer(
             topics = listOf(transferTopic, fromPadded, toPadded),
@@ -258,23 +237,11 @@ class EvmChainReaderTest {
     @Test
     fun `decodes BRZ Transfer with 18 decimal precision`() {
         val brzContract = "0x491604c0FDF08347Dd1fa4Ee062a822A5DD06B5D"
-        val oneEther = "0x0000000000000000000000000000000000000000000000000de0b6b3a7640000" // 1e18
-        val tenantId = "tenant-1"
-        val brzReader = EvmChainReader(
-            chainKey = "EVM_1",
-            web3j = mock<Web3j>(),
-            watchedAddresses = listOf(
-                WatchedAddress(
-                    chainKey = "EVM_1",
-                    walletAddress = watchedWallet,
-                    tokenContract = brzContract,
-                    token = StablecoinToken.BRZ,
-                    tenantId = tenantId,
-                    debitAccountId = "debit-1",
-                    creditAccountId = "credit-1",
-                )
-            ),
-        )
+        val oneEther = "0x0000000000000000000000000000000000000000000000000de0b6b3a7640000"
+        val brzWatched = WatchedAddress("EVM_1", watchedWallet, brzContract, StablecoinToken.BRZ, tenantId, "debit-1", "credit-1")
+        val brzRepo = mock<WatchedAddressRepository>()
+        whenever(brzRepo.findByChainKey("EVM_1")).thenReturn(listOf(brzWatched))
+        val brzReader = EvmChainReader("EVM_1", mock<Web3j>(), brzRepo)
 
         val result = brzReader.decodeTransfer(
             topics = listOf(transferTopic, fromPadded, toPadded),

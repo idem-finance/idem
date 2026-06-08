@@ -27,10 +27,10 @@ class FlywayMigrationTest {
         .load()
 
     @Test
-    fun `all 8 migrations apply cleanly`() {
+    fun `all 9 migrations apply cleanly`() {
         flyway().migrate()
         val applied = flyway().info().applied()
-        assertEquals(8, applied.size)
+        assertEquals(9, applied.size)
         assertTrue(applied.none { it.state.isFailed() }, "No migration should be in failed state")
     }
 
@@ -41,6 +41,7 @@ class FlywayMigrationTest {
         val expectedTables = listOf(
             "accounts", "transactions", "journal_lines",
             "audit_log", "webhook_outbox", "chain_checkpoint", "idempotency_keys", "api_keys",
+            "watched_addresses",
         )
 
         postgres.createConnection("").use { conn ->

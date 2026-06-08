@@ -13,6 +13,8 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.http.HttpService
 import java.math.BigDecimal
@@ -41,12 +43,15 @@ class EvmChainReaderIntegrationTest {
         wireMock = WireMockServer(wireMockConfig().dynamicPort())
         wireMock.start()
 
+        val mockRepo = mock<WatchedAddressRepository>()
+        whenever(mockRepo.findByChainKey("EVM_1")).thenReturn(listOf(watched))
+
         val web3j = Web3j.build(HttpService("http://localhost:${wireMock.port()}"))
         reader = EvmChainReader(
             chainKey = "EVM_1",
             web3j = web3j,
-            watchedAddresses = listOf(watched),
-            maxBlockRange = 1_000_000L, // one chunk for test — avoids 266 repeated stub hits
+            watchedAddressRepository = mockRepo,
+            maxBlockRange = 1_000_000L,
         )
     }
 
