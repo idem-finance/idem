@@ -115,8 +115,11 @@
                         <!-- Kotlin data classes — generated copy$default synthetic branches -->
                         <exclude>finance/idem/infrastructure/chain/EvmChainConfig*</exclude>
                         <exclude>finance/idem/infrastructure/chain/EvmNetworkConfig*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/SolanaNetworkConfig*</exclude>
                         <exclude>finance/idem/infrastructure/chain/WatchedAddress*</exclude>
                         <exclude>finance/idem/infrastructure/chain/DetectedTransfer*</exclude>
+                        <!-- SolanaChainReader inner data classes — Kotlin-generated synthetic bytecode -->
+                        <exclude>finance/idem/infrastructure/chain/SolanaChainReader$*</exclude>
                     </excludes>
                 </configuration>
             </plugin>

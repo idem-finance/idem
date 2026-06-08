@@ -17,7 +17,7 @@ class EvmChainReaderFactory(
     private val web3jInstances = mutableListOf<Web3j>()
 
     @Bean
-    fun evmChainReaders(): List<ChainReader> = buildList {
+    fun chainReaders(): List<ChainReader> = buildList {
         if (config.evm.rpcUrl.isNotBlank()) {
             add(EvmChainReader("EVM_1", buildWeb3j(config.evm.rpcUrl), watchedAddressRepository))
         }
@@ -26,6 +26,9 @@ class EvmChainReaderFactory(
         }
         if (config.evmPolygon.rpcUrl.isNotBlank()) {
             add(EvmChainReader("EVM_137", buildWeb3j(config.evmPolygon.rpcUrl), watchedAddressRepository))
+        }
+        if (config.solana.rpcUrl.isNotBlank()) {
+            add(SolanaChainReader(config.solana.rpcUrl, watchedAddressRepository))
         }
     }
 
