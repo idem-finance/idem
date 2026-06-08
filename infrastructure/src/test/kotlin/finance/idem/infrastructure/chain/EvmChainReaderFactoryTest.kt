@@ -11,7 +11,7 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `creates one reader per non-blank evm rpc url`() {
-        val config = EvmChainConfig(
+        val config = ChainConfig(
             evm = EvmNetworkConfig("http://eth-rpc"),
             evmBase = EvmNetworkConfig("http://base-rpc"),
             evmPolygon = EvmNetworkConfig(""),
@@ -26,14 +26,14 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `creates no readers when all rpc urls are blank`() {
-        val readers = EvmChainReaderFactory(EvmChainConfig(), mockRepo).chainReaders()
+        val readers = EvmChainReaderFactory(ChainConfig(), mockRepo).chainReaders()
 
         assertTrue(readers.isEmpty())
     }
 
     @Test
     fun `creates three evm readers when all evm rpc urls are non-blank`() {
-        val config = EvmChainConfig(
+        val config = ChainConfig(
             evm = EvmNetworkConfig("http://eth-rpc"),
             evmBase = EvmNetworkConfig("http://base-rpc"),
             evmPolygon = EvmNetworkConfig("http://polygon-rpc"),
@@ -49,7 +49,7 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `creates solana reader when solana rpc url is non-blank`() {
-        val config = EvmChainConfig(
+        val config = ChainConfig(
             solana = SolanaNetworkConfig("http://solana-rpc"),
         )
 
@@ -61,7 +61,7 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `creates evm and solana readers together`() {
-        val config = EvmChainConfig(
+        val config = ChainConfig(
             evm = EvmNetworkConfig("http://eth-rpc"),
             solana = SolanaNetworkConfig("http://solana-rpc"),
         )
@@ -71,5 +71,15 @@ class EvmChainReaderFactoryTest {
         assertEquals(2, readers.size)
         assertEquals("EVM_1", readers[0].chainKey)
         assertEquals("SOLANA", readers[1].chainKey)
+    }
+
+    @Test
+    fun `solana reader implements Closeable — shutdown closes it`() {
+        val config = ChainConfig(solana = SolanaNetworkConfig("http://solana-rpc"))
+        val factory = EvmChainReaderFactory(config, mockRepo)
+        factory.chainReaders()
+
+        // Must not throw — verifies the Closeable shutdown path is wired
+        factory.shutdown()
     }
 }

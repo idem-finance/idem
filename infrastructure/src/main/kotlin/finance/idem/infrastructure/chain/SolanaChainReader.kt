@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
+import finance.idem.core.StablecoinToken
 import finance.idem.core.monetary.OnChainEntry
 import org.slf4j.LoggerFactory
+import java.io.Closeable
 import java.math.BigDecimal
 import java.net.URI
 import java.net.http.HttpClient
@@ -18,17 +20,21 @@ class SolanaChainReader(
     private val rpcUrl: String,
     private val watchedAddressRepository: WatchedAddressRepository,
     private val httpClient: HttpClient = HttpClient.newHttpClient(),
-) : ChainReader {
+    private val signaturePageSize: Int = 1000,
+) : ChainReader, Closeable {
 
     override val chainKey = "SOLANA"
+    private val rpcUri: URI = URI.create(rpcUrl)
+
+    override fun close() = httpClient.close()
 
     override fun poll(checkpoint: Long): List<DetectedTransfer> {
         val watched = watchedAddressRepository.findByChainKey(chainKey)
         if (watched.isEmpty()) return emptyList()
 
         return watched.flatMap { watchedAddress ->
-            getSignaturesForAddress(watchedAddress.walletAddress)
-                .filter { it.slot > checkpoint && it.err == null }
+            getSignaturesForAddress(watchedAddress.walletAddress, checkpoint)
+                .filter { it.err == null }
                 .mapNotNull { sigInfo ->
                     val tx = getTransaction(sigInfo.signature) ?: return@mapNotNull null
                     decodeTransfer(tx, sigInfo.signature, sigInfo.slot, watchedAddress)
@@ -51,9 +57,32 @@ class SolanaChainReader(
         val receiving = postBalances.firstOrNull { post ->
             post.owner?.equals(watchedAddress.walletAddress, ignoreCase = true) == true &&
                 post.mint.equals(watchedAddress.tokenContract, ignoreCase = true)
-        } ?: return null
+        } ?: run {
+            if (postBalances.any { it.owner == null && it.mint.equals(watchedAddress.tokenContract, ignoreCase = true) }) {
+                log.warn("sig $signature has matching mint but null owner — possible legacy tx format, skipping")
+            }
+            return null
+        }
 
-        val postAmount = receiving.uiTokenAmount.amount.toLongOrNull() ?: return null
+        val knownDecimals = when (watchedAddress.token) {
+            StablecoinToken.USDC, StablecoinToken.USDT -> 6
+            else -> {
+                log.error("Unsupported token ${watchedAddress.token} for Solana reader in sig $signature — skipping")
+                return null
+            }
+        }
+        if (receiving.uiTokenAmount.decimals != knownDecimals) {
+            log.error(
+                "Unexpected decimals ${receiving.uiTokenAmount.decimals} for ${watchedAddress.tokenContract}" +
+                    " in sig $signature (expected $knownDecimals) — skipping"
+            )
+            return null
+        }
+
+        val postAmount = receiving.uiTokenAmount.amount.toLongOrNull() ?: run {
+            log.warn("Unparseable token amount '${receiving.uiTokenAmount.amount}' in sig $signature — skipping")
+            return null
+        }
         val preAmount = preBalances
             .firstOrNull { it.accountIndex == receiving.accountIndex }
             ?.uiTokenAmount?.amount?.toLongOrNull() ?: 0L
@@ -61,7 +90,7 @@ class SolanaChainReader(
 
         if (delta <= 0) return null
 
-        val amount = MonetaryAmount.of(BigDecimal(delta).movePointLeft(receiving.uiTokenAmount.decimals))
+        val amount = MonetaryAmount.of(BigDecimal(delta).movePointLeft(knownDecimals))
 
         return DetectedTransfer(
             idempotencyKey = "$chainKey:$signature",
@@ -78,8 +107,34 @@ class SolanaChainReader(
         )
     }
 
-    private fun getSignaturesForAddress(address: String, limit: Int = 100): List<SolanaSignatureInfo> {
-        val body = """{"jsonrpc":"2.0","id":1,"method":"getSignaturesForAddress","params":["$address",{"limit":$limit}]}"""
+    // Paginates backward via "before" cursor until the page boundary falls at or below checkpoint.
+    // Solana returns signatures newest-first; we collect oldest-first before advancing the checkpoint.
+    private fun getSignaturesForAddress(address: String, checkpoint: Long): List<SolanaSignatureInfo> {
+        val all = mutableListOf<SolanaSignatureInfo>()
+        var before: String? = null
+        while (true) {
+            val page = fetchSignaturePage(address, limit = signaturePageSize, before = before)
+            if (page.isEmpty()) break
+            val relevant = page.takeWhile { it.slot > checkpoint }
+            all += relevant
+            // Stop if: partial page (last page reached) or checkpoint boundary hit within the page
+            if (page.size < signaturePageSize || relevant.size < page.size) break
+            before = page.last().signature
+        }
+        return all.sortedBy { it.slot }
+    }
+
+    private fun fetchSignaturePage(address: String, limit: Int, before: String?): List<SolanaSignatureInfo> {
+        val params = buildMap<String, Any> {
+            put("limit", limit)
+            if (before != null) put("before", before)
+        }
+        val body = MAPPER.writeValueAsString(
+            mapOf(
+                "jsonrpc" to "2.0", "id" to 1, "method" to "getSignaturesForAddress",
+                "params" to listOf(address, params),
+            )
+        )
         val response = rpcPost(body) ?: return emptyList()
         return runCatching {
             MAPPER.readValue(response, SolanaSignaturesResponse::class.java).result ?: emptyList()
@@ -90,7 +145,19 @@ class SolanaChainReader(
     }
 
     private fun getTransaction(signature: String): SolanaTransactionResult? {
-        val body = """{"jsonrpc":"2.0","id":1,"method":"getTransaction","params":["$signature",{"encoding":"json","commitment":"confirmed","maxSupportedTransactionVersion":0}]}"""
+        val body = MAPPER.writeValueAsString(
+            mapOf(
+                "jsonrpc" to "2.0", "id" to 1, "method" to "getTransaction",
+                "params" to listOf(
+                    signature,
+                    mapOf(
+                        "encoding" to "json",
+                        "commitment" to "confirmed",
+                        "maxSupportedTransactionVersion" to 0,
+                    ),
+                ),
+            )
+        )
         val response = rpcPost(body) ?: return null
         return runCatching {
             MAPPER.readValue(response, SolanaTransactionResponse::class.java).result
@@ -103,7 +170,7 @@ class SolanaChainReader(
     private fun rpcPost(jsonBody: String): String? {
         return try {
             val request = HttpRequest.newBuilder()
-                .uri(URI.create(rpcUrl))
+                .uri(rpcUri)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build()
@@ -164,7 +231,7 @@ class SolanaChainReader(
 
     companion object {
         private val log = LoggerFactory.getLogger(SolanaChainReader::class.java)
-        internal val MAPPER: ObjectMapper = ObjectMapper().apply {
+        private val MAPPER: ObjectMapper = ObjectMapper().apply {
             registerModule(KotlinModule.Builder().build())
             configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
         }

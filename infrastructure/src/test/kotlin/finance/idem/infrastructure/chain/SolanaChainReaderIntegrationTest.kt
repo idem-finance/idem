@@ -6,6 +6,7 @@ import com.github.tomakehurst.wiremock.client.WireMock.containing
 import com.github.tomakehurst.wiremock.client.WireMock.post
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
+import com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
@@ -45,7 +46,8 @@ class SolanaChainReaderIntegrationTest {
         val mockRepo = mock<WatchedAddressRepository>()
         whenever(mockRepo.findByChainKey("SOLANA")).thenReturn(listOf(watched))
 
-        reader = SolanaChainReader("http://localhost:${wireMock.port()}", mockRepo)
+        // signaturePageSize=2 lets the pagination test trigger a second page fetch with a small fixture
+        reader = SolanaChainReader("http://localhost:${wireMock.port()}", mockRepo, signaturePageSize = 2)
     }
 
     @AfterEach
@@ -118,6 +120,58 @@ class SolanaChainReaderIntegrationTest {
         val result = reader.poll(0L)
 
         assertEquals(emptyList<DetectedTransfer>(), result)
+    }
+
+    @Test
+    fun `poll paginates when first page is full — fetches subsequent pages with before cursor`() {
+        val sig1 = "Sig1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        val sig2 = "Sig2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        val sig3 = "Sig3ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+        // Page 1: exactly signaturePageSize(2) items → triggers pagination
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing("getSignaturesForAddress"))
+                .inScenario("sig-pagination")
+                .whenScenarioStateIs(STARTED)
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(twoSignaturesResponse(sig1, 300L, sig2, 200L))
+                )
+                .willSetStateTo("page2")
+        )
+        // Page 2: 1 item at slot=50 below checkpoint=100 → stops pagination
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing("getSignaturesForAddress"))
+                .inScenario("sig-pagination")
+                .whenScenarioStateIs("page2")
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(signaturesResponse(sig3, 50L))
+                )
+        )
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing("getTransaction"))
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(transactionResponse(sig1, 300L, usdcMint, watchedWallet, 0, 1_000_000, 6))
+                )
+        )
+
+        val result = reader.poll(100L)
+
+        // sig3 (slot=50) is below checkpoint; only sig1 and sig2 are returned, sorted oldest-first
+        assertEquals(2, result.size)
+        assertEquals(200L, result[0].entry.blockNumber)
+        assertEquals(300L, result[1].entry.blockNumber)
     }
 
     @Test
@@ -267,6 +321,27 @@ class SolanaChainReaderIntegrationTest {
             },
             "blockTime": 1699000000
           }
+        }
+    """.trimIndent()
+
+    private fun twoSignaturesResponse(sig1: String, slot1: Long, sig2: String, slot2: Long) = """
+        {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "result": [
+            {
+              "signature": "$sig1",
+              "slot": $slot1,
+              "err": null,
+              "blockTime": 1699000000
+            },
+            {
+              "signature": "$sig2",
+              "slot": $slot2,
+              "err": null,
+              "blockTime": 1699000000
+            }
+          ]
         }
     """.trimIndent()
 

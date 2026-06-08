@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.math.BigDecimal
+import java.net.http.HttpClient
 
 class SolanaChainReaderTest {
 
@@ -203,6 +204,83 @@ class SolanaChainReaderTest {
         val result = emptyReader.poll(0L)
 
         assertEquals(emptyList<DetectedTransfer>(), result)
+    }
+
+    @Test
+    fun `returns null when RPC-reported decimals differ from known token decimals`() {
+        val tx = txWithBalanceChange(
+            accountIndex = 2,
+            mint = usdcMint,
+            owner = watchedWallet,
+            preAmount = 0L,
+            postAmount = 1_000_000L,
+            decimals = 18, // wrong — USDC is always 6
+        )
+
+        assertNull(reader.decodeTransfer(tx, signature, slot, watchedAddress))
+    }
+
+    @Test
+    fun `returns null for unsupported token type`() {
+        val brzWatched = watchedAddress.copy(token = StablecoinToken.BRZ, tokenContract = "BrzContract")
+        val tx = txWithBalanceChange(
+            accountIndex = 2,
+            mint = "BrzContract",
+            owner = watchedWallet,
+            preAmount = 0L,
+            postAmount = 1_000_000_000_000_000_000L,
+            decimals = 18,
+        )
+
+        assertNull(reader.decodeTransfer(tx, signature, slot, brzWatched))
+    }
+
+    @Test
+    fun `returns null and logs warning when token amount is not parseable as Long`() {
+        val tx = SolanaTransactionResult(
+            slot = slot,
+            meta = SolanaTransactionMeta(
+                err = null,
+                preTokenBalances = emptyList(),
+                postTokenBalances = listOf(
+                    SolanaTokenBalance(
+                        accountIndex = 2,
+                        mint = usdcMint,
+                        owner = watchedWallet,
+                        uiTokenAmount = SolanaUiTokenAmount(amount = "not_a_number", decimals = 6),
+                    )
+                ),
+            ),
+        )
+
+        assertNull(reader.decodeTransfer(tx, signature, slot, watchedAddress))
+    }
+
+    @Test
+    fun `returns null and logs warning when matching mint has null owner — legacy tx`() {
+        val tx = SolanaTransactionResult(
+            slot = slot,
+            meta = SolanaTransactionMeta(
+                err = null,
+                preTokenBalances = emptyList(),
+                postTokenBalances = listOf(
+                    SolanaTokenBalance(
+                        accountIndex = 2,
+                        mint = usdcMint,
+                        owner = null, // absent in legacy tx format
+                        uiTokenAmount = SolanaUiTokenAmount(amount = "1000000", decimals = 6),
+                    )
+                ),
+            ),
+        )
+
+        assertNull(reader.decodeTransfer(tx, signature, slot, watchedAddress))
+    }
+
+    @Test
+    fun `implements Closeable — close does not throw`() {
+        val closeableReader = SolanaChainReader("http://localhost:9999", mockRepo, HttpClient.newHttpClient())
+        closeableReader.close()
     }
 
     private fun txWithBalanceChange(
