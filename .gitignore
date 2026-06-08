@@ -1,3 +1,5 @@
+app/src/main/resources/application-dev.yaml
+app/src/main/resources/application-dev.properties.env
 HELP.md
 CLAUDE.md
 STRATEGY.md

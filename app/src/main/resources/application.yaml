@@ -22,7 +22,7 @@ management:
 idem:
   audit:
     # Must be set to a strong secret in production — rotate via secret manager
-    hmac-secret: dev-only-insecure-change-in-production
+    hmac-secret: "${IDEM_AUDIT_HMAC_SECRET:}"
   chain:
     evm:
       rpc-url: "https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY:}"

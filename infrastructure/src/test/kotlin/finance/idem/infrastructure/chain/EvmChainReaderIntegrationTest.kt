@@ -26,6 +26,16 @@ class EvmChainReaderIntegrationTest {
     private val watchedWallet = "0xabcdef1234567890abcdef1234567890abcdef34"
     private val txHash = "0xabc123def456abc123def456abc123def456abc123def456abc123def456abc1"
 
+    private val watched = WatchedAddress(
+        chainKey = "EVM_1",
+        walletAddress = watchedWallet,
+        tokenContract = usdcContract,
+        token = StablecoinToken.USDC,
+        tenantId = "tenant-1",
+        debitAccountId = "debit-1",
+        creditAccountId = "credit-1",
+    )
+
     @BeforeEach
     fun setUp() {
         wireMock = WireMockServer(wireMockConfig().dynamicPort())
@@ -35,17 +45,8 @@ class EvmChainReaderIntegrationTest {
         reader = EvmChainReader(
             chainKey = "EVM_1",
             web3j = web3j,
-            watchedAddresses = listOf(
-                WatchedAddress(
-                    chainKey = "EVM_1",
-                    walletAddress = watchedWallet,
-                    tokenContract = usdcContract,
-                    token = StablecoinToken.USDC,
-                    tenantId = "tenant-1",
-                    debitAccountId = "debit-1",
-                    creditAccountId = "credit-1",
-                )
-            ),
+            watchedAddresses = listOf(watched),
+            maxBlockRange = 1_000_000L, // one chunk for test — avoids 266 repeated stub hits
         )
     }
 
@@ -56,6 +57,7 @@ class EvmChainReaderIntegrationTest {
 
     @Test
     fun `poll returns OnChainEntry for matching ERC20 Transfer log`() {
+        stubBlockNumber("0x12a05f2") // 19_531_250
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
                 .withRequestBody(containing(""""method":"eth_getLogs""""))
@@ -79,10 +81,12 @@ class EvmChainReaderIntegrationTest {
         assertEquals(19_531_250L, transfer.entry.blockNumber) // 0x12a05f2
         assertEquals(watchedWallet.lowercase(), transfer.entry.walletAddress)
         assertEquals(usdcContract.lowercase(), transfer.entry.tokenContract)
+        assertEquals(watched, transfer.watchedAddress)
     }
 
     @Test
     fun `poll returns empty list when no logs match watched address`() {
+        stubBlockNumber("0x12a05f2")
         val unrelatedWallet = "0xffffffffffffffffffffffffffffffffffffffff"
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
@@ -102,6 +106,7 @@ class EvmChainReaderIntegrationTest {
 
     @Test
     fun `poll returns empty list when Alchemy returns empty result`() {
+        stubBlockNumber("0x12a05f2")
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
                 .withRequestBody(containing(""""method":"eth_getLogs""""))
@@ -116,6 +121,19 @@ class EvmChainReaderIntegrationTest {
         val result = reader.poll(19_000_000L)
 
         assertEquals(emptyList<DetectedTransfer>(), result)
+    }
+
+    private fun stubBlockNumber(hex: String) {
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing(""""method":"eth_blockNumber""""))
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""{"jsonrpc":"2.0","id":1,"result":"$hex"}""")
+                )
+        )
     }
 
     private fun alchemyEthGetLogsResponse(txHash: String, toWallet: String, contractAddress: String): String {

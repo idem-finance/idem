@@ -14,7 +14,6 @@ class EvmChainReaderTest {
 
     private val usdcContract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
     private val watchedWallet = "0xabcdef1234567890abcdef1234567890abcdef34"
-    private val tenantId = "tenant-1"
 
     private val watchedAddress = WatchedAddress(
         chainKey = "EVM_1",
@@ -56,7 +55,22 @@ class EvmChainReaderTest {
         assertEquals(txHash, result.entry.txHash)
         assertEquals(19_000_000L, result.entry.blockNumber)
         assertEquals(watchedWallet.lowercase(), result.entry.walletAddress)
-        assertEquals(usdcContract, result.entry.tokenContract)
+        assertEquals(usdcContract.lowercase(), result.entry.tokenContract)
+        assertEquals(watchedAddress, result.watchedAddress)
+    }
+
+    @Test
+    fun `normalizes contractAddress to lowercase in OnChainEntry`() {
+        val result = reader.decodeTransfer(
+            topics = listOf(transferTopic, fromPadded, toPadded),
+            data = oneUsdcData,
+            txHash = txHash,
+            blockNumber = 19_000_000L,
+            logIndex = 0,
+            contractAddress = usdcContract.uppercase(),
+        )
+
+        assertEquals(usdcContract.lowercase(), result!!.entry.tokenContract)
     }
 
     @Test
@@ -168,8 +182,17 @@ class EvmChainReaderTest {
     }
 
     @Test
+    fun `paddedAddress pads 20-byte address to 32-byte topic`() {
+        val address = "0xAbCdEf1234567890AbCdEf1234567890AbCdEf12"
+        val padded = EvmChainReader.paddedAddress(address)
+
+        assertEquals("0x000000000000000000000000abcdef1234567890abcdef1234567890abcdef12", padded)
+    }
+
+    @Test
     fun `decodes USDT Transfer with 6 decimal precision`() {
         val usdtContract = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+        val tenantId = "tenant-1"
         val usdtReader = EvmChainReader(
             chainKey = "EVM_1",
             web3j = mock<Web3j>(),
@@ -202,6 +225,7 @@ class EvmChainReaderTest {
     @Test
     fun `decodes PYUSD Transfer with 6 decimal precision`() {
         val pyusdContract = "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"
+        val tenantId = "tenant-1"
         val pyusdReader = EvmChainReader(
             chainKey = "EVM_1",
             web3j = mock<Web3j>(),
@@ -235,6 +259,7 @@ class EvmChainReaderTest {
     fun `decodes BRZ Transfer with 18 decimal precision`() {
         val brzContract = "0x491604c0FDF08347Dd1fa4Ee062a822A5DD06B5D"
         val oneEther = "0x0000000000000000000000000000000000000000000000000de0b6b3a7640000" // 1e18
+        val tenantId = "tenant-1"
         val brzReader = EvmChainReader(
             chainKey = "EVM_1",
             web3j = mock<Web3j>(),
