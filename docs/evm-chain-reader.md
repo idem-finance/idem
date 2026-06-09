@@ -184,11 +184,11 @@ padding and lowercases before comparing against `WatchedAddress.walletAddress`.
 flowchart TD
     A([decodeTransfer called]) --> B{topics.size < 3?}
     B -- yes --> SKIP([return null])
-    B -- no --> C{topics[0] ==\nTransfer topic hash?}
+    B -- no --> C{"topics[0] == Transfer topic hash?"}
     C -- no --> SKIP
     C -- yes --> D["toAddress = '0x' + topics[2].takeLast(40).lowercase()"]
     D --> E["normalizedContract = contractAddress.lowercase()"]
-    E --> F{watched = findFirst\nwhere tokenContract == normalizedContract\nAND walletAddress == toAddress?}
+    E --> F{"watched = findFirst where tokenContract == normalizedContract AND walletAddress == toAddress?"}
     F -- null --> SKIP
     F -- found --> G["rawAmount = BigInteger(data.removePrefix('0x'), 16)"]
     G --> H["decimals = decimalsFor(watched.token)"]
