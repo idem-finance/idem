@@ -2,7 +2,7 @@
 
 > Infrastructure module (`finance.idem.infrastructure.chain`).
 > **Fallback/recovery reader** — called once on startup by `ChainReaderOrchestrator` (#76)
-> to replay missed SPL token transfers. Primary detection is `SolanaWebSocketManager` (#74).
+t> to replay missed SPL token transfers. Primary detection is `QuickNodeWebhookReceiver` (#74).
 
 ---
 
@@ -293,6 +293,7 @@ rtk test mvn test -pl infrastructure
 
 ## Related
 
+- `docs/solana-webhook-receiver.md` — primary Solana event source (QuickNode Streams HTTP webhook)
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
 - `docs/evm-chain-reader.md` — EVM counterpart (Alchemy webhook primary, Web3j fallback)
 - `docs/tron-chain-reader.md` — Tron counterpart (Tronscan REST polling — primary and only)
