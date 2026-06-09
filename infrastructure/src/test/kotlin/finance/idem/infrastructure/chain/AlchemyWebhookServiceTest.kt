@@ -8,24 +8,24 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.chain.ChainCheckpointRepository
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import java.math.BigDecimal
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-class AlchemyWebhookReceiverTest {
+class AlchemyWebhookServiceTest {
 
     private val mockWatchedRepo = mock<WatchedAddressRepository>()
     private val mockCheckpointRepo = mock<ChainCheckpointRepository>()
     private val mockUseCase = mock<PostTransactionUseCase>()
     private val objectMapper = ObjectMapper().registerKotlinModule()
 
-    private val receiver = AlchemyWebhookReceiver(
+    private val service = AlchemyWebhookService(
         watchedAddressRepository = mockWatchedRepo,
         chainCheckpointRepository = mockCheckpointRepo,
         postTransactionUseCase = mockUseCase,
@@ -58,7 +58,7 @@ class AlchemyWebhookReceiverTest {
         val body = """{"type":"ADDRESS_ACTIVITY"}"""
         val signature = computeHmac(key, body)
 
-        assertTrue(AlchemyWebhookReceiver.isValidSignature(key, body, signature))
+        assertTrue(AlchemyWebhookService.isValidSignature(key, body, signature))
     }
 
     @Test
@@ -66,7 +66,7 @@ class AlchemyWebhookReceiverTest {
         val key = "test-signing-key"
         val body = """{"type":"ADDRESS_ACTIVITY"}"""
 
-        assertFalse(AlchemyWebhookReceiver.isValidSignature(key, body, "deadbeef"))
+        assertFalse(AlchemyWebhookService.isValidSignature(key, body, "deadbeef"))
     }
 
     @Test
@@ -74,34 +74,34 @@ class AlchemyWebhookReceiverTest {
         val body = """{"type":"ADDRESS_ACTIVITY"}"""
         val signature = computeHmac("correct-key", body)
 
-        assertFalse(AlchemyWebhookReceiver.isValidSignature("wrong-key", body, signature))
+        assertFalse(AlchemyWebhookService.isValidSignature("wrong-key", body, signature))
     }
 
     // -- networkToChainKey --
 
     @Test
     fun `networkToChainKey maps ETH_MAINNET to EVM_1`() {
-        assertEquals("EVM_1", AlchemyWebhookReceiver.networkToChainKey("ETH_MAINNET"))
+        assertEquals("EVM_1", AlchemyWebhookService.networkToChainKey("ETH_MAINNET"))
     }
 
     @Test
     fun `networkToChainKey maps BASE_MAINNET to EVM_8453`() {
-        assertEquals("EVM_8453", AlchemyWebhookReceiver.networkToChainKey("BASE_MAINNET"))
+        assertEquals("EVM_8453", AlchemyWebhookService.networkToChainKey("BASE_MAINNET"))
     }
 
     @Test
     fun `networkToChainKey maps MATIC_MAINNET to EVM_137`() {
-        assertEquals("EVM_137", AlchemyWebhookReceiver.networkToChainKey("MATIC_MAINNET"))
+        assertEquals("EVM_137", AlchemyWebhookService.networkToChainKey("MATIC_MAINNET"))
     }
 
     @Test
     fun `networkToChainKey returns null for unknown network`() {
-        assertNull(AlchemyWebhookReceiver.networkToChainKey("UNKNOWN_CHAIN"))
+        assertNull(AlchemyWebhookService.networkToChainKey("UNKNOWN_CHAIN"))
     }
 
     @Test
     fun `networkToChainKey is case-insensitive`() {
-        assertEquals("EVM_1", AlchemyWebhookReceiver.networkToChainKey("eth_mainnet"))
+        assertEquals("EVM_1", AlchemyWebhookService.networkToChainKey("eth_mainnet"))
     }
 
     // -- decodeActivity --
@@ -116,7 +116,7 @@ class AlchemyWebhookReceiverTest {
             logIndex = "0x0",
         )
 
-        val result = receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
+        val result = service.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
 
         assertNotNull(result)
         assertEquals("EVM_1:$txHash:0", result!!.idempotencyKey)
@@ -139,7 +139,7 @@ class AlchemyWebhookReceiverTest {
             logIndex = "0x3",
         )
 
-        val result = receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
+        val result = service.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
 
         assertNotNull(result)
         assertEquals("EVM_1:$txHash:3", result!!.idempotencyKey)
@@ -154,7 +154,19 @@ class AlchemyWebhookReceiverTest {
             category = "external",
         )
 
-        assertNull(receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
+        assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
+    }
+
+    @Test
+    fun `decodeActivity returns null for reorged log (removed = true)`() {
+        val activity = buildActivity(
+            toAddress = watchedWallet,
+            contract = usdcContract,
+            rawValue = "0x000f4240",
+            removed = true,
+        )
+
+        assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
@@ -165,7 +177,7 @@ class AlchemyWebhookReceiverTest {
             rawValue = "0x000f4240",
         )
 
-        assertNull(receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
+        assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
@@ -176,7 +188,7 @@ class AlchemyWebhookReceiverTest {
             rawValue = "0x000f4240",
         )
 
-        assertNull(receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
+        assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
@@ -190,7 +202,7 @@ class AlchemyWebhookReceiverTest {
             rawContract = null,
         )
 
-        assertNull(receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
+        assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
@@ -201,7 +213,7 @@ class AlchemyWebhookReceiverTest {
             rawValue = "0x",
         )
 
-        assertNull(receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
+        assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
@@ -212,7 +224,7 @@ class AlchemyWebhookReceiverTest {
             rawValue = "not-hex",
         )
 
-        assertNull(receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
+        assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
@@ -223,7 +235,7 @@ class AlchemyWebhookReceiverTest {
             rawValue = "0x0",
         )
 
-        assertNull(receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
+        assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
@@ -234,7 +246,7 @@ class AlchemyWebhookReceiverTest {
             rawValue = "0x000f4240",
         )
 
-        val result = receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
+        val result = service.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
 
         assertNotNull(result)
         assertEquals(watchedWallet.lowercase(), result!!.entry.walletAddress)
@@ -250,7 +262,7 @@ class AlchemyWebhookReceiverTest {
             logIndex = null,
         )
 
-        val result = receiver.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
+        val result = service.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
 
         assertNotNull(result)
         assertEquals("EVM_1:$txHash:0", result!!.idempotencyKey)
@@ -265,6 +277,7 @@ class AlchemyWebhookReceiverTest {
         blockNum: String = "0x1",
         logIndex: String? = "0x0",
         category: String = "token",
+        removed: Boolean = false,
     ): AlchemyActivity = AlchemyActivity(
         hash = txHash,
         fromAddress = "0xfrom",
@@ -272,7 +285,9 @@ class AlchemyWebhookReceiverTest {
         blockNum = blockNum,
         category = category,
         rawContract = AlchemyRawContract(rawValue = rawValue, address = contract, decimals = 6),
-        log = logIndex?.let { AlchemyLog(logIndex = it) },
+        log = AlchemyLog(logIndex = logIndex ?: "0x0", removed = removed).let {
+            if (logIndex == null) null else it
+        },
     )
 
     private fun computeHmac(key: String, body: String): String {

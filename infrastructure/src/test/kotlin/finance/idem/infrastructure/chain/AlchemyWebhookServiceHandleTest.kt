@@ -9,6 +9,7 @@ import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -17,22 +18,17 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import org.springframework.http.MediaType
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import java.time.Instant
 import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-class AlchemyWebhookReceiverIntegrationTest {
+class AlchemyWebhookServiceHandleTest {
 
-    private lateinit var mockMvc: MockMvc
     private lateinit var watchedAddressRepository: WatchedAddressRepository
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
+    private lateinit var service: AlchemyWebhookService
 
     private val signingKey = "test-webhook-signing-key"
     private val objectMapper = ObjectMapper().registerKotlinModule()
@@ -59,91 +55,70 @@ class AlchemyWebhookReceiverIntegrationTest {
         watchedAddressRepository = mock()
         checkpointRepository = mock()
         postTransactionUseCase = mock()
-
-        val receiver = AlchemyWebhookReceiver(
+        service = AlchemyWebhookService(
             watchedAddressRepository = watchedAddressRepository,
             chainCheckpointRepository = checkpointRepository,
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(alchemyWebhookSigningKey = signingKey),
         )
-        mockMvc = MockMvcBuilders.standaloneSetup(receiver).build()
     }
 
     @Test
-    fun `returns 401 when X-Alchemy-Signature header is missing and signing key is configured`() {
-        mockMvc.perform(
-            post("/internal/webhooks/alchemy")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(buildPayload(txHash, watchedWallet, usdcContract))
-        ).andExpect(status().isUnauthorized)
+    fun `returns failure when X-Alchemy-Signature is missing and signing key is configured`() {
+        val result = service.handle(null, buildPayload(txHash, watchedWallet, usdcContract))
 
+        assertTrue(result.isFailure)
         verify(postTransactionUseCase, never()).execute(any())
     }
 
     @Test
-    fun `returns 401 when X-Alchemy-Signature is wrong`() {
-        mockMvc.perform(
-            post("/internal/webhooks/alchemy")
-                .contentType(MediaType.APPLICATION_JSON)
-                .header("X-Alchemy-Signature", "deadbeef0000")
-                .content(buildPayload(txHash, watchedWallet, usdcContract))
-        ).andExpect(status().isUnauthorized)
+    fun `returns failure when X-Alchemy-Signature is wrong`() {
+        val result = service.handle("deadbeef0000", buildPayload(txHash, watchedWallet, usdcContract))
 
+        assertTrue(result.isFailure)
         verify(postTransactionUseCase, never()).execute(any())
     }
 
     @Test
-    fun `returns 200 when signing key is blank (dev mode — skips HMAC validation)`() {
-        val receiver = AlchemyWebhookReceiver(
+    fun `returns success when signing key is blank (dev mode — skips HMAC validation)`() {
+        val devService = AlchemyWebhookService(
             watchedAddressRepository = watchedAddressRepository,
             chainCheckpointRepository = checkpointRepository,
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(alchemyWebhookSigningKey = ""),
         )
-        val devMockMvc = MockMvcBuilders.standaloneSetup(receiver).build()
-
         whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(emptyList())
 
-        devMockMvc.perform(
-            post("/internal/webhooks/alchemy")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(buildPayload(txHash, watchedWallet, usdcContract))
-        ).andExpect(status().isOk)
+        val result = devService.handle(null, buildPayload(txHash, watchedWallet, usdcContract))
+
+        assertTrue(result.isSuccess)
     }
 
     @Test
-    fun `returns 200 and ignores non-ADDRESS_ACTIVITY webhooks`() {
+    fun `returns success and ignores non-ADDRESS_ACTIVITY webhooks`() {
         val body = """{"type":"NFT_ACTIVITY","event":{"network":"ETH_MAINNET","activity":[]}}"""
 
-        mockMvc.perform(
-            post("/internal/webhooks/alchemy")
-                .contentType(MediaType.APPLICATION_JSON)
-                .header("X-Alchemy-Signature", computeHmac(signingKey, body))
-                .content(body)
-        ).andExpect(status().isOk)
+        val result = service.handle(computeHmac(signingKey, body), body)
 
+        assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
     }
 
     @Test
-    fun `returns 200 and ignores unknown network`() {
+    fun `returns success and ignores unknown network`() {
         val body = """{"type":"ADDRESS_ACTIVITY","event":{"network":"UNKNOWN_CHAIN","activity":[]}}"""
 
-        mockMvc.perform(
-            post("/internal/webhooks/alchemy")
-                .contentType(MediaType.APPLICATION_JSON)
-                .header("X-Alchemy-Signature", computeHmac(signingKey, body))
-                .content(body)
-        ).andExpect(status().isOk)
+        val result = service.handle(computeHmac(signingKey, body), body)
 
+        assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
     }
 
     @Test
     fun `posts transaction and advances checkpoint for valid USDC transfer`() {
-        val body = buildPayload(txHash, watchedWallet, usdcContract, rawValue = "0x000f4240") // 1 USDC
+        val body = buildPayload(txHash, watchedWallet, usdcContract, rawValue = "0x000f4240")
 
         whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
         whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(
@@ -153,12 +128,9 @@ class AlchemyWebhookReceiverIntegrationTest {
             Result.success(TransactionId(UUID.randomUUID()))
         )
 
-        mockMvc.perform(
-            post("/internal/webhooks/alchemy")
-                .contentType(MediaType.APPLICATION_JSON)
-                .header("X-Alchemy-Signature", computeHmac(signingKey, body))
-                .content(body)
-        ).andExpect(status().isOk)
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
 
         val cmdCaptor = argumentCaptor<PostTransactionCommand>()
         verify(postTransactionUseCase).execute(cmdCaptor.capture())
@@ -179,14 +151,34 @@ class AlchemyWebhookReceiverIntegrationTest {
         whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
         whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(null)
 
-        mockMvc.perform(
-            post("/internal/webhooks/alchemy")
-                .contentType(MediaType.APPLICATION_JSON)
-                .header("X-Alchemy-Signature", computeHmac(signingKey, body))
-                .content(body)
-        ).andExpect(status().isOk)
+        val result = service.handle(computeHmac(signingKey, body), body)
 
+        assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
+    }
+
+    @Test
+    fun `advances checkpoint to payload max block even when no activities match watched addresses`() {
+        // Payload has an activity at block 0x12a05f2 (19_531_250) but toAddress is not watched.
+        // Checkpoint should still advance so the fallback reader skips these blocks on recovery.
+        val unmatchedBody = buildPayload(
+            txHash = txHash,
+            toAddress = "0xffffffffffffffffffffffffffffffffffffffff",
+            contract = usdcContract,
+            blockNum = "0x12a05f2", // 19_531_250
+        )
+
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(
+            ChainCheckpoint("EVM_1", 19_000_000L, Instant.now())
+        )
+
+        val result = service.handle(computeHmac(signingKey, unmatchedBody), unmatchedBody)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase, never()).execute(any())
+        // Checkpoint must advance to the block in the payload even though nothing matched.
+        verify(checkpointRepository).save("EVM_1", 19_531_250L)
     }
 
     private fun buildPayload(

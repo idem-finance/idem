@@ -2,6 +2,7 @@ package finance.idem.infrastructure.chain
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import finance.idem.application.chain.AlchemyWebhookPort
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
@@ -14,61 +15,56 @@ import finance.idem.core.TenantId
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
 import org.slf4j.LoggerFactory
-import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestHeader
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-@RestController
-@RequestMapping("/internal/webhooks")
-class AlchemyWebhookReceiver(
+@Service
+class AlchemyWebhookService(
     private val watchedAddressRepository: WatchedAddressRepository,
     private val chainCheckpointRepository: ChainCheckpointRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
     private val objectMapper: ObjectMapper,
     private val config: ChainConfig,
-) {
+) : AlchemyWebhookPort {
+
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @PostMapping("/alchemy")
-    fun receive(
-        @RequestHeader(value = "X-Alchemy-Signature", required = false) signature: String?,
-        @RequestBody rawBody: String,
-    ): ResponseEntity<Void> {
+    override fun handle(signature: String?, rawBody: String): Result<Unit> {
         val signingKey = config.alchemyWebhookSigningKey
         if (signingKey.isNotBlank()) {
             if (signature == null || !isValidSignature(signingKey, rawBody, signature)) {
                 log.warn("Alchemy webhook rejected — invalid or missing X-Alchemy-Signature")
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+                return Result.failure(IllegalArgumentException("Invalid or missing X-Alchemy-Signature"))
             }
         } else {
             log.warn("Alchemy webhook signing key not configured — HMAC validation skipped (dev mode)")
         }
 
         val payload = objectMapper.readValue<AlchemyWebhookPayload>(rawBody)
-        if (payload.type != ADDRESS_ACTIVITY_TYPE) return ResponseEntity.ok().build()
+        if (payload.type != ADDRESS_ACTIVITY_TYPE) return Result.success(Unit)
 
         val chainKey = networkToChainKey(payload.event.network) ?: run {
             log.warn("Alchemy webhook: unrecognised network '${payload.event.network}' — ignoring")
-            return ResponseEntity.ok().build()
+            return Result.success(Unit)
         }
 
         val watched = watchedAddressRepository.findByChainKey(chainKey)
-        if (watched.isEmpty()) return ResponseEntity.ok().build()
+        if (watched.isEmpty()) return Result.success(Unit)
 
-        var maxBlock = chainCheckpointRepository.findByChainKey(chainKey)?.lastBlock ?: 0L
+        val existingCheckpoint = chainCheckpointRepository.findByChainKey(chainKey)?.lastBlock ?: 0L
+
+        // Advance checkpoint to the max block in the entire payload, regardless of whether any
+        // activities matched watched addresses — prevents the fallback EvmChainReader from
+        // re-scanning already-delivered blocks on recovery.
+        val payloadMaxBlock = payload.event.activity
+            .mapNotNull { it.blockNum.removePrefix("0x").toLongOrNull(16) }
+            .maxOrNull() ?: 0L
 
         for (activity in payload.event.activity) {
             val transfer = decodeActivity(activity, chainKey, watched) ?: continue
-            maxBlock = maxOf(maxBlock, transfer.entry.blockNumber)
-
             postTransactionUseCase.execute(buildCommand(transfer)).onFailure { error ->
                 log.error(
                     "Alchemy webhook: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
@@ -76,9 +72,13 @@ class AlchemyWebhookReceiver(
             }
         }
 
-        if (maxBlock > 0L) chainCheckpointRepository.save(chainKey, maxBlock)
+        val newCheckpoint = maxOf(existingCheckpoint, payloadMaxBlock)
+        if (newCheckpoint > existingCheckpoint) {
+            runCatching { chainCheckpointRepository.save(chainKey, newCheckpoint) }
+                .onFailure { log.error("Alchemy webhook: failed to advance checkpoint for $chainKey to $newCheckpoint", it) }
+        }
 
-        return ResponseEntity.ok().build()
+        return Result.success(Unit)
     }
 
     internal fun decodeActivity(
@@ -87,6 +87,7 @@ class AlchemyWebhookReceiver(
         watched: List<WatchedAddress>,
     ): DetectedTransfer? {
         if (activity.category != "token") return null
+        if (activity.log?.removed == true) return null
 
         val toAddress = activity.toAddress.lowercase()
         val rawContract = activity.rawContract ?: return null
