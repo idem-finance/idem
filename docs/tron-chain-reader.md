@@ -1,34 +1,15 @@
 # Idem — Tron Chain Reader (Tronscan REST)
 
 > Infrastructure module (`finance.idem.infrastructure.chain`).
-> Polls the Tronscan REST API for incoming TRC-20 transfers into watched wallet addresses
-> and converts them into `DetectedTransfer` records that feed the ledger.
+> **Primary (and only) mechanism for Tron** — called on a `@Scheduled` timer by
+> `ChainReaderOrchestrator` (#76). Tron has no webhook or WebSocket API, so polling is
+> both the correct and the only approach. Block time: 3 seconds; poll interval: 5 seconds.
 
 ---
 
 ## Why polling (and why Tronscan)
 
-Tron has a **3-second block time** — the fastest of the three chains Idem supports.
-At that cadence, polling every 5 seconds is appropriate and a webhook/WebSocket mechanism
-adds no meaningful latency benefit. Tronscan has no webhook or WebSocket subscription API,
-so polling is both the correct and the only approach.
-
-The Tronscan REST API (`https://apilist.tronscan.org`) is pure HTTP, language-agnostic,
-and requires no SDK. `java.net.http.HttpClient` + Jackson (already on the classpath for
-`SolanaChainReader`) is the complete implementation stack.
-
-No SDK was considered because none is needed — the API is a simple paginated JSON feed.
-
----
-
-## Primary vs fallback role
-
-**`TronChainReader` is the primary (and only) mechanism for Tron.**
-
-Unlike EVM (where `AlchemyWebhookReceiver` is primary and `EvmChainReader` is fallback)
-and Solana (where `SolanaWebSocketManager` is primary and `SolanaChainReader` is fallback),
-Tron has no event-push option. `TronChainReader` is called on a `@Scheduled` timer by
-`ChainReaderOrchestrator` (#76) — this is intentional, not a gap.
+Tronscan's public REST API is pure HTTP and requires no SDK. `java.net.http.HttpClient` + Jackson (already on the classpath for `SolanaChainReader`) is the complete stack. Unlike EVM (`AlchemyWebhookReceiver`) and Solana (`SolanaWebSocketManager`), Tron has no event-push option — polling is intentional, not a gap.
 
 ---
 
@@ -39,51 +20,46 @@ Tron has no event-push option. `TronChainReader` is called on a `@Scheduled` tim
 | USDT | `TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t` | 6 |
 | USDC | `TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8` | 6 |
 
-Contract addresses are stored in `watched_addresses.token_contract` — the reader uses
-that value, not a hardcoded constant. `decimalsFor()` validates the on-chain decimal
-count against the expected value; a mismatch logs an error and skips the transfer.
+Contract addresses are stored in `watched_addresses.token_contract`. `decimalsFor()` validates the on-chain decimal count — a mismatch logs an error and skips the transfer.
 
 ---
 
 ## Component overview
 
+`EvmChainReaderFactory` creates exactly one `TronChainReader` when `idem.chain.tron.api-url` is non-blank. A single reader handles all Tron watched addresses, issuing one paginated API call per address.
+
 ```mermaid
 graph TD
     subgraph core
         ChainCheckpoint["ChainCheckpoint\n(chainKey='TRON', lastBlock)"]
-        OnChainEntry["OnChainEntry\n(amount, token, chainId=TRON,\ntxHash, blockNumber,\nwalletAddress, tokenContract)"]
+        OnChainEntry["OnChainEntry\n(chainId=TRON)"]
     end
 
     subgraph infrastructure.chain
         CR["ChainReader\n«interface»"]
         TCR["TronChainReader"]
         FACTORY["EvmChainReaderFactory\n@Configuration"]
-        WA["WatchedAddress\n(chainKey='TRON', walletAddress,\ntokenContract, token, tenantId)"]
-        DT["DetectedTransfer\n(idempotencyKey, entry, watchedAddress)"]
-        WAR["WatchedAddressRepository\n«interface»"]
+        DT["DetectedTransfer"]
+        WAR["WatchedAddressRepository"]
     end
 
     subgraph tronscan["Tronscan REST API"]
         TAPI["GET /api/token_trc20/transfers\n?relatedAddress=&token_address=\n&start=&limit=50"]
     end
 
-    subgraph orchestrator["ChainReaderOrchestrator (pending — #76)"]
-        ORCH["@Scheduled(fixedDelay=5000)\n→ calls poll() on TronChainReader\n→ advances ChainCheckpoint"]
+    subgraph orchestrator["ChainReaderOrchestrator (#76)"]
+        ORCH["@Scheduled(fixedDelay=5000)"]
     end
 
-    FACTORY -->|"creates if tron.api-url non-blank"| TCR
+    FACTORY -->|"creates if tron.api-url set"| TCR
     TCR -->|"implements"| CR
     TCR -->|"queries"| WAR
-    TCR -->|"HTTP GET per address+contract"| TAPI
+    TCR -->|"HTTP GET per address"| TAPI
     TAPI -->|"List<TronTransfer>"| TCR
     TCR -->|"produces"| DT
     DT -->|"entry field"| OnChainEntry
     ORCH -->|"calls poll(checkpoint)"| CR
 ```
-
-`EvmChainReaderFactory` creates exactly one `TronChainReader` when `idem.chain.tron.api-url`
-is non-blank. A single reader handles all Tron watched addresses — it iterates each
-`WatchedAddress` row with `chainKey = 'TRON'` and issues one paginated API call per address.
 
 ---
 
@@ -91,6 +67,7 @@ is non-blank. A single reader handles all Tron watched addresses — it iterates
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Orchestrator as ChainReaderOrchestrator\n(@Scheduled every 5s)
     participant TCR as TronChainReader
     participant TAPI as Tronscan REST API
@@ -104,11 +81,10 @@ sequenceDiagram
     WA-->>TCR: List<WatchedAddress>
 
     loop for each WatchedAddress
-        loop paginate while page is full and all blocks > checkpoint
-            TCR->>TAPI: GET /api/token_trc20/transfers\n?relatedAddress=&token_address=&start=N&limit=50
-            TAPI-->>TCR: List<TronTransfer> (newest first)
-            TCR->>TCR: takeWhile blockId > checkpoint
-            TCR->>TCR: sleep 200ms (rate limit)
+        loop paginate while page full and all blocks > checkpoint
+            TCR->>TAPI: GET /api/token_trc20/transfers?relatedAddress=&start=N&limit=50
+            TAPI-->>TCR: List<TronTransfer> newest-first
+            TCR->>TCR: takeWhile blockId > checkpoint + sleep 200ms
         end
         TCR->>TCR: sortBy blockId ascending
         loop for each TronTransfer
@@ -121,110 +97,133 @@ sequenceDiagram
         PS->>DB: save Transaction + AuditEntry + WebhookOutbox (one @Transactional)
     end
 
-    Orchestrator->>DB: save ChainCheckpoint(lastBlock = max blockId seen)
+    Orchestrator->>DB: save ChainCheckpoint(lastBlock = max blockId)
 ```
 
-The checkpoint and ledger write must be atomic — a crash between them would either skip
-transfers (checkpoint advances first) or produce duplicates (commit advances first).
-The idempotency key is the safety net for the overlap window on re-scan.
+**Walk-through example**
+
+A customer sends 25 USDT TRC-20 to your watched address `TAbcxyz...`. Because Tron has a 3-second block time, the transfer is confirmed within seconds and appears on Tronscan almost immediately. The scheduler fires every 5 seconds:
+
+1. Orchestrator fires on `@Scheduled(fixedDelay=5000)`.
+2. Reads the checkpoint for `TRON`: `lastBlock = 62,000,000`.
+3. Calls `TronChainReader.poll(checkpoint = 62,000,000)`.
+4. Reader fetches watched addresses for `TRON` — e.g., `walletAddress = TAbcxyz...`, `tokenContract = TR7NHqje...` (USDT).
+5. Calls `GET /api/token_trc20/transfers?relatedAddress=TAbcxyz...&token_address=TR7NHqje...&start=0&limit=50`. Sleeps 200ms.
+6. Tronscan returns 3 transfers newest-first; all have `blockId > 62,000,000`. Since fewer than 50 were returned (partial page), stops paginating.
+7. Sorts ascending by `blockId`.
+8. Runs `decodeTransfer(...)` on each. The most recent one: `to = TAbcxyz...`, `quant = 25,000,000` → `25,000,000 × 10⁻⁶ = 25.000000 USDT`.
+9. Emits `DetectedTransfer` with key `TRON:abc123txhash`. The pending entry is now settled.
+10. Checkpoint advances to the highest `blockId` seen — the next scheduler tick will only look at newer blocks.
+
+The checkpoint and ledger write are atomic — the idempotency key is the safety net for re-scan overlap.
 
 ---
 
 ## Pagination algorithm
 
-Tronscan returns transfers in **newest-first** order. The reader paginates backward
-using an offset (`start`) until it hits the checkpoint boundary:
+Tronscan returns transfers newest-first, paginated by offset (`start`):
 
 ```mermaid
 flowchart TD
-    A([poll called: checkpoint]) --> B["fetch watched = WatchedAddressRepository.findByChainKey('TRON')"]
+    A([poll]) --> B["① fetch watchedAddresses\n   for chainKey='TRON'"]
     B --> C{watched empty?}
-    C -- yes --> Z([return empty list])
-    C -- no --> D["for each WatchedAddress"]
+    C -- yes --> Z([return empty])
+    C -- no --> D["② for each WatchedAddress\n   start = 0, collected = []"]
 
-    D --> E["start = 0\ncollected = []"]
-    E --> F["fetchPage(address, contract, start)\nsleep 200ms"]
-    F --> G{page empty?}
-    G -- yes --> SORT
-    G -- no --> H["relevant = page.takeWhile blockId > checkpoint"]
-    H --> I["collected += relevant"]
-    I --> J{relevant.size < page.size\nOR page.size < pageSize?}
-    J -- yes --> SORT
-    J -- no --> K["start += pageSize"]
-    K --> F
+    D --> E["③ fetchPage(address, contract, start)\n   sleep 200ms — rate limit"]
+    E --> F{page empty?}
+    F -- yes --> SORT
+    F -- no --> G["④ relevant = page.takeWhile blockId > checkpoint"]
+    G --> H["collected += relevant"]
+    H --> I{partial page?}
+    I -- yes, done --> SORT
+    I -- no --> J["⑤ start += pageSize"]
+    J --> E
 
-    SORT["collected.sortedBy blockId"] --> MAP["mapNotNull decodeTransfer"]
-    MAP --> Z2([return DetectedTransfers for this address])
+    SORT["⑥ sortedBy blockId"] --> MAP["⑦ mapNotNull decodeTransfer"]
+    MAP --> Z2([return DetectedTransfers])
 ```
 
-`pageSize` defaults to 50 (Tronscan's recommended max). It is injectable for tests
-(set to 2 in integration tests to trigger pagination with small fixtures).
+**Walk-through example:** wallet received 120 new transfers since last checkpoint (page size = 50)
+
+| Step | `start` | Transfers returned | Above checkpoint | Continue? |
+|---|---|---|---|---|
+| ① | 0 | 50 | 50 | yes — full page |
+| ② | 50 | 50 | 50 | yes — full page |
+| ③ | 100 | 50 | 20 (30 are older) | no — partial result, stop |
+
+Total collected: 120 → sorted ascending by `blockId` → decoded one by one. Each page fetch includes a 200ms sleep before the next request.
+
+`pageSize` defaults to 50 (Tronscan's recommended max). Set to 2 in integration tests to exercise pagination with small fixtures.
 
 ---
 
-## Transfer decoding
+## Transfer decode
 
 ```mermaid
 flowchart TD
-    A([decodeTransfer called]) --> B{toAddress ==\nwatchedAddress?}
+    A([decodeTransfer]) --> B{"① toAddress ==\nwatchedAddress?"}
     B -- no → outgoing --> SKIP([return null])
-    B -- yes --> C{tokenInfo.tokenId ==\ntokenContract?}
+    B -- yes --> C{"② tokenInfo.tokenId ==\ntokenContract?"}
     C -- no → wrong contract --> SKIP
-    C -- yes --> D{finalResult != null\nAND != 'SUCCESS'?}
-    D -- yes → failed tx --> SKIP
-    D -- no --> E{decimalsFor token\n== tokenInfo.decimals?}
-    E -- no → mismatch --> SKIP
-    E -- yes --> F["rawAmount = quant.toLongOrNull()"]
-    F --> G{rawAmount null\nOR <= 0?}
+    C -- yes --> D{"③ finalResult == null\nor 'SUCCESS'?"}
+    D -- no → failed tx --> SKIP
+    D -- yes --> E{"④ decimalsFor(token)\n== tokenInfo.decimals?"}
+    E -- no → mismatch --> ERR["log ERROR, skip"] --> SKIP
+    E -- yes --> F["⑤ rawAmount = quant.toLong()"]
+    F --> G{rawAmount null or <= 0?}
     G -- yes --> SKIP
-    G -- no --> H["amount = BigDecimal(rawAmount).movePointLeft(decimals)"]
-    H --> I([return DetectedTransfer])
+    G -- no --> H["⑥ amount = rawAmount × 10⁻⁶"]
+    H --> Z([return DetectedTransfer])
 ```
 
-**`finalResult` handling:** some older Tronscan responses omit the field entirely.
-A `null` value is treated as successful (processed); only an explicit non-`"SUCCESS"` value
-causes the transfer to be skipped.
+**Walk-through example:** a Tronscan transfer record for a 25 USDT payment
 
-**Address normalisation:** both `toAddress` and `tokenInfo.tokenId` are lowercased in the
-produced `OnChainEntry`. Tronscan addresses are base58-encoded and mixed-case — lowercasing
-before storage ensures consistent matching against `WatchedAddress` rows.
+```json
+{
+  "to":          "TAbcxyz...",
+  "from":        "TSomeSender...",
+  "tokenInfo":   { "tokenId": "TR7NHqje...", "decimals": "6" },
+  "finalResult": "SUCCESS",
+  "quant":       "25000000"
+}
+```
+
+1. `to ("TAbcxyz...") == walletAddress ("TAbcxyz...")` → incoming transfer, continue
+2. `tokenInfo.tokenId ("TR7NHqje...") == tokenContract ("TR7NHqje...")` → correct USDT contract, continue
+3. `finalResult == "SUCCESS"` → transaction not failed, continue
+4. `decimalsFor(USDT) == 6 == tokenInfo.decimals` → correct precision, continue
+5. `rawAmount = toLong("25000000") = 25,000,000`, positive → continue
+6. `amount = 25,000,000 × 10⁻⁶ = 25.000000 USDT`
+7. Return `DetectedTransfer` with key `TRON:abc123txhash`
+
+**Rejection examples:**
+- `to` doesn't match `walletAddress` → outgoing transfer (your wallet sent, didn't receive); skip
+- `finalResult = "REVERT"` or `"FAILED"` → smart contract rejected the transfer on-chain; skip
+- `tokenId` is a different TRC-20 (e.g. a random token sent to the watched address) → step ② skips it
+- `quant = "0"` → zero-value event (approval or dust); skip
+
+**`finalResult` note:** older Tronscan responses omit this field. `null` is treated as success; only an explicit non-`"SUCCESS"` value causes the transfer to be skipped.
+
+Both `toAddress` and `tokenInfo.tokenId` are lowercased in the produced `OnChainEntry` — Tronscan addresses are base58-encoded and mixed-case.
 
 ---
 
 ## Idempotency
 
-Every detected transfer gets the key `TRON:{transaction_id}`.
+Key format: `TRON:{transaction_id}`
 
-Tron transactions can only emit one relevant TRC-20 transfer per token contract in normal
-operation (unlike EVM, which can have multiple `Transfer` log events per transaction).
-Including `logIndex` in the key is therefore unnecessary — the transaction ID alone is
-sufficient for deduplication. On a re-scan, `PostTransactionService` returns the cached
-`TransactionId` without re-executing.
+Tron transactions emit one TRC-20 transfer per token contract — no `logIndex` needed (unlike EVM). On re-scan, `PostTransactionService` returns the cached result without re-executing.
 
 ---
 
 ## Rate limiting
 
-Tronscan's public API enforces a rate limit. The reader sleeps **200ms after every HTTP
-request** before issuing the next. This is enforced in `sleepForRateLimit()`, called
-immediately after each `fetchPage()` regardless of result.
-
-In tests, `requestDelayMs` is injected as `0` to avoid slow test suites.
-
----
-
-## Decimal precision
-
-Both USDT and USDC on Tron use **6 decimals** (same as EVM). `decimalsFor()` validates
-the on-chain `token_info.decimals` value:
-- If it matches the expected value for the token → proceed
-- If it doesn't → log error, skip the transfer (never silently miscompute an amount)
+Tronscan's public API enforces a rate limit. The reader sleeps **200ms after every HTTP request** in `sleepForRateLimit()`. Inject `requestDelayMs = 0` in tests.
 
 ---
 
 ## Configuration
-
-Properties are bound under `idem.chain` via `@ConfigurationProperties`:
 
 ```yaml
 idem:
@@ -233,16 +232,13 @@ idem:
       api-url: https://apilist.tronscan.org
 ```
 
-`api-url` defaults to blank — the Tron reader is **disabled unless explicitly configured**,
-matching the opt-in behaviour of the EVM and Solana readers. In production, consider a
-dedicated Tronscan Pro API key and endpoint for higher rate limits.
+`api-url` defaults to blank — the Tron reader is disabled unless explicitly configured. In production, consider a Tronscan Pro API key for higher rate limits.
 
 ---
 
 ## Lifecycle and shutdown
 
-`TronChainReader` implements `Closeable`. `EvmChainReaderFactory.@PreDestroy` calls
-`close()` on all `Closeable` readers, which shuts down the underlying `HttpClient`:
+`TronChainReader` implements `Closeable`. `EvmChainReaderFactory.@PreDestroy` calls `close()` on all `Closeable` readers:
 
 ```kotlin
 @PreDestroy
@@ -254,32 +250,26 @@ fun shutdown() {
 
 ---
 
-## Error handling contract
+## Error handling
 
-| Condition | Behaviour |
+| Category | Behaviour |
 |---|---|
-| Tronscan HTTP non-200 | Log WARN, return `null` from `httpGet` → page treated as empty |
-| JSON parse failure | Log WARN, return empty page |
-| `quant` not parseable as Long | Log WARN, skip transfer |
-| `finalResult != "SUCCESS"` (and non-null) | Skip transfer silently |
-| `finalResult == null` | Treated as success — older API responses omit field |
-| `tokenInfo.decimals` mismatch | Log ERROR, skip transfer |
-| Unsupported token type (e.g. BRZ) | Log ERROR, skip transfer |
-| Tronscan network exception | Log WARN, return empty page — orchestrator continues |
+| HTTP non-200 or JSON parse failure | Log WARN, return empty page — orchestrator continues |
+| `finalResult != "SUCCESS"` (non-null) | Skip silently |
+| `tokenInfo.decimals` mismatch | Log ERROR, skip |
+| Unsupported token | Log ERROR, skip |
+| Unparseable or non-positive `quant` | Log WARN, skip |
 
-The orchestrator must catch all exceptions thrown by `poll()` without propagating — a
-single failing reader must not terminate the polling loop for other chains.
+The orchestrator must catch all exceptions without propagating — a failing reader must not terminate the polling loop for other chains.
 
 ---
 
 ## Test coverage
 
-| Test class | Type | What it covers |
-|---|---|---|
-| `TronChainReaderTest` | Unit (Mockito) | `decodeTransfer`: USDT/USDC happy path, outgoing transfer, contract mismatch, FAILED finalResult, null finalResult, unsupported token, decimal mismatch, unparseable quant, zero/negative amount, case-insensitive address/contract, lowercase normalisation; empty repo fast-path; `close()` |
-| `TronChainReaderIntegrationTest` | Integration (WireMock) | Full `poll()` path: happy-path USDT detection, checkpoint boundary filter, empty response, outgoing transfer skipped, FAILED result skipped, pagination with offset, ascending sort |
-
-Run with:
+| Test class | Type |
+|---|---|
+| `TronChainReaderTest` | Unit (Mockito) |
+| `TronChainReaderIntegrationTest` | Integration (WireMock) |
 
 ```bash
 rtk test mvn test -pl infrastructure
