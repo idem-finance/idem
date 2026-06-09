@@ -74,12 +74,43 @@ class EvmChainReaderFactoryTest {
     }
 
     @Test
-    fun `solana reader implements Closeable — shutdown closes it`() {
-        val config = ChainConfig(solana = SolanaNetworkConfig("http://solana-rpc"))
+    fun `creates tron reader when tron api url is non-blank`() {
+        val config = ChainConfig(
+            tron = TronNetworkConfig("https://apilist.tronscan.org"),
+        )
+
+        val readers = EvmChainReaderFactory(config, mockRepo).chainReaders()
+
+        assertEquals(1, readers.size)
+        assertEquals("TRON", readers[0].chainKey)
+    }
+
+    @Test
+    fun `creates evm solana and tron readers together`() {
+        val config = ChainConfig(
+            evm = EvmNetworkConfig("http://eth-rpc"),
+            solana = SolanaNetworkConfig("http://solana-rpc"),
+            tron = TronNetworkConfig("https://apilist.tronscan.org"),
+        )
+
+        val readers = EvmChainReaderFactory(config, mockRepo).chainReaders()
+
+        assertEquals(3, readers.size)
+        assertEquals("EVM_1", readers[0].chainKey)
+        assertEquals("SOLANA", readers[1].chainKey)
+        assertEquals("TRON", readers[2].chainKey)
+    }
+
+    @Test
+    fun `solana and tron readers implement Closeable — shutdown closes them`() {
+        val config = ChainConfig(
+            solana = SolanaNetworkConfig("http://solana-rpc"),
+            tron = TronNetworkConfig("https://apilist.tronscan.org"),
+        )
         val factory = EvmChainReaderFactory(config, mockRepo)
         factory.chainReaders()
 
-        // Must not throw — verifies the Closeable shutdown path is wired
+        // Must not throw — verifies the Closeable shutdown path is wired for both readers
         factory.shutdown()
     }
 }

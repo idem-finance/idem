@@ -120,6 +120,10 @@
                         <exclude>finance/idem/infrastructure/chain/DetectedTransfer*</exclude>
                         <!-- SolanaChainReader inner data classes — Kotlin-generated synthetic bytecode -->
                         <exclude>finance/idem/infrastructure/chain/SolanaChainReader$*</exclude>
+                        <!-- TronChainReader inner data classes — Kotlin-generated synthetic bytecode -->
+                        <exclude>finance/idem/infrastructure/chain/TronChainReader$*</exclude>
+                        <!-- TronNetworkConfig — Kotlin data class synthetic branches -->
+                        <exclude>finance/idem/infrastructure/chain/TronNetworkConfig*</exclude>
                     </excludes>
                 </configuration>
             </plugin>

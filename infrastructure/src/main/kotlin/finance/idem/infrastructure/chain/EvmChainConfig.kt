@@ -8,6 +8,7 @@ data class ChainConfig(
     val evmBase: EvmNetworkConfig = EvmNetworkConfig(),
     val evmPolygon: EvmNetworkConfig = EvmNetworkConfig(),
     val solana: SolanaNetworkConfig = SolanaNetworkConfig(),
+    val tron: TronNetworkConfig = TronNetworkConfig(),
 )
 
 data class EvmNetworkConfig(
@@ -16,4 +17,8 @@ data class EvmNetworkConfig(
 
 data class SolanaNetworkConfig(
     val rpcUrl: String = "",
+)
+
+data class TronNetworkConfig(
+    val apiUrl: String = "",
 )
