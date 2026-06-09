@@ -1,0 +1,180 @@
+package finance.idem.infrastructure.chain
+
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import finance.idem.application.ledger.JournalLineRequest
+import finance.idem.application.ledger.PostTransactionCommand
+import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.core.AccountId
+import finance.idem.core.ChainId
+import finance.idem.core.EntryType
+import finance.idem.core.MonetaryAmount
+import finance.idem.core.StablecoinToken
+import finance.idem.core.TenantId
+import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.monetary.OnChainEntry
+import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
+import java.math.BigDecimal
+import java.security.MessageDigest
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+
+@RestController
+@RequestMapping("/internal/webhooks")
+class AlchemyWebhookReceiver(
+    private val watchedAddressRepository: WatchedAddressRepository,
+    private val chainCheckpointRepository: ChainCheckpointRepository,
+    private val postTransactionUseCase: PostTransactionUseCase,
+    private val objectMapper: ObjectMapper,
+    private val config: ChainConfig,
+) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    @PostMapping("/alchemy")
+    fun receive(
+        @RequestHeader(value = "X-Alchemy-Signature", required = false) signature: String?,
+        @RequestBody rawBody: String,
+    ): ResponseEntity<Void> {
+        val signingKey = config.alchemyWebhookSigningKey
+        if (signingKey.isNotBlank()) {
+            if (signature == null || !isValidSignature(signingKey, rawBody, signature)) {
+                log.warn("Alchemy webhook rejected — invalid or missing X-Alchemy-Signature")
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+            }
+        } else {
+            log.warn("Alchemy webhook signing key not configured — HMAC validation skipped (dev mode)")
+        }
+
+        val payload = objectMapper.readValue<AlchemyWebhookPayload>(rawBody)
+        if (payload.type != ADDRESS_ACTIVITY_TYPE) return ResponseEntity.ok().build()
+
+        val chainKey = networkToChainKey(payload.event.network) ?: run {
+            log.warn("Alchemy webhook: unrecognised network '${payload.event.network}' — ignoring")
+            return ResponseEntity.ok().build()
+        }
+
+        val watched = watchedAddressRepository.findByChainKey(chainKey)
+        if (watched.isEmpty()) return ResponseEntity.ok().build()
+
+        var maxBlock = chainCheckpointRepository.findByChainKey(chainKey)?.lastBlock ?: 0L
+
+        for (activity in payload.event.activity) {
+            val transfer = decodeActivity(activity, chainKey, watched) ?: continue
+            maxBlock = maxOf(maxBlock, transfer.entry.blockNumber)
+
+            postTransactionUseCase.execute(buildCommand(transfer)).onFailure { error ->
+                log.error(
+                    "Alchemy webhook: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
+                )
+            }
+        }
+
+        if (maxBlock > 0L) chainCheckpointRepository.save(chainKey, maxBlock)
+
+        return ResponseEntity.ok().build()
+    }
+
+    internal fun decodeActivity(
+        activity: AlchemyActivity,
+        chainKey: String,
+        watched: List<WatchedAddress>,
+    ): DetectedTransfer? {
+        if (activity.category != "token") return null
+
+        val toAddress = activity.toAddress.lowercase()
+        val rawContract = activity.rawContract ?: return null
+        val contractAddress = rawContract.address?.lowercase() ?: return null
+
+        val watchedAddress = watched.firstOrNull {
+            it.walletAddress.lowercase() == toAddress &&
+                it.tokenContract.lowercase() == contractAddress
+        } ?: return null
+
+        val blockNumber = activity.blockNum.removePrefix("0x").toLongOrNull(16) ?: run {
+            log.warn("Alchemy webhook: unparseable blockNum '${activity.blockNum}' in tx=${activity.hash}")
+            return null
+        }
+
+        val logIndex = activity.log?.logIndex?.removePrefix("0x")?.toLongOrNull(16)?.toInt() ?: 0
+
+        val rawValueHex = rawContract.rawValue?.removePrefix("0x")?.takeIf { it.isNotBlank() } ?: run {
+            log.warn("Alchemy webhook: missing rawValue in tx=${activity.hash}")
+            return null
+        }
+        val rawAmount = rawValueHex.toBigIntegerOrNull(16) ?: run {
+            log.warn("Alchemy webhook: unparseable rawValue '${rawContract.rawValue}' in tx=${activity.hash}")
+            return null
+        }
+
+        val decimals = decimalsFor(watchedAddress.token) ?: run {
+            log.error("Alchemy webhook: unsupported token '${watchedAddress.token}' in tx=${activity.hash} — skipping")
+            return null
+        }
+
+        val amount = MonetaryAmount.of(BigDecimal(rawAmount).movePointLeft(decimals))
+        if (!amount.isPositive()) return null
+
+        return DetectedTransfer(
+            idempotencyKey = "$chainKey:${activity.hash}:$logIndex",
+            entry = OnChainEntry(
+                amount = amount,
+                token = watchedAddress.token,
+                chainId = ChainId.EVM,
+                txHash = activity.hash,
+                blockNumber = blockNumber,
+                walletAddress = toAddress,
+                tokenContract = contractAddress,
+            ),
+            watchedAddress = watchedAddress,
+        )
+    }
+
+    private fun buildCommand(transfer: DetectedTransfer): PostTransactionCommand {
+        val watched = transfer.watchedAddress
+        return PostTransactionCommand(
+            tenantId = TenantId.of(watched.tenantId),
+            idempotencyKey = transfer.idempotencyKey,
+            lines = listOf(
+                JournalLineRequest(AccountId.of(watched.debitAccountId), EntryType.DEBIT, transfer.entry),
+                JournalLineRequest(AccountId.of(watched.creditAccountId), EntryType.CREDIT, transfer.entry),
+            ),
+            createdBy = "alchemy-webhook",
+        )
+    }
+
+    companion object {
+        private const val ADDRESS_ACTIVITY_TYPE = "ADDRESS_ACTIVITY"
+
+        internal fun isValidSignature(signingKey: String, rawBody: String, signature: String): Boolean {
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(signingKey.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+            val expected = mac.doFinal(rawBody.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+            return MessageDigest.isEqual(
+                expected.toByteArray(Charsets.UTF_8),
+                signature.toByteArray(Charsets.UTF_8),
+            )
+        }
+
+        internal fun networkToChainKey(network: String): String? = when (network.uppercase()) {
+            "ETH_MAINNET" -> "EVM_1"
+            "BASE_MAINNET" -> "EVM_8453"
+            "MATIC_MAINNET" -> "EVM_137"
+            else -> null
+        }
+
+        internal fun decimalsFor(token: StablecoinToken): Int? = when (token) {
+            StablecoinToken.USDC -> 6
+            StablecoinToken.USDT -> 6
+            StablecoinToken.PYUSD -> 6
+            StablecoinToken.BRZ -> 18
+        }
+    }
+}

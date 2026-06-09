@@ -63,6 +63,12 @@
             <version>${web3j.version}</version>
         </dependency>
 
+        <!-- Spring Web MVC — AlchemyWebhookReceiver @RestController -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -120,6 +126,12 @@
                         <exclude>finance/idem/infrastructure/chain/DetectedTransfer*</exclude>
                         <!-- SolanaChainReader inner data classes — Kotlin-generated synthetic bytecode -->
                         <exclude>finance/idem/infrastructure/chain/SolanaChainReader$*</exclude>
+                        <!-- AlchemyWebhookPayload data classes — Kotlin-generated synthetic branches -->
+                        <exclude>finance/idem/infrastructure/chain/AlchemyWebhookPayload*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/AlchemyWebhookEvent*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/AlchemyActivity*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/AlchemyRawContract*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/AlchemyLog*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
