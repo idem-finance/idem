@@ -1,8 +1,8 @@
 # Idem — Solana Chain Reader
 
 > Infrastructure module (`finance.idem.infrastructure.chain`).
-> Polls Solana JSON-RPC for SPL token transfers into watched wallet addresses
-> and converts them into `DetectedTransfer` records that feed the ledger.
+> Fallback/recovery reader: replays missed Solana SPL token transfers from the last
+> `ChainCheckpoint` on startup. Primary detection is handled by `SolanaWebSocketManager` (#74).
 
 ---
 
@@ -45,8 +45,8 @@ graph TD
         WAP["WatchedAddressRepositoryAdapter"]
     end
 
-    subgraph scheduler["ChainReaderScheduler (pending — not yet wired)"]
-        SCHED["@Scheduled poller\n→ calls poll() per reader\n→ advances ChainCheckpoint"]
+    subgraph orchestrator["ChainReaderOrchestrator (pending — #76)"]
+        ORCH["ApplicationStartedEvent\n→ replay missed slots\nfrom last ChainCheckpoint\n(fallback/recovery only)"]
     end
 
     FACTORY -->|"creates"| SCR
@@ -58,28 +58,33 @@ graph TD
     WAR -->|"adapter"| WAP
     SCR -->|"produces"| DT
     DT -->|"entry field"| OnChainEntry
-    SCHED -->|"calls poll(checkpoint)"| CR
-    SCHED -->|"reads/saves"| CCP
+    ORCH -->|"calls poll(checkpoint)\non startup only"| CR
+    ORCH -->|"reads/saves"| CCP
     CCP -->|"persists"| ChainCheckpoint
 ```
 
-`EvmChainReaderFactory` is the Spring `@Configuration` that wires `SolanaChainReader` alongside the EVM readers at startup. All readers are returned as a single `List<ChainReader>` bean. The scheduler (not yet implemented) iterates this list on a fixed interval, calls `poll(checkpoint)` on each, persists detected transfers as ledger entries, and advances the checkpoint atomically.
+`EvmChainReaderFactory` is the Spring `@Configuration` that wires `SolanaChainReader` alongside the EVM and Tron readers at startup. All readers are returned as a single `List<ChainReader>` bean. `ChainReaderOrchestrator` (#76) calls `poll(checkpoint)` on `SolanaChainReader` once on `ApplicationStartedEvent` to replay any slots missed while the application was down — it is not called on a recurring schedule.
 
 ---
 
 ## Polling workflow
 
+> **Architecture note (revised Jun 2026):** `SolanaChainReader` is a **fallback/recovery reader**.
+> The primary Solana event source is `SolanaWebSocketManager` (issue #74).
+> `SolanaChainReader.poll()` is called once on startup by `ChainReaderOrchestrator` (#76)
+> to replay any slots missed while the application was down.
+
 ```mermaid
 sequenceDiagram
-    participant Scheduler
+    participant Orchestrator as ChainReaderOrchestrator\n(startup recovery)
     participant SCR as SolanaChainReader
     participant RPC as Solana JSON-RPC
     participant WA as WatchedAddressRepository
     participant PS as PostTransactionService
     participant DB as PostgreSQL
 
-    Scheduler->>DB: findByChainKey("SOLANA") → lastBlock (checkpoint)
-    Scheduler->>SCR: poll(checkpoint)
+    Orchestrator->>DB: findByChainKey("SOLANA") → lastBlock (checkpoint)
+    Orchestrator->>SCR: poll(checkpoint)
     SCR->>WA: findByChainKey("SOLANA")
     WA-->>SCR: List<WatchedAddress>
 
@@ -98,17 +103,17 @@ sequenceDiagram
             RPC-->>SCR: SolanaTransactionResult
             SCR->>SCR: decodeTransfer(tx, sig, slot, watchedAddress)
             alt transfer matches watched address + token
-                SCR-->>Scheduler: DetectedTransfer
+                SCR-->>Orchestrator: DetectedTransfer
             end
         end
     end
 
     loop for each DetectedTransfer
-        Scheduler->>PS: execute(PostTransactionCommand, idempotencyKey="SOLANA:{txHash}")
+        Orchestrator->>PS: execute(PostTransactionCommand, idempotencyKey="SOLANA:{txHash}")
         PS->>DB: save Transaction + AuditEntry + WebhookOutbox (one @Transactional)
     end
 
-    Scheduler->>DB: save ChainCheckpoint(lastBlock = maxSlot)
+    Orchestrator->>DB: save ChainCheckpoint(lastBlock = maxSlot)
 ```
 
 The checkpoint advance and the ledger write must happen in the same transaction to prevent a crash between the two from causing duplicate or missing entries. The idempotency key (`SOLANA:{txHash}`) is the safety net for any re-scan — the second attempt returns the cached result without re-executing.
@@ -133,7 +138,7 @@ flowchart TD
     Z --> H["sortBy { slot }  ← oldest-first"]
 ```
 
-**Why oldest-first after collection:** the scheduler advances the checkpoint to the highest slot seen. Processing in ascending order means a crash mid-batch leaves the checkpoint at the last successfully committed slot — the next run re-processes only the tail, not the whole page.
+**Why oldest-first after collection:** the orchestrator advances the checkpoint to the highest slot seen. Processing in ascending order means a crash mid-batch leaves the checkpoint at the last successfully committed slot — the next run re-processes only the tail, not the whole page.
 
 ---
 
@@ -242,7 +247,7 @@ Both are called with `encoding=json`, `commitment=confirmed`, and `maxSupportedT
 | Unparseable `amount` string | Log WARN, skip |
 | `delta <= 0` | Skip silently (outgoing transfer or no net change) |
 
-The scheduler must catch and log all exceptions thrown by `poll()` without propagating — a single failing chain reader must not terminate the polling loop for other chains.
+`ChainReaderOrchestrator` must catch and log all exceptions thrown by `poll()` without propagating — a single failing chain reader must not abort the startup recovery for other chains.
 
 ---
 
@@ -265,8 +270,7 @@ rtk test mvn test -pl infrastructure
 ## Related
 
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
-- `infrastructure/chain/EvmChainReader.kt` — EVM counterpart (Web3j `ethGetLogs`)
-- Issue [#48](https://github.com/idem-finance/idem/issues/48) — original spec and library evaluation record
+- `docs/evm-chain-reader.md` — EVM counterpart (Alchemy webhook primary, Web3j fallback)
+- `docs/tron-chain-reader.md` — Tron counterpart (Tronscan REST polling — primary and only)
+- Issues [#48](https://github.com/idem-finance/idem/issues/48), [#74](https://github.com/idem-finance/idem/issues/74), [#76](https://github.com/idem-finance/idem/issues/76)
 - PR [#70](https://github.com/idem-finance/idem/pull/70) — review findings and fixes applied
-
-> **Alchemy / EVM chain reader documentation** is tracked as a separate follow-up PR.
