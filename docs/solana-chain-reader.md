@@ -1,33 +1,33 @@
 # Idem — Solana Chain Reader
 
 > Infrastructure module (`finance.idem.infrastructure.chain`).
-> Polls Solana JSON-RPC for SPL token transfers into watched wallet addresses
-> and converts them into `DetectedTransfer` records that feed the ledger.
+> **Fallback/recovery reader** — called once on startup by `ChainReaderOrchestrator` (#76)
+> to replay missed SPL token transfers. Primary detection is `SolanaWebSocketManager` (#74).
 
 ---
 
 ## Why raw JSON-RPC (no SDK)
 
-Both Kotlin/Java Solana libraries were evaluated at integration time and are blocked:
+Both Kotlin/Java Solana libraries were evaluated and are blocked:
 
 | Library | Version | Blocker |
 |---|---|---|
-| **sol4k** | 0.7.0 | `getTransaction` is not implemented — cannot read `postTokenBalances` |
+| **sol4k** | 0.7.0 | `getTransaction` not implemented — cannot read `postTokenBalances` |
 | **SolanaJ** | 1.28.0 | `TokenBalance` missing `owner` field (open [issue #104](https://github.com/skynetcap/solanaj/issues/104)) |
 
-Without `owner`, there is no way to match a token balance entry to a watched wallet address — it is the sole filter criterion.
-
-`java.net.http.HttpClient` + Jackson is the intentional choice until one of these libraries closes its gap. Re-evaluate when sol4k ships `getTransaction` or SolanaJ fixes `TokenBalance.owner`.
+Without `owner`, there is no way to match a balance entry to a watched wallet. `java.net.http.HttpClient` + Jackson is the intentional choice until one of these libraries closes the gap.
 
 ---
 
 ## Component overview
 
+`EvmChainReaderFactory` wires `SolanaChainReader` alongside EVM and Tron readers at startup. `ChainReaderOrchestrator` calls `poll(checkpoint)` once on `ApplicationStartedEvent` — not on a recurring schedule.
+
 ```mermaid
 graph TD
     subgraph core
         ChainCheckpoint["ChainCheckpoint\n(chainKey, lastBlock)"]
-        OnChainEntry["OnChainEntry\n(amount, token, chainId,\ntxHash, blockNumber,\nwalletAddress, tokenContract)"]
+        OnChainEntry["OnChainEntry"]
     end
 
     subgraph infrastructure.chain
@@ -35,9 +35,8 @@ graph TD
         SCR["SolanaChainReader"]
         ECR["EvmChainReader"]
         FACTORY["EvmChainReaderFactory\n@Configuration"]
-        WA["WatchedAddress\n(chainKey, walletAddress,\ntokenContract, token,\ntenantId, debitAccountId,\ncreditAccountId)"]
-        DT["DetectedTransfer\n(idempotencyKey, entry, watchedAddress)"]
-        WAR["WatchedAddressRepository\n«interface»"]
+        DT["DetectedTransfer"]
+        WAR["WatchedAddressRepository"]
     end
 
     subgraph infrastructure.persistence.chain
@@ -45,8 +44,8 @@ graph TD
         WAP["WatchedAddressRepositoryAdapter"]
     end
 
-    subgraph scheduler["ChainReaderScheduler (pending — not yet wired)"]
-        SCHED["@Scheduled poller\n→ calls poll() per reader\n→ advances ChainCheckpoint"]
+    subgraph orchestrator["ChainReaderOrchestrator (#76)"]
+        ORCH["ApplicationStartedEvent\n→ startup recovery only"]
     end
 
     FACTORY -->|"creates"| SCR
@@ -54,16 +53,13 @@ graph TD
     SCR -->|"implements"| CR
     ECR -->|"implements"| CR
     SCR -->|"queries"| WAR
-    ECR -->|"queries"| WAR
     WAR -->|"adapter"| WAP
     SCR -->|"produces"| DT
     DT -->|"entry field"| OnChainEntry
-    SCHED -->|"calls poll(checkpoint)"| CR
-    SCHED -->|"reads/saves"| CCP
+    ORCH -->|"calls poll(checkpoint)\non startup only"| CR
+    ORCH -->|"reads/saves"| CCP
     CCP -->|"persists"| ChainCheckpoint
 ```
-
-`EvmChainReaderFactory` is the Spring `@Configuration` that wires `SolanaChainReader` alongside the EVM readers at startup. All readers are returned as a single `List<ChainReader>` bean. The scheduler (not yet implemented) iterates this list on a fixed interval, calls `poll(checkpoint)` on each, persists detected transfers as ledger entries, and advances the checkpoint atomically.
 
 ---
 
@@ -71,129 +67,172 @@ graph TD
 
 ```mermaid
 sequenceDiagram
-    participant Scheduler
+    autonumber
+    participant Orchestrator as ChainReaderOrchestrator\n(startup recovery)
     participant SCR as SolanaChainReader
     participant RPC as Solana JSON-RPC
     participant WA as WatchedAddressRepository
     participant PS as PostTransactionService
     participant DB as PostgreSQL
 
-    Scheduler->>DB: findByChainKey("SOLANA") → lastBlock (checkpoint)
-    Scheduler->>SCR: poll(checkpoint)
+    Orchestrator->>DB: findByChainKey("SOLANA") → lastBlock (checkpoint)
+    Orchestrator->>SCR: poll(checkpoint)
     SCR->>WA: findByChainKey("SOLANA")
     WA-->>SCR: List<WatchedAddress>
 
     loop for each watched address
         SCR->>RPC: getSignaturesForAddress(address, limit, before?)
-        RPC-->>SCR: List<SignatureInfo> (newest-first)
-        SCR->>SCR: takeWhile { slot > checkpoint }
-        alt full page (size == pageSize)
+        RPC-->>SCR: List<SignatureInfo> newest-first
+        SCR->>SCR: takeWhile slot > checkpoint
+        alt full page → paginate
             SCR->>RPC: getSignaturesForAddress(..., before=lastSig)
             RPC-->>SCR: next page
         end
-        SCR->>SCR: sortBy { slot } → oldest-first
+        SCR->>SCR: sortBy slot → oldest-first
 
-        loop for each relevant signature (err == null)
+        loop for each signature
             SCR->>RPC: getTransaction(signature)
             RPC-->>SCR: SolanaTransactionResult
-            SCR->>SCR: decodeTransfer(tx, sig, slot, watchedAddress)
+            SCR->>SCR: decodeTransfer(...)
             alt transfer matches watched address + token
-                SCR-->>Scheduler: DetectedTransfer
+                SCR-->>Orchestrator: DetectedTransfer
             end
         end
     end
 
     loop for each DetectedTransfer
-        Scheduler->>PS: execute(PostTransactionCommand, idempotencyKey="SOLANA:{txHash}")
+        Orchestrator->>PS: execute(PostTransactionCommand, idempotencyKey="SOLANA:{txHash}")
         PS->>DB: save Transaction + AuditEntry + WebhookOutbox (one @Transactional)
     end
 
-    Scheduler->>DB: save ChainCheckpoint(lastBlock = maxSlot)
+    Orchestrator->>DB: save ChainCheckpoint(lastBlock = maxSlot)
 ```
 
-The checkpoint advance and the ledger write must happen in the same transaction to prevent a crash between the two from causing duplicate or missing entries. The idempotency key (`SOLANA:{txHash}`) is the safety net for any re-scan — the second attempt returns the cached result without re-executing.
+**Walk-through example**
+
+A customer sends 100 USDC on Solana to your watched address `Abc...xyz`. The transfer lands at slot `265,001,500`, but the app was down and missed the WebSocket event from `SolanaWebSocketManager`. On the next startup:
+
+1. Orchestrator reads the checkpoint for `SOLANA`: `lastBlock = 265,000,000`.
+2. Calls `SolanaChainReader.poll(checkpoint = 265,000,000)`.
+3. Reader fetches watched addresses — e.g., `walletAddress = Abc...xyz`, mint = `EPjFWdd5...` (USDC).
+4. Calls `getSignaturesForAddress("Abc...xyz", limit=1000)` — RPC returns up to 1 000 signatures newest-first.
+5. Filters: takes signatures with `slot > 265,000,000` — e.g., 12 signatures qualify.
+6. Page was not full (12 < 1000), so no further pagination needed.
+7. Sorts the 12 signatures oldest-first (ascending by slot).
+8. For each signature, calls `getTransaction(sig)` and runs `decodeTransfer(...)`.
+9. The transaction at slot `265,001,500` has `postTokenBalances`: `owner = Abc...xyz`, mint = USDC, delta = `100,000,000 × 10⁻⁶ = 100.000000 USDC`.
+10. Emits `DetectedTransfer` with key `SOLANA:5eR7...txhash`. The pending entry is now settled.
+11. Checkpoint advances to `265,001,500`.
+
+The idempotency key (`SOLANA:{txHash}`) guards against duplicates on re-scan.
 
 ---
 
 ## Pagination algorithm
 
-Solana's `getSignaturesForAddress` returns signatures newest-first, paginated via a `before` cursor (exclusive). A single poll must collect all signatures above the checkpoint before advancing.
+`getSignaturesForAddress` returns signatures newest-first, paginated via a `before` cursor. All signatures above the checkpoint are collected before processing.
 
 ```mermaid
 flowchart TD
-    A([start: before = null]) --> B["fetch page\ngetSignaturesForAddress(address, limit, before)"]
+    A([start: before = null]) --> B["① getSignaturesForAddress\n   (address, limit, before)"]
     B --> C{page empty?}
     C -- yes --> Z([return sorted list])
-    C -- no --> D["takeWhile { slot > checkpoint }\n→ relevant"]
-    D --> E[all += relevant]
+    C -- no --> D["② takeWhile slot > checkpoint\n   → relevant"]
+    D --> E["③ all += relevant"]
     E --> F{partial page?\npage.size < pageSize\nOR relevant.size < page.size}
-    F -- yes --> Z
-    F -- no --> G["before = page.last().signature"]
+    F -- yes, done --> Z
+    F -- no, paginate --> G["④ before = page.last().signature"]
     G --> B
-    Z --> H["sortBy { slot }  ← oldest-first"]
+    Z --> H["⑤ sortBy slot — oldest-first"]
 ```
 
-**Why oldest-first after collection:** the scheduler advances the checkpoint to the highest slot seen. Processing in ascending order means a crash mid-batch leaves the checkpoint at the last successfully committed slot — the next run re-processes only the tail, not the whole page.
+**Walk-through example:** wallet received 2 450 new signatures since the last checkpoint (page size = 1 000)
+
+| Step | Call | `before` cursor | Sigs returned | Above checkpoint | Continue? |
+|---|---|---|---|---|---|
+| ① | page 1 | `null` | 1 000 | 1 000 | yes — full page |
+| ② | page 2 | `sig_1000` | 1 000 | 1 000 | yes — full page |
+| ③ | page 3 | `sig_2000` | 450 | 450 | no — partial page, stop |
+
+Total collected: 2 450 → sorted oldest-first → each processed with `getTransaction`.
+
+**Why oldest-first:** processing ascending order means a crash mid-batch leaves the checkpoint at the last committed slot — the next run re-processes only the tail, not the whole page.
 
 ---
 
-## Transfer decode decision tree
+## Transfer decode
 
 ```mermaid
 flowchart TD
-    A([decodeTransfer called]) --> B{meta == null?}
-    B -- yes --> SKIP([return null])
-    B -- no --> C{meta.err != null?}
-    C -- yes --> SKIP
-    C -- no --> D{postTokenBalances\nhas entry where\nowner == walletAddress\nAND mint == tokenContract?}
-    D -- no --> E{any entry\nwith matching mint\nbut null owner?}
-    E -- yes --> WARN["WARN: legacy tx format\n(null owner)\nskip"] --> SKIP
-    E -- no --> SKIP
-    D -- yes --> F["receiving = matched entry"]
-    F --> G{token is\nUSDC or USDT?}
-    G -- no --> ERR1["ERROR: unsupported token\nskip"] --> SKIP
-    G -- yes --> H{receiving.decimals\n== 6?}
-    H -- no --> ERR2["ERROR: unexpected decimals\nskip"] --> SKIP
-    H -- yes --> I{postAmount\nparseable as Long?}
-    I -- no --> WARN2["WARN: unparseable amount\nskip"] --> SKIP
-    I -- yes --> J["delta = postAmount - preAmount\n(0 if no matching preBalance)"]
-    J --> K{delta <= 0?}
-    K -- yes --> SKIP
-    K -- no --> L["amount = delta × 10⁻⁶\nMonetaryAmount.of(...)"]
-    L --> M([return DetectedTransfer])
+    A([decodeTransfer]) --> B{"① meta == null\nor meta.err != null?"}
+    B -- yes → failed tx --> SKIP([return null])
+    B -- no --> C{"② postTokenBalances has entry:\nowner == walletAddress\nAND mint == tokenContract?"}
+    C -- no match --> D{"any entry with\nmatching mint\nbut null owner?"}
+    D -- yes --> WARN["WARN: legacy tx\n(null owner) — skip"] --> SKIP
+    D -- no --> SKIP
+    C -- matched --> E["③ validate: token is USDC/USDT\nand decimals == 6"]
+    E -- fails --> ERR["log ERROR, skip"] --> SKIP
+    E -- ok --> F["④ delta = postAmount − preAmount\n   (pre = 0 if no prior balance)"]
+    F --> G{delta <= 0?}
+    G -- yes --> SKIP
+    G -- no --> H["⑤ amount = delta × 10⁻⁶"]
+    H --> Z([return DetectedTransfer])
 ```
 
+**Walk-through example:** `getTransaction` result for a 100 USDC deposit
+
+```
+meta.err      = null                             ← transaction succeeded
+postTokenBalances[0]:
+  owner       = "Abc...xyz"                      ← matches walletAddress
+  mint        = "EPjFWdd5...t1v"                 ← USDC mint
+  amount      = "101000000"                      ← post-balance: 101 USDC
+  decimals    = 6
+preTokenBalances[0]:
+  owner       = "Abc...xyz"
+  amount      = "1000000"                        ← pre-balance: 1 USDC (had some before)
+```
+
+1. `meta != null` and `meta.err == null` → valid transaction
+2. `postTokenBalances` has an entry where `owner == "Abc...xyz"` and `mint == USDC mint` → matched
+3. Token is USDC and `decimals == 6` → continue
+4. `delta = 101,000,000 − 1,000,000 = 100,000,000`
+5. `delta > 0` → incoming transfer (wallet received tokens)
+6. `amount = 100,000,000 × 10⁻⁶ = 100.000000 USDC`
+7. Return `DetectedTransfer` with key `SOLANA:5eR7...txhash`
+
+**Rejection examples:**
+- `meta.err != null` → the transaction failed on-chain (e.g. insufficient fees); skip silently — no money moved
+- `delta <= 0` → wallet sent tokens or balance unchanged; skip
+- `owner` is `null` → legacy transaction format (pre-token-account-reorg); log WARN and skip, do not process
+
 **Key invariants:**
-- `owner` match is case-insensitive — Solana addresses are base58 and wallets may be stored with mixed case.
-- `decimals` is validated against the known constant (6 for USDC/USDT) — a mismatch indicates an unexpected token or node behaviour; skip and log rather than silently produce a wrong monetary amount.
-- `delta` is always `post - pre`; pre defaults to 0 if the account did not hold any tokens before the transaction.
+- `owner` match is case-insensitive — Solana addresses are base58 and may be stored mixed-case.
+- `decimals` is validated against the known constant (6 for USDC/USDT) — a mismatch logs an error rather than silently producing a wrong amount.
+- `delta` is always `post − pre`; pre defaults to 0 when the account held no tokens before the transaction.
 
 ---
 
 ## Supported tokens
 
-| Token | Mint address (mainnet) | Decimals | `StablecoinToken` |
-|---|---|---|---|
-| USDC | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | 6 | `USDC` |
-| USDT | `Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB` | 6 | `USDT` |
+| Token | Mint address (mainnet) | Decimals |
+|---|---|---|
+| USDC | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | 6 |
+| USDT | `Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB` | 6 |
 
-Any other token encountered on a watched address is logged at ERROR level and skipped. To add a new token: extend the `when` branch in `SolanaChainReader.decodeTransfer`, update `knownDecimals`, and add the mint to `WatchedAddress` records.
+Any other token on a watched address is logged at ERROR and skipped. To add a new token: extend the `when` branch in `decodeTransfer`, update `knownDecimals`, and add the mint to `WatchedAddress` records.
 
 ---
 
 ## Idempotency
 
-Every detected transfer gets the idempotency key `SOLANA:{txHash}`.
+Key format: `SOLANA:{txHash}`
 
-- A transaction hash on Solana is unique per transaction — there can be only one `postTokenBalances` result for a given hash.
-- On a re-scan (restart, pagination overlap), `PostTransactionService` sees the duplicate key and returns the cached `TransactionId` without executing again.
-- The checkpoint is the primary guard; idempotency is the secondary guard for the overlap window.
+A Solana transaction hash is unique per transaction — only one `postTokenBalances` result per hash. On re-scan, `PostTransactionService` returns the cached result without re-executing.
 
 ---
 
 ## Configuration
-
-Properties are bound under `idem.chain` via `@ConfigurationProperties`:
 
 ```yaml
 idem:
@@ -202,59 +241,49 @@ idem:
       rpc-url: https://your-quicknode-endpoint.quiknode.pro/your-key/
 ```
 
-`SolanaChainReader` is only instantiated when `idem.chain.solana.rpc-url` is non-blank (see `EvmChainReaderFactory.chainReaders()`). Omitting the property disables the Solana reader at runtime — no bean, no polling.
-
-The page size defaults to 1000 (the Solana RPC maximum). Override via the constructor for testing:
-
-```kotlin
-SolanaChainReader(rpcUrl, watchedAddressRepository, signaturePageSize = 100)
-```
+`SolanaChainReader` is only instantiated when `rpc-url` is non-blank. Page size defaults to 1000 (Solana RPC max); override via the constructor for testing.
 
 ---
 
 ## RPC calls used
 
-| Method | Purpose | Pagination |
-|---|---|---|
-| `getSignaturesForAddress` | Fetch confirmed signature list for a wallet | `before` cursor (exclusive), newest-first |
-| `getTransaction` | Fetch full transaction + token balance deltas | No pagination — one call per signature |
+| Method | Purpose |
+|---|---|
+| `getSignaturesForAddress` | Fetch confirmed signatures for a wallet, paginated via `before` cursor (newest-first) |
+| `getTransaction` | Fetch full transaction + token balance deltas |
 
-Both are called with `encoding=json`, `commitment=confirmed`, and `maxSupportedTransactionVersion=0`. Versioned transactions (v0) with address lookup tables are supported at the RPC level; the reader only reads `postTokenBalances` and `preTokenBalances`, which are resolved by the node before returning.
+Both are called with `encoding=json`, `commitment=confirmed`, `maxSupportedTransactionVersion=0`.
 
 ---
 
 ## Lifecycle and shutdown
 
-`SolanaChainReader` implements `java.io.Closeable`. `EvmChainReaderFactory` is annotated `@PreDestroy` and calls `readers.filterIsInstance<Closeable>().forEach(Closeable::close)` on application shutdown. This closes the underlying `HttpClient` connection pool cleanly.
+`SolanaChainReader` implements `Closeable`. `EvmChainReaderFactory.@PreDestroy` calls `close()` on all `Closeable` readers, shutting down the underlying `HttpClient`.
 
 ---
 
-## Error handling contract
+## Error handling
 
-| Condition | Behaviour |
+| Category | Behaviour |
 |---|---|
-| RPC returns non-200 HTTP | Log WARN, return `null` / empty list — caller continues |
-| JSON parse failure | Log WARN with exception message, return `null` / empty list |
-| Null `meta` or non-null `meta.err` | Skip silently (failed on-chain tx — not an error) |
-| `owner == null` on a matching mint | Log WARN (legacy tx format), skip |
-| Unsupported token type | Log ERROR, skip |
-| Unexpected decimals | Log ERROR, skip |
-| Unparseable `amount` string | Log WARN, skip |
-| `delta <= 0` | Skip silently (outgoing transfer or no net change) |
+| HTTP non-200 or JSON parse failure | Log WARN, return empty — caller continues |
+| Null `meta` or non-null `meta.err` | Skip silently (failed on-chain tx) |
+| Null `owner` on a matching mint | Log WARN (legacy tx format), skip |
+| Unsupported token or unexpected decimals | Log ERROR, skip |
+| Unparseable amount | Log WARN, skip |
+| `delta <= 0` | Skip silently |
 
-The scheduler must catch and log all exceptions thrown by `poll()` without propagating — a single failing chain reader must not terminate the polling loop for other chains.
+`ChainReaderOrchestrator` must catch all exceptions without propagating — a failing reader must not abort startup recovery for other chains.
 
 ---
 
 ## Test coverage
 
-| Test class | Type | What it covers |
-|---|---|---|
-| `SolanaChainReaderTest` | Unit (Mockito) | `decodeTransfer` for: decimals mismatch, unsupported token (BRZ), unparseable amount, null owner legacy tx, `Closeable` smoke test |
-| `SolanaChainReaderIntegrationTest` | Integration (WireMock) | Full `poll()` path: happy-path USDC detection, checkpoint filter, empty signature list, failed tx skip, signature error skip, two-page pagination with slot boundary |
-| `EvmChainReaderFactoryTest` | Unit | `SolanaChainReader` registered when `rpc-url` is set; factory shutdown closes `Closeable` readers |
-
-Run with:
+| Test class | Type |
+|---|---|
+| `SolanaChainReaderTest` | Unit (Mockito) |
+| `SolanaChainReaderIntegrationTest` | Integration (WireMock) |
+| `EvmChainReaderFactoryTest` | Unit |
 
 ```bash
 rtk test mvn test -pl infrastructure
@@ -265,8 +294,7 @@ rtk test mvn test -pl infrastructure
 ## Related
 
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
-- `infrastructure/chain/EvmChainReader.kt` — EVM counterpart (Web3j `ethGetLogs`)
-- Issue [#48](https://github.com/idem-finance/idem/issues/48) — original spec and library evaluation record
+- `docs/evm-chain-reader.md` — EVM counterpart (Alchemy webhook primary, Web3j fallback)
+- `docs/tron-chain-reader.md` — Tron counterpart (Tronscan REST polling — primary and only)
+- Issues [#48](https://github.com/idem-finance/idem/issues/48), [#74](https://github.com/idem-finance/idem/issues/74), [#76](https://github.com/idem-finance/idem/issues/76)
 - PR [#70](https://github.com/idem-finance/idem/pull/70) — review findings and fixes applied
-
-> **Alchemy / EVM chain reader documentation** is tracked as a separate follow-up PR.

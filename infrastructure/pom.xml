@@ -132,6 +132,10 @@
                         <exclude>finance/idem/infrastructure/chain/AlchemyActivity*</exclude>
                         <exclude>finance/idem/infrastructure/chain/AlchemyRawContract*</exclude>
                         <exclude>finance/idem/infrastructure/chain/AlchemyLog*</exclude>
+                        <!-- TronChainReader inner data classes — Kotlin-generated synthetic bytecode -->
+                        <exclude>finance/idem/infrastructure/chain/TronChainReader$*</exclude>
+                        <!-- TronNetworkConfig — Kotlin data class synthetic branches -->
+                        <exclude>finance/idem/infrastructure/chain/TronNetworkConfig*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
