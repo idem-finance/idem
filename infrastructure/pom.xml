@@ -24,11 +24,16 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
-        <!-- BCrypt password hashing — lighter than spring-boot-starter-security;
-             web security autoconfiguration stays out until #43 -->
+        <!-- Spring Security — SecurityFilterChain permits /internal/**, ApiKeyAuthFilter (M2-3) -->
         <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-crypto</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- Spring Web MVC — needed for OncePerRequestFilter (ApiKeyAuthFilter) and WebSecurityConfig -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
         <!-- Redis — API key cache (5-min TTL, prefix lookup) -->
@@ -120,10 +125,19 @@
                         <exclude>finance/idem/infrastructure/chain/DetectedTransfer*</exclude>
                         <!-- SolanaChainReader inner data classes — Kotlin-generated synthetic bytecode -->
                         <exclude>finance/idem/infrastructure/chain/SolanaChainReader$*</exclude>
+                        <!-- AlchemyWebhookPayload data classes — Kotlin-generated synthetic branches -->
+                        <exclude>finance/idem/infrastructure/chain/AlchemyWebhookPayload*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/AlchemyWebhookEvent*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/AlchemyActivity*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/AlchemyRawContract*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/AlchemyLog*</exclude>
                         <!-- TronChainReader inner data classes — Kotlin-generated synthetic bytecode -->
                         <exclude>finance/idem/infrastructure/chain/TronChainReader$*</exclude>
                         <!-- TronNetworkConfig — Kotlin data class synthetic branches -->
                         <exclude>finance/idem/infrastructure/chain/TronNetworkConfig*</exclude>
+                        <!-- WebSecurityConfig — pure Spring Security wiring, no business logic;
+                             @ConditionalOnWebApplication(SERVLET) means it never loads in infra tests -->
+                        <exclude>finance/idem/infrastructure/security/WebSecurityConfig*</exclude>
                     </excludes>
                 </configuration>
             </plugin>

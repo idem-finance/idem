@@ -8,6 +8,7 @@ data class ChainConfig(
     val evmBase: EvmNetworkConfig = EvmNetworkConfig(),
     val evmPolygon: EvmNetworkConfig = EvmNetworkConfig(),
     val solana: SolanaNetworkConfig = SolanaNetworkConfig(),
+    val alchemyWebhookSigningKey: String = "",
     val tron: TronNetworkConfig = TronNetworkConfig(),
 )
 
