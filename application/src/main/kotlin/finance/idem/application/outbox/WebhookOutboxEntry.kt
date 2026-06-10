@@ -22,5 +22,23 @@ data class WebhookOutboxEntry(
                 transactionId = tx.id,
                 occurredAt = tx.occurredAt,
             )
+
+        fun transactionSettled(tx: Transaction): WebhookOutboxEntry =
+            WebhookOutboxEntry(
+                id = UUID.randomUUID(),
+                tenantId = tx.tenantId,
+                eventType = "transaction.settled",
+                transactionId = tx.id,
+                occurredAt = tx.occurredAt,
+            )
+
+        fun reconciliationUnmatched(tx: Transaction): WebhookOutboxEntry =
+            WebhookOutboxEntry(
+                id = UUID.randomUUID(),
+                tenantId = tx.tenantId,
+                eventType = "reconciliation.unmatched",
+                transactionId = tx.id,
+                occurredAt = tx.occurredAt,
+            )
     }
 }

@@ -33,6 +33,9 @@ idem:
     solana:
       rpc-url: "${QUICKNODE_SOLANA_URL:}"
     quicknode-webhook-secret: "${QUICKNODE_WEBHOOK_SECRET:}"
+  reconciliation:
+    enabled: true
+    matching-window-hours: 24
 
 ---
 spring:
