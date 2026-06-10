@@ -3,12 +3,7 @@ package finance.idem.infrastructure.chain
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import finance.idem.application.chain.QuickNodeWebhookPort
-import finance.idem.application.ledger.JournalLineRequest
-import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
-import finance.idem.core.AccountId
-import finance.idem.core.EntryType
-import finance.idem.core.TenantId
 import finance.idem.core.chain.ChainCheckpointRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -77,7 +72,7 @@ class QuickNodeWebhookService(
             if (tx != null) {
                 for (watchedAddress in watched) {
                     val transfer = reader.decodeTransfer(tx, payload.signature, payload.slot, watchedAddress) ?: continue
-                    postTransactionUseCase.execute(buildCommand(transfer)).onFailure { error ->
+                    postTransactionUseCase.execute(transfer.toCommand("quicknode-webhook")).onFailure { error ->
                         log.error(
                             "QuickNode webhook: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
                         )
@@ -97,19 +92,6 @@ class QuickNodeWebhookService(
                     log.error("QuickNode webhook: failed to advance checkpoint for $chainKey to $newCheckpoint", it)
                 }
         }
-    }
-
-    private fun buildCommand(transfer: DetectedTransfer): PostTransactionCommand {
-        val watched = transfer.watchedAddress
-        return PostTransactionCommand(
-            tenantId = TenantId.of(watched.tenantId),
-            idempotencyKey = transfer.idempotencyKey,
-            lines = listOf(
-                JournalLineRequest(AccountId.of(watched.debitAccountId), EntryType.DEBIT, transfer.entry),
-                JournalLineRequest(AccountId.of(watched.creditAccountId), EntryType.CREDIT, transfer.entry),
-            ),
-            createdBy = "quicknode-webhook",
-        )
     }
 
     companion object {
