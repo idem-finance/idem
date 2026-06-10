@@ -27,13 +27,16 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.springframework.test.context.transaction.TestTransaction
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.math.BigDecimal
+import java.sql.SQLException
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -291,6 +294,37 @@ class SettlementRepositoryAdapterTest {
         )
 
         assertEquals(setOf(matchA, matchA2), results.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `findPendingCandidates locks returned rows with SELECT FOR UPDATE`() {
+        val settlementId = insertSettlement(tenantId = tenantA, accountId = accountA)
+
+        // Commit so the row (and the @BeforeEach accounts) are visible to a second,
+        // independent connection, then start a fresh transaction for the locking call.
+        TestTransaction.flagForCommit()
+        TestTransaction.end()
+        TestTransaction.start()
+
+        val results = adapter.findPendingCandidates(
+            tenantA, setOf(accountA), StablecoinToken.USDC, ChainId.SOLANA, watchedWallet, now.minusSeconds(3600),
+        )
+        assertEquals(1, results.size)
+
+        // PESSIMISTIC_WRITE held by the still-open transaction above must block a
+        // concurrent FOR UPDATE NOWAIT from a second connection.
+        postgres.createConnection("").use { conn ->
+            conn.autoCommit = false
+            conn.createStatement().use { it.execute("SET LOCAL app.tenant_id = '${tenantA.value}'") }
+            conn.prepareStatement("SELECT id FROM settlements WHERE id = ? FOR UPDATE NOWAIT").use { stmt ->
+                stmt.setObject(1, settlementId)
+                val ex = assertFailsWith<SQLException> { stmt.executeQuery() }
+                assertEquals("55P03", ex.sqlState) // lock_not_available
+            }
+            conn.rollback()
+        }
+
+        TestTransaction.flagForRollback()
     }
 
     @Test

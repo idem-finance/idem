@@ -17,6 +17,7 @@ import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Settlement
 import finance.idem.core.ledger.SettlementRepository
 import finance.idem.core.ledger.Transaction
+import finance.idem.core.ledger.TransactionStatus
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -238,6 +239,34 @@ class BasicReconciliationServiceTest {
         verify(settlementRepository).findPendingCandidates(any(), any(), any(), any(), any(), sinceCaptor.capture())
         val expected = Instant.now().minusSeconds(3600)
         assertTrue(Duration.between(sinceCaptor.firstValue, expected).abs().seconds < 5)
+    }
+
+    @Test
+    fun `transaction with on-chain lines but no CREDIT line returns NotApplicable without throwing`() {
+        val txId = TransactionId.generate()
+        val now = Instant.now()
+        val entry = onChainEntry()
+        // Both on-chain lines are DEBIT — violates the implicit "one DEBIT/CREDIT
+        // pair per transaction" convention. Transaction.validate() would reject this
+        // (unbalanced currencyKey), so build via reconstitute() to exercise
+        // BasicReconciliationService's own defensive guard in isolation.
+        val lines = listOf(
+            JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
+            JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
+        )
+        val tx = Transaction.reconstitute(
+            id = txId, tenantId = tenantId, idempotencyKey = "SOLANA:$txHash:2",
+            lines = lines, status = TransactionStatus.PENDING,
+            occurredAt = now, createdAt = now, createdBy = "system",
+        )
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(emptyList())
+
+        val result = service().reconcile(tx)
+
+        assertEquals(ReconciliationResult.NotApplicable, result)
+        verify(settlementRepository, never()).save(any())
+        verify(webhookOutboxRepository, never()).save(any())
     }
 
     @Test

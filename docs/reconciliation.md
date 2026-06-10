@@ -74,10 +74,14 @@ override fun reconcile(transaction: Transaction): ReconciliationResult {
 1. **Early exits** (`NotApplicable`, no DB call): reconciliation disabled, or the
    transaction has no `OnChainEntry`-typed lines (pure `FiatEntry` transactions never
    reach `SettlementRepository`).
-2. **Match key**: the chain-reader convention is that the DEBIT (custody/Nostro) and
-   CREDIT (customer-facing) lines of an on-chain transfer carry an *identical*
-   `OnChainEntry` (same amount/token/chainId/walletAddress/txHash/blockNumber) — so the
-   first on-chain line's `monetaryEntry` is sufficient as the match key.
+2. **Match key**: `reconcile()` requires that a transaction's on-chain lines form
+   *exactly one* DEBIT/CREDIT pair sharing an *identical* `OnChainEntry` (same
+   amount/token/chainId/walletAddress/txHash/blockNumber) — the chain-reader
+   convention for every current producer (Alchemy/QuickNode webhooks, EVM/Solana/Tron
+   readers). Given that, the first on-chain line's `monetaryEntry` is sufficient as
+   the match key. `Transaction.validate()` does not enforce this precondition (it only
+   checks per-currencyKey debit==credit balance), so step 7 below defends against it
+   being violated.
 3. **`candidateAccountIds`**: the union of `accountId` across all on-chain-typed
    lines, so a PENDING expectation registered against either the custody account or
    the customer account is found.
@@ -85,7 +89,11 @@ override fun reconcile(transaction: Transaction): ReconciliationResult {
    (`idx_settlements_matching` on `(tenant_id, status, account_id, token, chain_id,
    wallet_address, created_at)`) filters to `status='PENDING'`, the candidate account
    set, exact token/chain/wallet, and `created_at >= since`. Results are ordered
-   `created_at ASC`.
+   `created_at ASC` and locked with `SELECT ... FOR UPDATE`
+   (`@Lock(LockModeType.PESSIMISTIC_WRITE)`) — if two on-chain transfers are
+   reconciled concurrently for the same wallet/token, the second blocks until the
+   first commits, then re-evaluates `status='PENDING'` against the now-committed row
+   and no longer sees it as a candidate.
 5. **Amount match**: done in Kotlin via `MonetaryAmount.equals` (scale-insensitive —
    `100` == `100.000000`), so the matching logic is unit-testable without a database.
    `firstOrNull` on an ascending-by-`createdAt` list means **the oldest matching
@@ -100,6 +108,11 @@ override fun reconcile(transaction: Transaction): ReconciliationResult {
    `matchedTransactionId=tx.id` (self-referential — the proof *is* this transaction).
    Writes `WebhookOutboxEntry.reconciliationUnmatched(tx)` and `log.warn(...)` with the
    full match context (tenant, amount, token, chain, wallet, txHash, settlement id).
+   If `onChainLines` contains **no CREDIT-typed line** — violating the step 2
+   precondition — `reconcile()` logs a WARN and returns `NotApplicable` instead of
+   throwing, so a reconciliation-side gap can never roll back an otherwise-valid
+   ledger commit (`reconcile()` is called with no exception handling, as the last
+   write inside `PostTransactionService.execute()`'s `@Transactional`).
 
 ---
 
@@ -116,6 +129,11 @@ idem:
 |---|---|---|
 | `idem.reconciliation.enabled` | `true` | When `false`, `reconcile()` is a no-op (`NotApplicable`) for every transaction — no `SettlementRepository` calls at all. |
 | `idem.reconciliation.matching-window-hours` | `24` | How far back `findPendingCandidates` looks for a PENDING expectation (`since = now - N hours`). PENDING rows older than this are never matched and remain `PENDING` indefinitely (candidates for a future cleanup/expiry job). |
+
+Both are global (`@Value`-injected), not per-tenant. Acceptable for MVP; if a pilot
+customer needs reconciliation disabled or a different matching window for just their
+tenant, this would move to a per-tenant config table (mirroring the LGPD retention
+pattern).
 
 ---
 

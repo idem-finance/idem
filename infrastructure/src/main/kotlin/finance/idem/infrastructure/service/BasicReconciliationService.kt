@@ -72,7 +72,19 @@ class BasicReconciliationService(
         onChainLines: List<JournalLine>,
         onChainEntry: OnChainEntry,
     ): ReconciliationResult {
-        val creditLine = onChainLines.first { it.entryType == EntryType.CREDIT }
+        // By convention, on-chain transactions carry exactly one DEBIT/CREDIT pair
+        // sharing an identical OnChainEntry — a precondition Transaction.validate()
+        // does not enforce. Bail out rather than throw if it's ever violated, so a
+        // reconciliation gap can't roll back an otherwise-valid ledger commit.
+        val creditLine = onChainLines.firstOrNull { it.entryType == EntryType.CREDIT }
+        if (creditLine == null) {
+            log.warn(
+                "Reconciliation: tx={} tenant={} has on-chain lines but no CREDIT-typed line " +
+                    "— skipping reconciliation",
+                transaction.id.value, transaction.tenantId.value,
+            )
+            return ReconciliationResult.NotApplicable
+        }
         val now = Instant.now()
         val saved = settlementRepository.save(
             Settlement(

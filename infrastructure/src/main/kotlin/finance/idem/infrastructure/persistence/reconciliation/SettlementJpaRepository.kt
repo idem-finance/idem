@@ -1,6 +1,8 @@
 package finance.idem.infrastructure.persistence.reconciliation
 
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.Instant
@@ -8,6 +10,11 @@ import java.util.UUID
 
 interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
 
+    // PESSIMISTIC_WRITE (SELECT ... FOR UPDATE) so two concurrent reconcile() calls
+    // for the same wallet/token can't both match the same PENDING row — the second
+    // transaction blocks until the first commits, then re-evaluates the WHERE
+    // clause and no longer sees a row whose status has moved off PENDING.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(
         """
         SELECT p FROM SettlementDataModel p

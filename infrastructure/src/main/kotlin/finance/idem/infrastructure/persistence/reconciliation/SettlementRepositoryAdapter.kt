@@ -38,7 +38,9 @@ class SettlementRepositoryAdapter(
         return jpaRepository.findById(id).orElse(null)?.toDomain()
     }
 
-    @Transactional(readOnly = true)
+    // Not readOnly: PESSIMISTIC_WRITE (SELECT ... FOR UPDATE) acquires row locks,
+    // which a read-only transaction cannot do.
+    @Transactional
     override fun findPendingCandidates(
         tenantId: TenantId,
         accountIds: Set<AccountId>,
