@@ -109,6 +109,19 @@ class QuickNodeWebhookServiceTest {
         assertTrue(result.isSuccess)
     }
 
+    // -- payload parsing --
+
+    @Test
+    fun `returns success and does not process when body is not valid JSON`() {
+        val body = "not-json"
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase, never()).execute(any())
+        verify(checkpointRepository, never()).save(any(), any())
+    }
+
     // -- network routing --
 
     @Test
@@ -119,6 +132,27 @@ class QuickNodeWebhookServiceTest {
 
         assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
+    }
+
+    // -- reader availability --
+
+    @Test
+    fun `returns success and skips payload without advancing checkpoint when no SolanaChainReader is configured`() {
+        val noReaderService = QuickNodeWebhookService(
+            watchedAddressRepository = watchedAddressRepository,
+            chainCheckpointRepository = checkpointRepository,
+            postTransactionUseCase = postTransactionUseCase,
+            objectMapper = objectMapper,
+            config = ChainConfig(quicknodeWebhookSecret = signingKey),
+            chainReaders = emptyList(),
+        )
+        val body = buildBody(testSignature, testSlot)
+
+        val result = noReaderService.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase, never()).execute(any())
+        verify(checkpointRepository, never()).save(any(), any())
     }
 
     // -- transfer processing --

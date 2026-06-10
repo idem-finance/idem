@@ -9,7 +9,7 @@
 
 ## Why polling (and why Tronscan)
 
-Tronscan's public REST API is pure HTTP and requires no SDK. `java.net.http.HttpClient` + Jackson (already on the classpath for `SolanaChainReader`) is the complete stack. Unlike EVM (`AlchemyWebhookReceiver`) and Solana (`SolanaWebSocketManager`), Tron has no event-push option — polling is intentional, not a gap.
+Tronscan's public REST API is pure HTTP and requires no SDK. `java.net.http.HttpClient` + Jackson (already on the classpath for `SolanaChainReader`) is the complete stack. Unlike EVM (`AlchemyWebhookReceiver`) and Solana (`QuickNodeWebhookReceiver`), Tron has no event-push option — polling is intentional, not a gap.
 
 ---
 

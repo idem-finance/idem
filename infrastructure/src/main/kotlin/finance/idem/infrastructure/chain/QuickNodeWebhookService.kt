@@ -4,12 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import finance.idem.application.chain.QuickNodeWebhookPort
 import finance.idem.application.ledger.JournalLineRequest
-import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.TenantId
+import finance.idem.core.chain.ChainCheckpointRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.security.MessageDigest

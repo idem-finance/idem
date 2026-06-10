@@ -196,7 +196,8 @@ The endpoint `POST /internal/webhooks/quicknode` is registered unconditionally. 
 | Missing or invalid `X-QN-Signature` | Return `Result.failure` → 401 |
 | Unparseable body | Log WARN, return `Result.success` |
 | Unknown `network` value | Log WARN, return `Result.success` — QuickNode retries on 5xx only |
-| `solanaReader` null (no `rpc-url` configured) | Log WARN, skip payload |
+| `solanaReader` null (no `rpc-url` configured) | Log WARN, skip payload — checkpoint NOT advanced |
+| No `WatchedAddress` configured for `SOLANA` | Skip decode/post, but checkpoint IS still advanced to `payload.slot` — **differs from `AlchemyWebhookService`**, which returns early without advancing the checkpoint when no addresses are watched |
 | `getTransaction` returns null | Log WARN, advance checkpoint, no decode |
 | `decodeTransfer` returns null (outgoing or mismatched) | Skip silently, advance checkpoint |
 | `PostTransactionUseCase` failure | Log ERROR — return `Result.success` to suppress QuickNode retry |

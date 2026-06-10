@@ -2,7 +2,7 @@
 
 > Infrastructure module (`finance.idem.infrastructure.chain`).
 > **Fallback/recovery reader** — called once on startup by `ChainReaderOrchestrator` (#76)
-t> to replay missed SPL token transfers. Primary detection is `QuickNodeWebhookReceiver` (#74).
+> to replay missed SPL token transfers. Primary detection is `QuickNodeWebhookReceiver` (#74).
 
 ---
 
@@ -110,7 +110,7 @@ sequenceDiagram
 
 **Walk-through example**
 
-A customer sends 100 USDC on Solana to your watched address `Abc...xyz`. The transfer lands at slot `265,001,500`, but the app was down and missed the WebSocket event from `SolanaWebSocketManager`. On the next startup:
+A customer sends 100 USDC on Solana to your watched address `Abc...xyz`. The transfer lands at slot `265,001,500`, but the app was down and missed the `QuickNodeWebhookReceiver` delivery for that slot. On the next startup:
 
 1. Orchestrator reads the checkpoint for `SOLANA`: `lastBlock = 265,000,000`.
 2. Calls `SolanaChainReader.poll(checkpoint = 265,000,000)`.
