@@ -55,7 +55,7 @@ class SolanaChainReaderTest {
 
         val result = reader.decodeTransfer(tx, signature, slot, watchedAddress)
 
-        assertEquals("SOLANA:$signature", result!!.idempotencyKey)
+        assertEquals("SOLANA:$signature:2", result!!.idempotencyKey)
         assertEquals(MonetaryAmount.of(BigDecimal("1.000000")), result.entry.amount)
         assertEquals(StablecoinToken.USDC, result.entry.token)
         assertEquals(ChainId.SOLANA, result.entry.chainId)
@@ -64,6 +64,40 @@ class SolanaChainReaderTest {
         assertEquals(watchedWallet, result.entry.walletAddress)
         assertEquals(usdcMint, result.entry.tokenContract)
         assertEquals(watchedAddress, result.watchedAddress)
+    }
+
+    @Test
+    fun `idempotency key is disambiguated by accountIndex for multi-recipient transactions`() {
+        val secondWallet = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin"
+        val secondWatchedAddress = watchedAddress.copy(walletAddress = secondWallet)
+
+        val tx = SolanaTransactionResult(
+            slot = slot,
+            meta = SolanaTransactionMeta(
+                err = null,
+                preTokenBalances = emptyList(),
+                postTokenBalances = listOf(
+                    SolanaTokenBalance(
+                        accountIndex = 1,
+                        mint = usdcMint,
+                        owner = watchedWallet,
+                        uiTokenAmount = SolanaUiTokenAmount(amount = "1000000", decimals = 6),
+                    ),
+                    SolanaTokenBalance(
+                        accountIndex = 2,
+                        mint = usdcMint,
+                        owner = secondWallet,
+                        uiTokenAmount = SolanaUiTokenAmount(amount = "2000000", decimals = 6),
+                    ),
+                ),
+            ),
+        )
+
+        val first = reader.decodeTransfer(tx, signature, slot, watchedAddress)
+        val second = reader.decodeTransfer(tx, signature, slot, secondWatchedAddress)
+
+        assertEquals("SOLANA:$signature:1", first!!.idempotencyKey)
+        assertEquals("SOLANA:$signature:2", second!!.idempotencyKey)
     }
 
     @Test
@@ -178,7 +212,7 @@ class SolanaChainReaderTest {
             decimals = 6,
         )
 
-        assertEquals("SOLANA:$signature", reader.decodeTransfer(tx, signature, slot, watchedAddress)!!.idempotencyKey)
+        assertEquals("SOLANA:$signature:2", reader.decodeTransfer(tx, signature, slot, watchedAddress)!!.idempotencyKey)
     }
 
     @Test
@@ -192,7 +226,7 @@ class SolanaChainReaderTest {
             decimals = 6,
         )
 
-        assertEquals("SOLANA:$signature", reader.decodeTransfer(tx, signature, slot, watchedAddress)!!.idempotencyKey)
+        assertEquals("SOLANA:$signature:2", reader.decodeTransfer(tx, signature, slot, watchedAddress)!!.idempotencyKey)
     }
 
     @Test

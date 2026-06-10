@@ -93,7 +93,7 @@ class SolanaChainReader(
         val amount = MonetaryAmount.of(BigDecimal(delta).movePointLeft(knownDecimals))
 
         return DetectedTransfer(
-            idempotencyKey = "$chainKey:$signature",
+            idempotencyKey = "$chainKey:$signature:${receiving.accountIndex}",
             entry = OnChainEntry(
                 amount = amount,
                 token = watchedAddress.token,

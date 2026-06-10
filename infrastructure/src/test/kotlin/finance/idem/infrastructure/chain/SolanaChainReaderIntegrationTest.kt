@@ -64,7 +64,7 @@ class SolanaChainReaderIntegrationTest {
 
         assertEquals(1, result.size)
         val transfer = result[0]
-        assertEquals("SOLANA:$signature", transfer.idempotencyKey)
+        assertEquals("SOLANA:$signature:2", transfer.idempotencyKey)
         assertEquals(MonetaryAmount.of(BigDecimal("1.000000")), transfer.entry.amount)
         assertEquals(StablecoinToken.USDC, transfer.entry.token)
         assertEquals(ChainId.SOLANA, transfer.entry.chainId)
