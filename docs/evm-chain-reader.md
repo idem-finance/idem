@@ -299,6 +299,7 @@ rtk test mvn test -pl infrastructure
 
 ## Related
 
+- `docs/evm-webhook-receiver.md` — primary EVM event source (Alchemy Address Activity webhook)
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
 - `docs/tron-chain-reader.md` — Tron counterpart (Tronscan REST polling)
 - `infrastructure/chain/EvmChainReaderFactory.kt` — factory that wires all chain readers

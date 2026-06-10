@@ -144,7 +144,7 @@ class SolanaChainReader(
         }
     }
 
-    private fun getTransaction(signature: String): SolanaTransactionResult? {
+    internal fun getTransaction(signature: String): SolanaTransactionResult? {
         val body = MAPPER.writeValueAsString(
             mapOf(
                 "jsonrpc" to "2.0", "id" to 1, "method" to "getTransaction",
