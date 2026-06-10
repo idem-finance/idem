@@ -176,7 +176,7 @@ class QuickNodeWebhookServiceTest {
         val cmdCaptor = argumentCaptor<PostTransactionCommand>()
         verify(postTransactionUseCase).execute(cmdCaptor.capture())
         val cmd = cmdCaptor.firstValue
-        assertEquals("SOLANA:$testSignature", cmd.idempotencyKey)
+        assertEquals("SOLANA:$testSignature:2", cmd.idempotencyKey)
         assertEquals(tenantId, cmd.tenantId.value.toString())
         assertEquals("quicknode-webhook", cmd.createdBy)
         assertEquals(2, cmd.lines.size)
@@ -285,7 +285,7 @@ class QuickNodeWebhookServiceTest {
         """[{"signature":"$signature","slot":$slot,"network":"$network"}]"""
 
     private fun buildTransfer() = DetectedTransfer(
-        idempotencyKey = "SOLANA:$testSignature",
+        idempotencyKey = "SOLANA:$testSignature:2",
         entry = OnChainEntry(
             amount = MonetaryAmount.of(BigDecimal("100.000000")),
             token = StablecoinToken.USDC,
