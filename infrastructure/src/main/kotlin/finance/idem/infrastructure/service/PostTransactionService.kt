@@ -12,6 +12,7 @@ import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AuditRepository
 import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.WebhookOutboxRepository
+import finance.idem.application.reconciliation.BasicReconciliationUseCase
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TransactionId
 import finance.idem.core.ledger.AccountRepository
@@ -32,6 +33,7 @@ class PostTransactionService(
     private val auditRepository: AuditRepository,
     private val webhookOutboxRepository: WebhookOutboxRepository,
     private val idempotencyStore: IdempotencyStore,
+    private val reconciliationService: BasicReconciliationUseCase,
 ) : PostTransactionUseCase {
 
     override fun execute(cmd: PostTransactionCommand): Result<TransactionId> {
@@ -96,6 +98,7 @@ class PostTransactionService(
         transactionRepository.save(transaction)
         auditRepository.save(AuditEntry.from(transaction, cmd.agentContext, cmd.createdBy))
         webhookOutboxRepository.save(WebhookOutboxEntry.transactionCommitted(transaction))
+        reconciliationService.reconcile(transaction)
 
         return Result.success(transaction.id)
     }

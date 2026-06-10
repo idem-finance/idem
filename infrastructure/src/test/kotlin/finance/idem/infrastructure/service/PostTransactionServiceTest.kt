@@ -11,6 +11,8 @@ import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AuditRepository
 import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.WebhookOutboxRepository
+import finance.idem.application.reconciliation.BasicReconciliationUseCase
+import finance.idem.application.reconciliation.ReconciliationResult
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
@@ -31,6 +33,7 @@ import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -49,6 +52,7 @@ class PostTransactionServiceTest {
     @Mock lateinit var auditRepository: AuditRepository
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
     @Mock lateinit var idempotencyStore: IdempotencyStore
+    @Mock lateinit var reconciliationService: BasicReconciliationUseCase
 
     private lateinit var service: PostTransactionService
 
@@ -64,6 +68,7 @@ class PostTransactionServiceTest {
             auditRepository,
             webhookOutboxRepository,
             idempotencyStore,
+            reconciliationService,
         )
     }
 
@@ -101,6 +106,7 @@ class PostTransactionServiceTest {
             capturedTx.add(tx)
             tx
         }
+        whenever(reconciliationService.reconcile(any())).thenReturn(ReconciliationResult.NotApplicable)
         return capturedTx
     }
 
@@ -182,6 +188,7 @@ class PostTransactionServiceTest {
         assertEquals(existingId, result.getOrNull())
         verify(transactionRepository, never()).save(any())
         verify(auditRepository, never()).save(any())
+        verify(reconciliationService, never()).reconcile(any())
     }
 
     @Test
@@ -206,6 +213,7 @@ class PostTransactionServiceTest {
 
         assertTrue(result.isFailure)
         assertIs<IdempotencyConflict>(result.exceptionOrNull())
+        verify(reconciliationService, never()).reconcile(any())
     }
 
     @Test
@@ -249,6 +257,7 @@ class PostTransactionServiceTest {
         assertIs<TransactionAccountNotFound>(error)
         assertEquals(debitAccountId, error.accountId)
         verify(transactionRepository, never()).save(any())
+        verify(reconciliationService, never()).reconcile(any())
     }
 
     // ── Double-entry invariant ────────────────────────────────────────────────
@@ -270,6 +279,7 @@ class PostTransactionServiceTest {
         assertTrue(result.isFailure)
         assertIs<InvariantViolation>(result.exceptionOrNull())
         verify(transactionRepository, never()).save(any())
+        verify(reconciliationService, never()).reconcile(any())
     }
 
     @Test
@@ -284,6 +294,7 @@ class PostTransactionServiceTest {
         assertTrue(result.isFailure)
         val error = assertIs<InvariantViolation>(result.exceptionOrNull())
         assertNotNull(error.message)
+        verify(reconciliationService, never()).reconcile(any())
     }
 
     @Test
@@ -315,6 +326,7 @@ class PostTransactionServiceTest {
         val error = assertIs<InvariantViolation>(result.exceptionOrNull())
         assertNotNull(error.detail)
         assertEquals(error.detail, error.message)
+        verify(reconciliationService, never()).reconcile(any())
     }
 
     @Test
@@ -332,5 +344,35 @@ class PostTransactionServiceTest {
         assertEquals(tx.id, entry.transactionId)
         assertEquals(tx.tenantId, entry.tenantId)
         assertEquals(tx.occurredAt, entry.occurredAt)
+    }
+
+    // ── Reconciliation ────────────────────────────────────────────────────────
+
+    @Test
+    fun `reconcile is called with the persisted transaction`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        stubAccountsExist()
+        val saved = stubSave()
+
+        service.execute(command())
+
+        val captor = argumentCaptor<Transaction>()
+        verify(reconciliationService).reconcile(captor.capture())
+        assertEquals(saved.first().id, captor.firstValue.id)
+    }
+
+    @Test
+    fun `reconcile is called last, after the other three writes`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        stubAccountsExist()
+        stubSave()
+
+        service.execute(command())
+
+        val order = inOrder(transactionRepository, auditRepository, webhookOutboxRepository, reconciliationService)
+        order.verify(transactionRepository).save(any())
+        order.verify(auditRepository).save(any())
+        order.verify(webhookOutboxRepository).save(any())
+        order.verify(reconciliationService).reconcile(any())
     }
 }

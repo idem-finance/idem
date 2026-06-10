@@ -332,6 +332,67 @@ refreshes `updatedAt`.
 
 ---
 
+## Reconciliation domain — Settlement
+
+**Package:** `finance.idem.core.ledger`
+
+Tracks the lifecycle of an on-chain settlement against the ledger: a customer-registered
+expectation of an incoming transfer (`PENDING`), or an orphan on-chain receipt with no
+matching expectation (`UNMATCHED`), auto-created by `BasicReconciliationService`. Purely
+additive — zero changes to `MonetaryEntry`, `OnChainEntry`, `JournalLine`, or `Transaction`.
+See `docs/reconciliation.md` for the matching algorithm.
+
+### EntryStatus
+
+| Value | Meaning |
+|---|---|
+| `PENDING` | A settlement expectation has been registered, awaiting a matching `OnChainEntry` |
+| `SETTLED` | A `PENDING` expectation was matched to a posted `OnChainEntry` |
+| `UNMATCHED` | A posted `OnChainEntry` had no matching `PENDING` expectation |
+| `CANCELLED` | Reserved for a future "cancel expectation" API — not set by the matching engine |
+
+### Settlement
+
+```
+Settlement(id: UUID, tenantId: TenantId, accountId: AccountId, amount: MonetaryAmount,
+           token: StablecoinToken, chainId: ChainId, walletAddress: String,
+           status: EntryStatus, matchedTransactionId: TransactionId? = null,
+           txHash: String? = null, blockNumber: Long? = null, confirmedAt: Instant? = null,
+           createdAt: Instant, createdBy: String)
+```
+
+Both PENDING rows (registered ahead of time, e.g. via a future `POST
+/accounts/{id}/settlements`) and UNMATCHED rows (created reactively when no expectation
+matches an incoming transfer) live in the same table. `matchedTransactionId`, `txHash`,
+`blockNumber`, and `confirmedAt` are null on PENDING rows and populated when the row
+transitions to SETTLED or is created as UNMATCHED. `Settlement` is a plain `data class`
+with no `init` invariants — matching `JournalLine`'s style.
+
+### SettlementRepository
+
+```kotlin
+interface SettlementRepository {
+    fun save(settlement: Settlement): Settlement
+    fun findById(id: UUID, tenantId: TenantId): Settlement?
+
+    /** PENDING rows for tenant where accountId ∈ accountIds, matching
+     * token/chainId/walletAddress, createdAt >= since. Ordered createdAt ASC. */
+    fun findPendingCandidates(
+        tenantId: TenantId,
+        accountIds: Set<AccountId>,
+        token: StablecoinToken,
+        chainId: ChainId,
+        walletAddress: String,
+        since: Instant,
+    ): List<Settlement>
+}
+```
+
+`save()` is an upsert — transitioning a row from `PENDING` to `SETTLED` updates the
+existing row in place rather than inserting a new one.
+
+---
+
 ## Verification
 
 ```bash

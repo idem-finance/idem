@@ -68,6 +68,28 @@ class PostTransactionModelsTest {
         assertEquals(tx.occurredAt, entry.occurredAt)
     }
 
+    @Test
+    fun `WebhookOutboxEntry transactionSettled maps fields correctly`() {
+        val tx = transaction()
+        val entry = WebhookOutboxEntry.transactionSettled(tx)
+
+        assertEquals(tx.id, entry.transactionId)
+        assertEquals(tx.tenantId, entry.tenantId)
+        assertEquals("transaction.settled", entry.eventType)
+        assertEquals(tx.occurredAt, entry.occurredAt)
+    }
+
+    @Test
+    fun `WebhookOutboxEntry reconciliationUnmatched maps fields correctly`() {
+        val tx = transaction()
+        val entry = WebhookOutboxEntry.reconciliationUnmatched(tx)
+
+        assertEquals(tx.id, entry.transactionId)
+        assertEquals(tx.tenantId, entry.tenantId)
+        assertEquals("reconciliation.unmatched", entry.eventType)
+        assertEquals(tx.occurredAt, entry.occurredAt)
+    }
+
     // ── PostTransactionError ──────────────────────────────────────────────────
 
     @Test
