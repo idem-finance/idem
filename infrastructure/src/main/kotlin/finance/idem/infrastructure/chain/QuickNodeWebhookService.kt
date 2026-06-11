@@ -40,7 +40,7 @@ class QuickNodeWebhookService(
         }
 
         val payloads = runCatching {
-            objectMapper.readValue<List<QuickNodeWebhookPayload>>(rawBody)
+            objectMapper.readValue<QuickNodeStreamPayload>(rawBody).data
         }.getOrElse {
             log.warn("QuickNode webhook: failed to parse payload: ${it.message}")
             return Result.success(Unit)
