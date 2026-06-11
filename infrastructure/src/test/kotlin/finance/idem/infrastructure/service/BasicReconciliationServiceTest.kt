@@ -324,6 +324,26 @@ class BasicReconciliationServiceTest {
     }
 
     @Test
+    fun `sender-confirmed match is case-insensitive for Tron-style lowercase fromAddress`() {
+        // TronChainReader stores fromAddress lowercased (e.g. "TJCnKsPa..." ->
+        // "tjcnkspa..."), but an operator registers expectedFromAddress in the
+        // standard mixed-case Base58 form they were given. Tier 1 must still match.
+        val tx = onChainTransaction(onChainEntry(fromAddress = "tjcnkspa7y5okkxvqaidzbzqx3qyq6sxmw"))
+        val candidate = pendingSettlement(
+            MonetaryAmount.of("100.000000"),
+            Instant.now().minusSeconds(60),
+            expectedFromAddress = "TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW",
+        )
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(listOf(candidate))
+
+        val result = service().reconcile(tx)
+
+        assertTrue(result is ReconciliationResult.Settled)
+        assertEquals(candidate.id, (result as ReconciliationResult.Settled).settlement.id)
+    }
+
+    @Test
     fun `null onChainEntry fromAddress excludes candidates with a registered expectedFromAddress`() {
         val tx = onChainTransaction(onChainEntry(fromAddress = null))
         val candidate = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60), expectedFromAddress = "0xsender")

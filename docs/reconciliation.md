@@ -99,7 +99,12 @@ override fun reconcile(transaction: Transaction): ReconciliationResult {
    (`MonetaryAmount.equals` is scale-insensitive — `100` == `100.000000`).
    - **Tier 1 (sender-confirmed)**: `firstOrNull` over the amount-matches whose
      `expectedFromAddress` is non-null and equals `onChainEntry.fromAddress`
-     (also non-null). Preferred over FIFO regardless of `createdAt` order.
+     (also non-null), compared **case-insensitively**. Case-insensitive because
+     EVM `fromAddress` is canonical lowercase hex, while Tron `fromAddress` is
+     stored as a lowercased Base58Check string (an internal-only
+     representation) — an operator registering `expectedFromAddress` is
+     expected to enter standard mixed-case Base58. Preferred over FIFO
+     regardless of `createdAt` order.
    - **Tier 2 (amount + FIFO — the original behavior)**: if tier 1 finds nothing,
      `firstOrNull { it.expectedFromAddress == null }` over the same
      amount-matches. Since `candidates` is ordered `createdAt ASC`, **the oldest
@@ -306,7 +311,12 @@ discriminator (tier 1 above). Current state per chain:
 - **EVM and Tron** (direct readers and Alchemy webhook): `fromAddress` is
   always populated — from the ERC-20 `Transfer` event's `topics[1]` (EVM) or
   `from_address` (Tron/Alchemy activity). Recorded on every `OnChainEntry` for
-  audit, even before any `expectedFromAddress` expectations exist.
+  audit, even before any `expectedFromAddress` expectations exist. EVM
+  `fromAddress` is canonical lowercase hex; Tron `fromAddress` is stored
+  lowercased (an internal-only Base58Check representation). Tier 1's
+  case-insensitive comparison means an `expectedFromAddress` registered in
+  standard mixed-case Base58 (as an operator would naturally enter a Tron
+  address) still matches.
 - **Solana / QuickNode**: `fromAddress` remains `null`. Extracting the sender
   requires parsing transaction instructions/`accountKeys`, which the raw
   JSON-RPC `SolanaChainReader` does not implement (see chain-reader notes:

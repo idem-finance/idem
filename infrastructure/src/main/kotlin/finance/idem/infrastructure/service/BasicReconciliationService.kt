@@ -58,8 +58,12 @@ class BasicReconciliationService(
      * `createdAt ASC`, so `firstOrNull` per tier preserves "oldest wins"):
      *
      * - Tier 1 (sender-confirmed): a candidate's [Settlement.expectedFromAddress]
-     *   agrees with [OnChainEntry.fromAddress] — both non-null and equal. Preferred
-     *   over FIFO regardless of position.
+     *   agrees with [OnChainEntry.fromAddress] — both non-null and equal,
+     *   case-insensitively. Case-insensitive because EVM `fromAddress` is
+     *   canonical lowercase hex, while Tron `fromAddress` is stored as a
+     *   lowercased Base58Check string (an internal-only representation), but an
+     *   operator-registered `expectedFromAddress` is expected in standard
+     *   mixed-case Base58. Preferred over FIFO regardless of position.
      * - Tier 2 (amount + FIFO, today's behavior): only candidates with NO registered
      *   [Settlement.expectedFromAddress] are eligible. A candidate whose
      *   `expectedFromAddress` disagrees with `onChainEntry.fromAddress` is positive
@@ -71,7 +75,8 @@ class BasicReconciliationService(
 
         val tier1 = amountMatches.firstOrNull { candidate ->
             val expected = candidate.expectedFromAddress
-            expected != null && onChainEntry.fromAddress != null && expected == onChainEntry.fromAddress
+            expected != null && onChainEntry.fromAddress != null &&
+                expected.equals(onChainEntry.fromAddress, ignoreCase = true)
         }
         if (tier1 != null) return tier1
 
