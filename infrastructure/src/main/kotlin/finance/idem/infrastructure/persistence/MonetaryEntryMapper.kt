@@ -42,6 +42,7 @@ fun MonetaryEntry.toColumns(mapper: ObjectMapper): MonetaryEntryColumns = when (
             "blockNumber" to blockNumber,
             "walletAddress" to walletAddress,
             "tokenContract" to tokenContract,
+            "fromAddress" to fromAddress,
         )),
     )
 }
@@ -68,6 +69,7 @@ fun MonetaryEntryColumns.toDomain(mapper: ObjectMapper): MonetaryEntry {
                 blockNumber = (data["blockNumber"] as Number).toLong(),
                 walletAddress = data["walletAddress"] as String,
                 tokenContract = data["tokenContract"] as String,
+                fromAddress = data["fromAddress"] as String?,
             )
         }
         else -> error("Unknown monetary_entry_type: $monetaryEntryType")

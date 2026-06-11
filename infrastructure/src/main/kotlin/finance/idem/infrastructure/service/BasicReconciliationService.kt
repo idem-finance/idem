@@ -45,12 +45,37 @@ class BasicReconciliationService(
             since = since,
         )
 
-        val match = candidates.firstOrNull { it.amount == onChainEntry.amount }
+        val match = findMatch(candidates, onChainEntry)
         return if (match != null) {
             settle(match, transaction, onChainEntry)
         } else {
             createUnmatched(transaction, onChainLines, onChainEntry)
         }
+    }
+
+    /**
+     * Two-tier match against amount-matching PENDING candidates (already ordered
+     * `createdAt ASC`, so `firstOrNull` per tier preserves "oldest wins"):
+     *
+     * - Tier 1 (sender-confirmed): a candidate's [Settlement.expectedFromAddress]
+     *   agrees with [OnChainEntry.fromAddress] — both non-null and equal. Preferred
+     *   over FIFO regardless of position.
+     * - Tier 2 (amount + FIFO, today's behavior): only candidates with NO registered
+     *   [Settlement.expectedFromAddress] are eligible. A candidate whose
+     *   `expectedFromAddress` disagrees with `onChainEntry.fromAddress` is positive
+     *   evidence this transfer is NOT that expectation, so it is excluded from both
+     *   tiers rather than falling back to FIFO.
+     */
+    private fun findMatch(candidates: List<Settlement>, onChainEntry: OnChainEntry): Settlement? {
+        val amountMatches = candidates.filter { it.amount == onChainEntry.amount }
+
+        val tier1 = amountMatches.firstOrNull { candidate ->
+            val expected = candidate.expectedFromAddress
+            expected != null && onChainEntry.fromAddress != null && expected == onChainEntry.fromAddress
+        }
+        if (tier1 != null) return tier1
+
+        return amountMatches.firstOrNull { it.expectedFromAddress == null }
     }
 
     private fun settle(match: Settlement, transaction: Transaction, onChainEntry: OnChainEntry): ReconciliationResult {

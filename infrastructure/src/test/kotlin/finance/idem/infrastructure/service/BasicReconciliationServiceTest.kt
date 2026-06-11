@@ -56,7 +56,7 @@ class BasicReconciliationServiceTest {
     private fun service(enabled: Boolean = true, matchingWindowHours: Long = 24): BasicReconciliationService =
         BasicReconciliationService(settlementRepository, webhookOutboxRepository, enabled, matchingWindowHours)
 
-    private fun onChainEntry(amount: MonetaryAmount = MonetaryAmount.of("100.000000")) = OnChainEntry(
+    private fun onChainEntry(amount: MonetaryAmount = MonetaryAmount.of("100.000000"), fromAddress: String? = null) = OnChainEntry(
         amount = amount,
         token = StablecoinToken.USDC,
         chainId = ChainId.SOLANA,
@@ -64,6 +64,7 @@ class BasicReconciliationServiceTest {
         blockNumber = 250_000_000L,
         walletAddress = watchedWallet,
         tokenContract = usdcMint,
+        fromAddress = fromAddress,
     )
 
     private fun onChainTransaction(entry: OnChainEntry = onChainEntry()): Transaction {
@@ -93,7 +94,7 @@ class BasicReconciliationServiceTest {
         )
     }
 
-    private fun pendingSettlement(amount: MonetaryAmount, createdAt: Instant) = Settlement(
+    private fun pendingSettlement(amount: MonetaryAmount, createdAt: Instant, expectedFromAddress: String? = null) = Settlement(
         id = UUID.randomUUID(),
         tenantId = tenantId,
         accountId = creditAccountId,
@@ -102,6 +103,7 @@ class BasicReconciliationServiceTest {
         chainId = ChainId.SOLANA,
         walletAddress = watchedWallet,
         status = EntryStatus.PENDING,
+        expectedFromAddress = expectedFromAddress,
         createdAt = createdAt,
         createdBy = "api-user",
     )
@@ -279,5 +281,71 @@ class BasicReconciliationServiceTest {
         val result = service().reconcile(tx)
 
         assertTrue(result is ReconciliationResult.Settled)
+    }
+
+    @Test
+    fun `sender-confirmed candidate wins over an older amount-only candidate`() {
+        val tx = onChainTransaction(onChainEntry(fromAddress = "0xsender"))
+        val older = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(7200))
+        val newer = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(3600), expectedFromAddress = "0xsender")
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(listOf(older, newer))
+
+        val result = service().reconcile(tx)
+
+        assertTrue(result is ReconciliationResult.Settled)
+        assertEquals(newer.id, (result as ReconciliationResult.Settled).settlement.id)
+    }
+
+    @Test
+    fun `mismatched expectedFromAddress excludes a candidate even on amount match`() {
+        val tx = onChainTransaction(onChainEntry(fromAddress = "0xbob"))
+        val candidate = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60), expectedFromAddress = "0xalice")
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(listOf(candidate))
+
+        val result = service().reconcile(tx)
+
+        assertTrue(result is ReconciliationResult.Unmatched)
+    }
+
+    @Test
+    fun `sender-confirmed match takes precedence over an older FIFO-eligible candidate`() {
+        val tx = onChainTransaction(onChainEntry(fromAddress = "0xsender"))
+        val fifoEligible = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(7200))
+        val senderConfirmed = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60), expectedFromAddress = "0xsender")
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(listOf(fifoEligible, senderConfirmed))
+
+        val result = service().reconcile(tx)
+
+        assertTrue(result is ReconciliationResult.Settled)
+        assertEquals(senderConfirmed.id, (result as ReconciliationResult.Settled).settlement.id)
+    }
+
+    @Test
+    fun `null onChainEntry fromAddress excludes candidates with a registered expectedFromAddress`() {
+        val tx = onChainTransaction(onChainEntry(fromAddress = null))
+        val candidate = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60), expectedFromAddress = "0xsender")
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(listOf(candidate))
+
+        val result = service().reconcile(tx)
+
+        assertTrue(result is ReconciliationResult.Unmatched)
+    }
+
+    @Test
+    fun `oldest tier-2-eligible candidate wins over a newer sender-mismatched candidate`() {
+        val tx = onChainTransaction(onChainEntry(fromAddress = "0xbob"))
+        val fifoEligible = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(7200))
+        val senderMismatched = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60), expectedFromAddress = "0xalice")
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(listOf(fifoEligible, senderMismatched))
+
+        val result = service().reconcile(tx)
+
+        assertTrue(result is ReconciliationResult.Settled)
+        assertEquals(fifoEligible.id, (result as ReconciliationResult.Settled).settlement.id)
     }
 }

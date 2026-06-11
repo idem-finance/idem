@@ -58,6 +58,7 @@ class TronChainReaderTest {
         assertEquals(blockId, result.entry.blockNumber)
         assertEquals(watchedWallet.lowercase(), result.entry.walletAddress)
         assertEquals(usdtContract.lowercase(), result.entry.tokenContract)
+        assertEquals(senderWallet.lowercase(), result.entry.fromAddress)
         assertEquals(watchedAddress, result.watchedAddress)
     }
 

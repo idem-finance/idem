@@ -63,6 +63,7 @@ private fun Settlement.toEntity() = SettlementDataModel(
     walletAddress = walletAddress, status = status.name,
     matchedTransactionId = matchedTransactionId?.value,
     txHash = txHash, blockNumber = blockNumber, confirmedAt = confirmedAt,
+    expectedFromAddress = expectedFromAddress,
     createdAt = createdAt, createdBy = createdBy,
 )
 
@@ -73,5 +74,6 @@ private fun SettlementDataModel.toDomain() = Settlement(
     status = EntryStatus.valueOf(status),
     matchedTransactionId = matchedTransactionId?.let { TransactionId(it) },
     txHash = txHash, blockNumber = blockNumber, confirmedAt = confirmedAt,
+    expectedFromAddress = expectedFromAddress,
     createdAt = createdAt, createdBy = createdBy,
 )

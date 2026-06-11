@@ -13,6 +13,7 @@ data class OnChainEntry(
     val blockNumber: Long,
     val walletAddress: String,
     val tokenContract: String,
+    val fromAddress: String? = null,
 ) : MonetaryEntry() {
     init {
         if (!amount.isPositive()) throw LedgerInvariantViolation(

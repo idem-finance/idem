@@ -93,6 +93,7 @@ class TronChainReader(
                 blockNumber = transfer.blockId,
                 walletAddress = transfer.toAddress.lowercase(),
                 tokenContract = transfer.tokenInfo.tokenId.lowercase(),
+                fromAddress = transfer.fromAddress.takeIf { it.isNotBlank() }?.lowercase(),
             ),
             watchedAddress = watchedAddress,
         )

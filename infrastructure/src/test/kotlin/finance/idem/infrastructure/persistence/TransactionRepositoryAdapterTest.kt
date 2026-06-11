@@ -137,6 +137,7 @@ class TransactionRepositoryAdapterTest {
             amount = MonetaryAmount.of("180.00"), token = StablecoinToken.USDC,
             chainId = ChainId.EVM, txHash = "0xabc123", blockNumber = 19_000_000L,
             walletAddress = "0xWallet", tokenContract = "0xContract",
+            fromAddress = "0xfromsender",
         )
         val tx = Transaction.create(
             id = txId, tenantId = tenantA, idempotencyKey = UUID.randomUUID().toString(),
@@ -159,6 +160,7 @@ class TransactionRepositoryAdapterTest {
         assertEquals("0xabc123", entry.txHash)
         assertEquals(19_000_000L, entry.blockNumber)
         assertEquals("0xWallet", entry.walletAddress)
+        assertEquals("0xfromsender", entry.fromAddress)
     }
 
     @Test

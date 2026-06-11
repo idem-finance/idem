@@ -88,6 +88,7 @@ class EvmChainReader(
         if (topics[0] != TRANSFER_EVENT_TOPIC) return null
 
         val toAddress = "0x" + topics[2].takeLast(40).lowercase()
+        val fromAddress = "0x" + topics[1].takeLast(40).lowercase()
         val normalizedContract = contractAddress.lowercase()
 
         val watched = relevant.firstOrNull { wa ->
@@ -109,6 +110,7 @@ class EvmChainReader(
                 blockNumber = blockNumber,
                 walletAddress = toAddress,
                 tokenContract = normalizedContract,
+                fromAddress = fromAddress,
             ),
             watchedAddress = watched,
         )
