@@ -259,9 +259,11 @@ Returning 200 even on processing errors is intentional: Alchemy retries on 4xx/5
 | `AlchemyWebhookServiceHandleTest` | Unit (Mockito) — `handle()`: HMAC validation, non-ADDRESS_ACTIVITY ignored, unknown network, valid USDC transfer, unmatched address, checkpoint advances for unmatched payloads |
 | `AlchemyWebhookServiceTest` | Unit (Mockito) — `decodeActivity()`: happy path, removed log, non-token category, missing rawValue, unparseable rawValue, unsupported token, address normalization |
 | `AlchemyWebhookControllerTest` | Unit (MockMvc) — 200 on success, 401 on failure |
+| `AlchemyWebhookIntegrationTest` (app module) | Integration (Testcontainers Postgres, real HTTP `POST /internal/webhooks/alchemy` via `TestRestTemplate`, full api+infrastructure+application+core wiring) — valid HMAC → 200 + Transaction posted; invalid/missing HMAC → 401, nothing posted; duplicate webhook → idempotent (no second Transaction) |
 
 ```bash
 rtk test mvn test -pl infrastructure,api
+rtk test mvn test -pl app
 ```
 
 ---

@@ -195,6 +195,18 @@ events. No `SolanaWebSocketManager` class exists — #74 was built as
 the one-time startup recovery poll described above. This matches the M2-3
 chain-reader rules already documented in `CLAUDE.md`.
 
+### Related descope: #77 checklist item "SolanaWebSocketManager: disconnection → reconnect with exponential backoff (mock WS server)"
+
+This #77 checklist item is obsolete for the same reason as the #76 dependency
+referenced above: no `SolanaWebSocketManager` class exists, and
+`QuickNodeWebhookService` (#74) is a stateless HTTP webhook receiver with no
+connection lifecycle to disconnect/reconnect. There is therefore nothing to
+write a "mock WS server + exponential backoff" test against. #77's actual
+integration-test scope (Alchemy webhook receiver + reconciliation, both real
+HTTP/Postgres via Testcontainers) is covered by `AlchemyWebhookIntegrationTest`
+(see `docs/reconciliation.md` and `docs/evm-webhook-receiver.md` test-coverage
+tables).
+
 ---
 
 ## Error handling

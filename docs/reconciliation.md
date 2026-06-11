@@ -348,9 +348,11 @@ discriminator (tier 1 above). Current state per chain:
 | `BasicReconciliationServiceTest` | Unit (Mockito) — all branches of the algorithm above |
 | `SettlementRepositoryAdapterTest` | Integration (Testcontainers Postgres) — `findPendingCandidates` filtering/ordering, RLS tenant isolation, PENDING→SETTLED in-place update |
 | `PostTransactionServiceTest` | Unit — `reconcile()` called with the persisted transaction, last among the four writes |
+| `AlchemyWebhookIntegrationTest` (app module) | Integration (Testcontainers Postgres + real HTTP via `TestRestTemplate`, full Spring context) — end-to-end: valid/invalid HMAC webhook → `PostTransactionService.execute()` → `BasicReconciliationService.reconcile()` as the 4th write; covers PENDING→SETTLED, UNMATCHED creation (no candidate / amount mismatch / outside 24h window), idempotent duplicate webhook |
 
 ```bash
 rtk test mvn test -pl infrastructure
+rtk test mvn test -pl app                   # AlchemyWebhookIntegrationTest (full end-to-end)
 ```
 
 ---
