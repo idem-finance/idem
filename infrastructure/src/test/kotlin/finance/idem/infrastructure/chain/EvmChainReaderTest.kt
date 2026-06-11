@@ -61,6 +61,7 @@ class EvmChainReaderTest {
         assertEquals(19_000_000L, result.entry.blockNumber)
         assertEquals(watchedWallet.lowercase(), result.entry.walletAddress)
         assertEquals(usdcContract.lowercase(), result.entry.tokenContract)
+        assertEquals("0x" + fromPadded.takeLast(40), result.entry.fromAddress)
         assertEquals(watchedAddress, result.watchedAddress)
     }
 

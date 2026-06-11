@@ -127,6 +127,7 @@ class AlchemyWebhookServiceTest {
         assertEquals(19_531_250L, result.entry.blockNumber)
         assertEquals(watchedWallet.lowercase(), result.entry.walletAddress)
         assertEquals(usdcContract.lowercase(), result.entry.tokenContract)
+        assertEquals("0xfrom", result.entry.fromAddress)
         assertEquals(watchedAddress, result.watchedAddress)
     }
 

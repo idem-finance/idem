@@ -102,6 +102,7 @@ class SettlementRepositoryAdapterTest {
         chainId: ChainId = ChainId.SOLANA,
         walletAddress: String = watchedWallet,
         createdAt: Instant = now,
+        expectedFromAddress: String? = null,
     ) = Settlement(
         id = UUID.randomUUID(),
         tenantId = tenantId,
@@ -111,6 +112,7 @@ class SettlementRepositoryAdapterTest {
         chainId = chainId,
         walletAddress = walletAddress,
         status = EntryStatus.PENDING,
+        expectedFromAddress = expectedFromAddress,
         createdAt = createdAt,
         createdBy = "api-user",
     )
@@ -193,6 +195,28 @@ class SettlementRepositoryAdapterTest {
         assertNull(found.txHash)
         assertNull(found.blockNumber)
         assertNull(found.confirmedAt)
+        assertNull(found.expectedFromAddress)
+    }
+
+    @Test
+    fun `save and findById round-trip preserves a non-null expectedFromAddress`() {
+        val settlement = pendingSettlement(expectedFromAddress = "0xsenderaddress")
+
+        val saved = adapter.save(settlement)
+        val found = adapter.findById(saved.id, tenantA)
+
+        assertNotNull(found)
+        assertEquals("0xsenderaddress", found.expectedFromAddress)
+    }
+
+    @Test
+    fun `findById returns null expectedFromAddress for legacy rows without the column set`() {
+        val id = insertSettlement(tenantId = tenantA, accountId = accountA)
+
+        val found = adapter.findById(id, tenantA)
+
+        assertNotNull(found)
+        assertNull(found.expectedFromAddress)
     }
 
     @Test

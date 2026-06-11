@@ -127,6 +127,7 @@ class AlchemyWebhookService(
                 blockNumber = blockNumber,
                 walletAddress = toAddress,
                 tokenContract = contractAddress,
+                fromAddress = activity.fromAddress.takeIf { it.isNotBlank() }?.lowercase(),
             ),
             watchedAddress = watchedAddress,
         )

@@ -22,6 +22,7 @@ data class Settlement(
     val txHash: String? = null,
     val blockNumber: Long? = null,
     val confirmedAt: Instant? = null,
+    val expectedFromAddress: String? = null,
     val createdAt: Instant,
     val createdBy: String,
 )

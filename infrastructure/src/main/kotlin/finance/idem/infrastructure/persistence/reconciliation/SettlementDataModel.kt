@@ -23,12 +23,13 @@ class SettlementDataModel(
     @Column(name = "tx_hash") val txHash: String?,
     @Column(name = "block_number") val blockNumber: Long?,
     @Column(name = "confirmed_at") val confirmedAt: Instant?,
+    @Column(name = "expected_from_address") val expectedFromAddress: String?,
     @Column(name = "created_at", nullable = false, updatable = false) val createdAt: Instant,
     @Column(name = "created_by", nullable = false, updatable = false) val createdBy: String,
 ) {
     protected constructor() : this(
         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
         BigDecimal.ZERO, "", "", "", "PENDING",
-        null, null, null, null, Instant.now(), "",
+        null, null, null, null, null, Instant.now(), "",
     )
 }

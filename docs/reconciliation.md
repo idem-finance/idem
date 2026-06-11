@@ -65,7 +65,7 @@ override fun reconcile(transaction: Transaction): ReconciliationResult {
         since = since,
     )
 
-    val match = candidates.firstOrNull { it.amount == onChainEntry.amount }
+    val match = findMatch(candidates, onChainEntry)
     return if (match != null) settle(match, transaction, onChainEntry)
            else createUnmatched(transaction, onChainLines, onChainEntry)
 }
@@ -94,10 +94,27 @@ override fun reconcile(transaction: Transaction): ReconciliationResult {
    reconciled concurrently for the same wallet/token, the second blocks until the
    first commits, then re-evaluates `status='PENDING'` against the now-committed row
    and no longer sees it as a candidate.
-5. **Amount match**: done in Kotlin via `MonetaryAmount.equals` (scale-insensitive —
-   `100` == `100.000000`), so the matching logic is unit-testable without a database.
-   `firstOrNull` on an ascending-by-`createdAt` list means **the oldest matching
-   expectation wins** when multiple PENDING rows have the same amount.
+5. **Two-tier match** (`findMatch`, done in Kotlin — unit-testable without a
+   database): first restrict `candidates` to `it.amount == onChainEntry.amount`
+   (`MonetaryAmount.equals` is scale-insensitive — `100` == `100.000000`).
+   - **Tier 1 (sender-confirmed)**: `firstOrNull` over the amount-matches whose
+     `expectedFromAddress` is non-null and equals `onChainEntry.fromAddress`
+     (also non-null), compared **case-insensitively**. Case-insensitive because
+     EVM `fromAddress` is canonical lowercase hex, while Tron `fromAddress` is
+     stored as a lowercased Base58Check string (an internal-only
+     representation) — an operator registering `expectedFromAddress` is
+     expected to enter standard mixed-case Base58. Preferred over FIFO
+     regardless of `createdAt` order.
+   - **Tier 2 (amount + FIFO — the original behavior)**: if tier 1 finds nothing,
+     `firstOrNull { it.expectedFromAddress == null }` over the same
+     amount-matches. Since `candidates` is ordered `createdAt ASC`, **the oldest
+     eligible expectation wins** when multiple PENDING rows have the same amount.
+   - **Exclusion rule**: a candidate whose `expectedFromAddress` is set but
+     *disagrees* with `onChainEntry.fromAddress` is excluded from **both**
+     tiers — positive evidence the transfer is not that expectation, so falling
+     back to FIFO and consuming it would be strictly worse than UNMATCHED. See
+     "Sender-address matching — MVP scope and roadmap" below for per-chain
+     `fromAddress` coverage.
 6. **Settle** (match found): `match.copy(status=SETTLED, matchedTransactionId=tx.id,
    txHash, blockNumber, confirmedAt=now)`, saved **in place** (same `id` — no
    duplicate row). Writes `WebhookOutboxEntry.transactionSettled(tx)`.
@@ -198,7 +215,7 @@ sequenceDiagram
     else has OnChainEntry lines
         BRS->>SR: findPendingCandidates(tenantId, accountIds, token,\nchainId, walletAddress, since)
         SR-->>BRS: List<Settlement> (status=PENDING, createdAt ASC)
-        BRS->>BRS: match = candidates.firstOrNull { amount == onChainEntry.amount }
+        BRS->>BRS: match = findMatch(candidates, onChainEntry)
 
         alt match found
             BRS->>SR: save(match.copy(status=SETTLED, matchedTransactionId,\ntxHash, blockNumber, confirmedAt=now))
@@ -279,6 +296,48 @@ sequenceDiagram
 - **Exception-queue dashboard and a configurable matching-rules DSL** (tolerance
   windows, fuzzy amount matching, multi-currency netting) are cloud/enterprise-tier
   features — out of scope for this OSS engine.
+- **Sender-address matching is MVP-scoped** — see "Sender-address matching — MVP
+  scope and roadmap" below for current per-chain `fromAddress` coverage and the
+  Cloud/Enterprise resolution path.
+
+---
+
+## Sender-address matching — MVP scope and roadmap
+
+This OSS engine captures the on-chain sender (`fromAddress`) where it's
+cheaply available and uses it as a *preferred, non-exclusive* match
+discriminator (tier 1 above). Current state per chain:
+
+- **EVM and Tron** (direct readers and Alchemy webhook): `fromAddress` is
+  always populated — from the ERC-20 `Transfer` event's `topics[1]` (EVM) or
+  `from_address` (Tron/Alchemy activity). Recorded on every `OnChainEntry` for
+  audit, even before any `expectedFromAddress` expectations exist. EVM
+  `fromAddress` is canonical lowercase hex; Tron `fromAddress` is stored
+  lowercased (an internal-only Base58Check representation). Tier 1's
+  case-insensitive comparison means an `expectedFromAddress` registered in
+  standard mixed-case Base58 (as an operator would naturally enter a Tron
+  address) still matches.
+- **Solana / QuickNode**: `fromAddress` remains `null`. Extracting the sender
+  requires parsing transaction instructions/`accountKeys`, which the raw
+  JSON-RPC `SolanaChainReader` does not implement (see chain-reader notes:
+  re-evaluate once sol4k or SolanaJ closes this gap). Solana settlements remain
+  amount+FIFO-only (tier 2) regardless of this change.
+- **`expectedFromAddress` is always `null` today** — there is no
+  `POST /accounts/{id}/settlements` endpoint yet to register a PENDING
+  expectation with a sender hint (see "No REST endpoint yet..." above). Tier 1
+  is dormant until that endpoint exists. Capturing `fromAddress` now means it's
+  already on record for the moment that endpoint and tier 1 activate.
+- **Same-amount collisions** — on Solana always, or on EVM/Tron before the
+  creation endpoint exists — continue to resolve via amount+FIFO, unchanged
+  from today.
+
+### Cloud / Enterprise resolution
+
+| Capability | OSS (this engine) | Cloud | Enterprise |
+|---|---|---|---|
+| Sender-confirmed matching | Tier-1 preferred match (EVM/Tron `fromAddress` vs registered `expectedFromAddress`); amount+FIFO fallback everywhere else | Same engine + exception-queue dashboard surfaces FIFO-resolved/ambiguous matches for review | + configurable matching-rules DSL (tolerance windows, multi-field precedence, fuzzy amounts) |
+| Solana sender extraction | Not implemented — `fromAddress` always null | Same as OSS | Full instruction-level sender extraction (or SDK migration once sol4k/SolanaJ ships it) |
+| Deposit addressing | Shared watched wallet per chain/token — amount/sender are the only signals | Same as OSS | Per-customer HD-derived deposit addresses — eliminates amount/sender ambiguity entirely |
 
 ---
 
