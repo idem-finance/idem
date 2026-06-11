@@ -35,6 +35,7 @@ idem:
     quicknode-webhook-secret: "${QUICKNODE_WEBHOOK_SECRET:}"
     tron:
       api-url: https://apilist.tronscan.org
+      api-key: "${TRONSCAN_API_KEY:}"
       polling-interval-ms: 5000
   reconciliation:
     enabled: true

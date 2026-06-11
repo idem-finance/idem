@@ -23,6 +23,7 @@ class TronChainReader(
     private val httpClient: HttpClient = HttpClient.newHttpClient(),
     private val requestDelayMs: Long = REQUEST_DELAY_MS,
     private val pageSize: Int = PAGE_SIZE,
+    private val apiKey: String = "",
 ) : ChainReader, Closeable {
 
     override val chainKey = "TRON"
@@ -116,11 +117,11 @@ class TronChainReader(
 
     private fun httpGet(url: String): String? {
         return try {
-            val request = HttpRequest.newBuilder()
+            val requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Accept", "application/json")
-                .GET()
-                .build()
+            if (apiKey.isNotBlank()) requestBuilder.header("TRON-PRO-API-KEY", apiKey)
+            val request = requestBuilder.GET().build()
             val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
             if (response.statusCode() == 200) response.body()
             else {
