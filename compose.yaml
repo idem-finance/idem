@@ -17,6 +17,17 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7
+    container_name: idem-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Run with: docker compose --profile app up -d
   # Requires the app jar to be built first: ./mvnw package -DskipTests
   app:
@@ -33,8 +44,12 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/idem_dev
       SPRING_DATASOURCE_USERNAME: idem
       SPRING_DATASOURCE_PASSWORD: idem
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health || exit 1"]
