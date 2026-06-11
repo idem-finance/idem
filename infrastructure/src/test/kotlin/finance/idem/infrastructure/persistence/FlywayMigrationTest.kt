@@ -27,10 +27,10 @@ class FlywayMigrationTest {
         .load()
 
     @Test
-    fun `all 11 migrations apply cleanly`() {
+    fun `all 12 migrations apply cleanly`() {
         flyway().migrate()
         val applied = flyway().info().applied()
-        assertEquals(11, applied.size)
+        assertEquals(12, applied.size)
         assertTrue(applied.none { it.state.isFailed() }, "No migration should be in failed state")
     }
 
@@ -100,6 +100,40 @@ class FlywayMigrationTest {
             }
 
             conn.rollback()
+        }
+    }
+
+    @Test
+    fun `webhook_outbox is readable across tenants without app_tenant_id (NO FORCE RLS)`() {
+        flyway().migrate()
+
+        val tenantA = "c0000000-0000-0000-0000-000000000001"
+        val tenantB = "c0000000-0000-0000-0000-000000000002"
+
+        fun insertOutboxRow(tenantId: String) {
+            postgres.createConnection("").use { conn ->
+                conn.autoCommit = false
+                conn.createStatement().execute("SET LOCAL app.tenant_id = '$tenantId'")
+                conn.prepareStatement(
+                    "INSERT INTO webhook_outbox (id, tenant_id, transaction_id, event_type, payload) " +
+                        "VALUES (gen_random_uuid(), ?::uuid, gen_random_uuid(), 'transaction.committed', '{}')"
+                ).use { it.setString(1, tenantId); it.executeUpdate() }
+                conn.commit()
+            }
+        }
+
+        insertOutboxRow(tenantA)
+        insertOutboxRow(tenantB)
+
+        // No app.tenant_id set on this connection — NO FORCE RLS lets the owner role (idem)
+        // see rows across tenants, which #55's WebhookOutboxPoller relies on for its
+        // cross-tenant dispatchable batch query.
+        postgres.createConnection("").use { conn ->
+            val rs = conn.createStatement().executeQuery(
+                "SELECT COUNT(*) FROM webhook_outbox WHERE tenant_id IN ('$tenantA'::uuid, '$tenantB'::uuid) AND status = 'PENDING'"
+            )
+            rs.next()
+            assertEquals(2, rs.getInt(1), "Owner role should see PENDING rows across tenants without app.tenant_id set")
         }
     }
 }

@@ -1,6 +1,7 @@
 package finance.idem.infrastructure.persistence.outbox
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import finance.idem.application.outbox.OutboxStatus
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.TenantId
@@ -38,24 +39,40 @@ class WebhookOutboxRepositoryAdapter(
                 transactionId = entry.transactionId.value,
                 eventType = entry.eventType,
                 payload = payload,
-                dispatched = false,
-                retryCount = 0,
+                status = OutboxStatus.PENDING,
+                attempts = 0,
+                nextRetryAt = Instant.now(),
                 lastError = null,
                 createdAt = Instant.now(),
-                dispatchedAt = null,
+                deliveredAt = null,
             )
         )
     }
 
     @Transactional(readOnly = true)
-    fun findPending(tenantId: TenantId): List<WebhookOutboxDataModel> {
+    fun findPendingOrFailed(tenantId: TenantId): List<WebhookOutboxDataModel> {
         setTenantId(tenantId)
-        return jpaRepository.findByTenantIdAndDispatchedFalseOrderByCreatedAtAsc(tenantId.value)
+        return jpaRepository.findByTenantIdAndStatusInOrderByCreatedAtAsc(
+            tenantId.value,
+            listOf(OutboxStatus.PENDING, OutboxStatus.FAILED),
+        )
     }
 
     @Transactional
-    fun markDispatched(id: UUID, tenantId: TenantId) {
+    fun markDelivered(id: UUID, tenantId: TenantId) {
         setTenantId(tenantId)
-        jpaRepository.markDispatched(id.toString(), tenantId.value.toString(), Instant.now())
+        jpaRepository.markDelivered(id.toString(), tenantId.value.toString(), Instant.now())
+    }
+
+    @Transactional
+    fun markFailedForRetry(id: UUID, tenantId: TenantId, attempts: Int, nextRetryAt: Instant, lastError: String?) {
+        setTenantId(tenantId)
+        jpaRepository.markFailedForRetry(id.toString(), tenantId.value.toString(), attempts, nextRetryAt, lastError)
+    }
+
+    @Transactional
+    fun markDead(id: UUID, tenantId: TenantId, lastError: String?) {
+        setTenantId(tenantId)
+        jpaRepository.markDead(id.toString(), tenantId.value.toString(), lastError)
     }
 }

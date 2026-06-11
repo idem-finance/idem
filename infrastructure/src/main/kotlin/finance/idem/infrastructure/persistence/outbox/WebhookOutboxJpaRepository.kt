@@ -1,5 +1,6 @@
 package finance.idem.infrastructure.persistence.outbox
 
+import finance.idem.application.outbox.OutboxStatus
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -9,20 +10,55 @@ import java.util.UUID
 
 interface WebhookOutboxJpaRepository : JpaRepository<WebhookOutboxDataModel, UUID> {
 
-    fun findByTenantIdAndDispatchedFalseOrderByCreatedAtAsc(tenantId: UUID): List<WebhookOutboxDataModel>
+    fun findByTenantIdAndStatusInOrderByCreatedAtAsc(
+        tenantId: UUID,
+        statuses: List<OutboxStatus>,
+    ): List<WebhookOutboxDataModel>
 
     @Modifying
     @Query(
         value = """
             UPDATE webhook_outbox
-            SET dispatched = true, dispatched_at = CAST(:now AS timestamptz)
+            SET status = 'DELIVERED', delivered_at = CAST(:deliveredAt AS timestamptz)
             WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tenantId AS uuid)
         """,
         nativeQuery = true,
     )
-    fun markDispatched(
+    fun markDelivered(
         @Param("id") id: String,
         @Param("tenantId") tenantId: String,
-        @Param("now") now: Instant,
+        @Param("deliveredAt") deliveredAt: Instant,
+    )
+
+    @Modifying
+    @Query(
+        value = """
+            UPDATE webhook_outbox
+            SET status = 'FAILED', attempts = :attempts, next_retry_at = CAST(:nextRetryAt AS timestamptz), last_error = :lastError
+            WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tenantId AS uuid)
+        """,
+        nativeQuery = true,
+    )
+    fun markFailedForRetry(
+        @Param("id") id: String,
+        @Param("tenantId") tenantId: String,
+        @Param("attempts") attempts: Int,
+        @Param("nextRetryAt") nextRetryAt: Instant,
+        @Param("lastError") lastError: String?,
+    )
+
+    @Modifying
+    @Query(
+        value = """
+            UPDATE webhook_outbox
+            SET status = 'DEAD', last_error = :lastError
+            WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tenantId AS uuid)
+        """,
+        nativeQuery = true,
+    )
+    fun markDead(
+        @Param("id") id: String,
+        @Param("tenantId") tenantId: String,
+        @Param("lastError") lastError: String?,
     )
 }

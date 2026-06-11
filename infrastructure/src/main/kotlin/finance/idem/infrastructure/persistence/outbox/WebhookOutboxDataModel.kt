@@ -1,7 +1,10 @@
 package finance.idem.infrastructure.persistence.outbox
 
+import finance.idem.application.outbox.OutboxStatus
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import org.hibernate.annotations.JdbcTypeCode
@@ -28,11 +31,15 @@ class WebhookOutboxDataModel(
     @Column(columnDefinition = "jsonb", nullable = false)
     val payload: String,
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    var dispatched: Boolean,
+    var status: OutboxStatus,
 
-    @Column(name = "retry_count", nullable = false)
-    var retryCount: Int,
+    @Column(nullable = false)
+    var attempts: Int,
+
+    @Column(name = "next_retry_at", nullable = false)
+    var nextRetryAt: Instant,
 
     @Column(name = "last_error")
     var lastError: String?,
@@ -40,11 +47,11 @@ class WebhookOutboxDataModel(
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant,
 
-    @Column(name = "dispatched_at")
-    var dispatchedAt: Instant?,
+    @Column(name = "delivered_at")
+    var deliveredAt: Instant?,
 ) {
     protected constructor() : this(
         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-        "", "{}", false, 0, null, Instant.now(), null,
+        "", "{}", OutboxStatus.PENDING, 0, Instant.now(), null, Instant.now(), null,
     )
 }
