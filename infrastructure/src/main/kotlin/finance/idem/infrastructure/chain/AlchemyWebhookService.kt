@@ -3,15 +3,10 @@ package finance.idem.infrastructure.chain
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import finance.idem.application.chain.AlchemyWebhookPort
-import finance.idem.application.ledger.JournalLineRequest
-import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
-import finance.idem.core.AccountId
 import finance.idem.core.ChainId
-import finance.idem.core.EntryType
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
-import finance.idem.core.TenantId
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
 import org.slf4j.LoggerFactory
@@ -65,7 +60,7 @@ class AlchemyWebhookService(
 
         for (activity in payload.event.activity) {
             val transfer = decodeActivity(activity, chainKey, watched) ?: continue
-            postTransactionUseCase.execute(buildCommand(transfer)).onFailure { error ->
+            postTransactionUseCase.execute(transfer.toCommand("alchemy-webhook")).onFailure { error ->
                 log.error(
                     "Alchemy webhook: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
                 )
@@ -134,19 +129,6 @@ class AlchemyWebhookService(
                 tokenContract = contractAddress,
             ),
             watchedAddress = watchedAddress,
-        )
-    }
-
-    private fun buildCommand(transfer: DetectedTransfer): PostTransactionCommand {
-        val watched = transfer.watchedAddress
-        return PostTransactionCommand(
-            tenantId = TenantId.of(watched.tenantId),
-            idempotencyKey = transfer.idempotencyKey,
-            lines = listOf(
-                JournalLineRequest(AccountId.of(watched.debitAccountId), EntryType.DEBIT, transfer.entry),
-                JournalLineRequest(AccountId.of(watched.creditAccountId), EntryType.CREDIT, transfer.entry),
-            ),
-            createdBy = "alchemy-webhook",
         )
     }
 

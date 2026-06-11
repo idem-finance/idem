@@ -279,6 +279,7 @@ rtk test mvn test -pl infrastructure
 
 ## Related
 
+- `docs/chain-reader-orchestrator.md` — central wiring point that calls `poll()` on a `@Scheduled` timer
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
 - `docs/evm-chain-reader.md` — EVM counterpart (Alchemy webhook primary, Web3j fallback)
 - `infrastructure/chain/EvmChainReaderFactory.kt` — factory that wires all chain readers
