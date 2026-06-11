@@ -1,5 +1,6 @@
 package finance.idem.infrastructure.persistence.outbox
 
+import finance.idem.application.outbox.OutboxStatus
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
@@ -18,8 +19,8 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @DataJpaTest
@@ -62,71 +63,125 @@ class WebhookOutboxRepositoryAdapterTest {
     )
 
     @Test
-    fun `save persists with dispatched false`() {
+    fun `save persists with status PENDING, zero attempts and an immediate next_retry_at`() {
         val entry = outboxEntry()
         adapter.save(entry)
 
-        val pending = adapter.findPending(tenantA)
+        val pending = adapter.findPendingOrFailed(tenantA)
         assertEquals(1, pending.size)
-        assertFalse(pending[0].dispatched)
+        assertEquals(OutboxStatus.PENDING, pending[0].status)
+        assertEquals(0, pending[0].attempts)
+        assertTrue(!pending[0].nextRetryAt.isAfter(Instant.now()), "nextRetryAt should be immediately due")
+        assertNull(pending[0].deliveredAt)
         assertEquals(entry.id, pending[0].id)
     }
 
     @Test
-    fun `findPending returns only undispatched rows ordered by created_at ascending`() {
+    fun `findPendingOrFailed returns PENDING and FAILED rows ordered by created_at ascending`() {
         val older = outboxEntry()
         val newer = outboxEntry()
+        val delivered = outboxEntry()
+        val dead = outboxEntry()
 
-        // Insert with explicit timestamps to guarantee deterministic order
+        // Insert with explicit timestamps/statuses to guarantee deterministic order and coverage
         val session = entityManager.unwrap(org.hibernate.Session::class.java)
         session.doWork { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantA.value}'")
-            listOf(older to "now() - interval '5 seconds'", newer to "now()").forEach { (e, ts) ->
+            listOf(
+                older to ("now() - interval '5 seconds'" to "PENDING"),
+                newer to ("now()" to "FAILED"),
+                delivered to ("now()" to "DELIVERED"),
+                dead to ("now()" to "DEAD"),
+            ).forEach { (e, tsAndStatus) ->
+                val (ts, status) = tsAndStatus
                 conn.prepareStatement(
-                    "INSERT INTO webhook_outbox (id, tenant_id, transaction_id, event_type, payload, dispatched, retry_count, created_at) VALUES (?::uuid, ?::uuid, ?::uuid, ?, '{}', false, 0, $ts)"
+                    "INSERT INTO webhook_outbox (id, tenant_id, transaction_id, event_type, payload, status, attempts, next_retry_at, created_at) " +
+                        "VALUES (?::uuid, ?::uuid, ?::uuid, ?, '{}', ?, 0, now(), $ts)"
                 ).use { stmt ->
                     stmt.setString(1, e.id.toString())
                     stmt.setString(2, tenantA.value.toString())
                     stmt.setString(3, e.transactionId.value.toString())
                     stmt.setString(4, e.eventType)
+                    stmt.setString(5, status)
                     stmt.executeUpdate()
                 }
             }
         }
         entityManager.clear()
 
-        val pending = adapter.findPending(tenantA)
+        val pending = adapter.findPendingOrFailed(tenantA)
         assertEquals(2, pending.size)
-        assertEquals(older.id, pending[0].id, "Older entry must come first")
-        assertEquals(newer.id, pending[1].id, "Newer entry must come second")
+        assertEquals(older.id, pending[0].id, "Older PENDING entry must come first")
+        assertEquals(newer.id, pending[1].id, "Newer FAILED entry must come second")
+        assertTrue(pending.none { it.id == delivered.id }, "DELIVERED rows must be excluded")
+        assertTrue(pending.none { it.id == dead.id }, "DEAD rows must be excluded")
     }
 
     @Test
-    fun `markDispatched sets dispatched true and dispatched_at`() {
+    fun `markDelivered sets status DELIVERED and delivered_at`() {
         val entry = outboxEntry()
         adapter.save(entry)
 
-        adapter.markDispatched(entry.id, tenantA)
+        adapter.markDelivered(entry.id, tenantA)
 
         // Clear the first-level cache so findById hits the DB, not the stale cached entity
         entityManager.flush()
         entityManager.clear()
 
-        val pending = adapter.findPending(tenantA)
+        val pending = adapter.findPendingOrFailed(tenantA)
         assertEquals(0, pending.size)
 
         val row = adapter.jpaRepository.findById(entry.id).orElseThrow()
-        assertTrue(row.dispatched)
-        assertNotNull(row.dispatchedAt)
+        assertEquals(OutboxStatus.DELIVERED, row.status)
+        assertNotNull(row.deliveredAt)
     }
 
     @Test
-    fun `findPending is isolated by tenant (RLS)`() {
+    fun `markFailedForRetry sets status FAILED, increments attempts and records next_retry_at and last_error`() {
+        val entry = outboxEntry()
+        adapter.save(entry)
+
+        val nextRetryAt = Instant.now().plusSeconds(30)
+        adapter.markFailedForRetry(entry.id, tenantA, attempts = 1, nextRetryAt = nextRetryAt, lastError = "HTTP 500")
+
+        entityManager.flush()
+        entityManager.clear()
+
+        val pending = adapter.findPendingOrFailed(tenantA)
+        assertEquals(1, pending.size, "FAILED rows remain dispatchable")
+
+        val row = adapter.jpaRepository.findById(entry.id).orElseThrow()
+        assertEquals(OutboxStatus.FAILED, row.status)
+        assertEquals(1, row.attempts)
+        assertEquals("HTTP 500", row.lastError)
+        assertEquals(nextRetryAt.epochSecond, row.nextRetryAt.epochSecond)
+    }
+
+    @Test
+    fun `markDead sets status DEAD and last_error`() {
+        val entry = outboxEntry()
+        adapter.save(entry)
+
+        adapter.markDead(entry.id, tenantA, lastError = "max attempts exceeded")
+
+        entityManager.flush()
+        entityManager.clear()
+
+        val pending = adapter.findPendingOrFailed(tenantA)
+        assertEquals(0, pending.size, "DEAD rows are no longer dispatchable")
+
+        val row = adapter.jpaRepository.findById(entry.id).orElseThrow()
+        assertEquals(OutboxStatus.DEAD, row.status)
+        assertEquals("max attempts exceeded", row.lastError)
+    }
+
+    @Test
+    fun `findPendingOrFailed is isolated by tenant (RLS)`() {
         adapter.save(outboxEntry(tenantA))
         adapter.save(outboxEntry(tenantB))
 
-        val pendingA = adapter.findPending(tenantA)
-        val pendingB = adapter.findPending(tenantB)
+        val pendingA = adapter.findPendingOrFailed(tenantA)
+        val pendingB = adapter.findPendingOrFailed(tenantB)
 
         assertEquals(1, pendingA.size)
         assertEquals(1, pendingB.size)
@@ -135,14 +190,14 @@ class WebhookOutboxRepositoryAdapterTest {
     }
 
     @Test
-    fun `markDispatched does not affect other tenant rows`() {
+    fun `markDelivered does not affect other tenant rows`() {
         val entryA = outboxEntry(tenantA)
         val entryB = outboxEntry(tenantB)
         adapter.save(entryA)
         adapter.save(entryB)
 
-        adapter.markDispatched(entryA.id, tenantA)
+        adapter.markDelivered(entryA.id, tenantA)
 
-        assertEquals(1, adapter.findPending(tenantB).size)
+        assertEquals(1, adapter.findPendingOrFailed(tenantB).size)
     }
 }
