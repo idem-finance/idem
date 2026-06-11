@@ -23,5 +23,4 @@ data class SolanaNetworkConfig(
 
 data class TronNetworkConfig(
     val apiUrl: String = "",
-    val pollingIntervalMs: Long = 5000,
 )
