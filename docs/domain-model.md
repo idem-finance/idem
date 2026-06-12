@@ -393,6 +393,36 @@ existing row in place rather than inserting a new one.
 
 ---
 
+## Tenant domain — webhook configuration
+
+**Package:** `finance.idem.application.tenant` / `finance.idem.application.port`
+
+Per-tenant webhook delivery configuration consumed by `WebhookOutboxPoller` — each
+tenant receives outbox events at their own URL, signed with their own secret. See
+`docs/webhook-outbox-poller.md` for the delivery mechanism.
+
+### TenantWebhookConfig
+
+```kotlin
+data class TenantWebhookConfig(val webhookUrl: String, val webhookSecret: String)
+```
+
+### TenantRepository
+
+```kotlin
+interface TenantRepository {
+    fun findWebhookConfig(tenantId: TenantId): TenantWebhookConfig?
+}
+```
+
+`null` means "not configured yet" (no row, or `webhook_url`/`webhook_secret` is
+null/blank) — not an error. The `tenants` table (V13) has RLS enabled but **not
+forced**, mirroring `webhook_outbox` (V12): `WebhookOutboxPoller` resolves any
+tenant's config as the table-owner role while iterating cross-tenant dispatchable
+rows, with no `app.tenant_id` set.
+
+---
+
 ## Verification
 
 ```bash

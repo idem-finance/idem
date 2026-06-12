@@ -62,6 +62,29 @@ class WebhookOutboxRepositoryAdapterTest {
         occurredAt = Instant.now(),
     )
 
+    /** Inserts a row directly, bypassing the adapter, to control status/next_retry_at/created_at for findDispatchable tests. */
+    private fun insertRawOutboxRow(
+        id: UUID,
+        tenantId: TenantId,
+        status: String,
+        nextRetryAtExpr: String = "now()",
+        createdAtExpr: String = "now()",
+    ) {
+        val session = entityManager.unwrap(org.hibernate.Session::class.java)
+        session.doWork { conn ->
+            conn.prepareStatement(
+                "INSERT INTO webhook_outbox (id, tenant_id, transaction_id, event_type, payload, status, attempts, next_retry_at, created_at) " +
+                    "VALUES (?::uuid, ?::uuid, ?::uuid, 'transaction.committed', '{}', ?, 0, $nextRetryAtExpr, $createdAtExpr)"
+            ).use { stmt ->
+                stmt.setString(1, id.toString())
+                stmt.setString(2, tenantId.value.toString())
+                stmt.setString(3, UUID.randomUUID().toString())
+                stmt.setString(4, status)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
     @Test
     fun `save persists with status PENDING, zero attempts and an immediate next_retry_at`() {
         val entry = outboxEntry()
@@ -199,5 +222,78 @@ class WebhookOutboxRepositoryAdapterTest {
         adapter.markDelivered(entryA.id, tenantA)
 
         assertEquals(1, adapter.findPendingOrFailed(tenantB).size)
+    }
+
+    @Test
+    fun `findDispatchable returns dispatchable rows across multiple tenants`() {
+        val idA = UUID.randomUUID()
+        val idB = UUID.randomUUID()
+
+        // Inserted directly (rather than via adapter.save) so next_retry_at
+        // is Postgres' own now() -- @DataJpaTest runs the whole test in one
+        // transaction, and Postgres' now() is frozen at transaction start, so
+        // a JVM Instant.now() written by adapter.save() would always be
+        // "in the future" relative to it and never be dispatchable.
+        insertRawOutboxRow(idA, tenantA, status = "PENDING")
+        insertRawOutboxRow(idB, tenantB, status = "PENDING")
+        entityManager.clear()
+
+        val dispatchable = adapter.findDispatchable(50)
+
+        val ids = dispatchable.map { it.id }
+        assertTrue(idA in ids, "tenant A's row must be visible cross-tenant")
+        assertTrue(idB in ids, "tenant B's row must be visible cross-tenant")
+        assertEquals(tenantA, dispatchable.first { it.id == idA }.tenantId)
+        assertEquals(tenantB, dispatchable.first { it.id == idB }.tenantId)
+    }
+
+    @Test
+    fun `findDispatchable only returns PENDING or FAILED rows whose next_retry_at is due`() {
+        val pendingDue = UUID.randomUUID()
+        val failedDue = UUID.randomUUID()
+        val failedFuture = UUID.randomUUID()
+        val delivered = UUID.randomUUID()
+        val dead = UUID.randomUUID()
+
+        insertRawOutboxRow(pendingDue, tenantA, status = "PENDING", nextRetryAtExpr = "now()")
+        insertRawOutboxRow(failedDue, tenantA, status = "FAILED", nextRetryAtExpr = "now() - interval '1 second'")
+        insertRawOutboxRow(failedFuture, tenantA, status = "FAILED", nextRetryAtExpr = "now() + interval '1 hour'")
+        insertRawOutboxRow(delivered, tenantA, status = "DELIVERED", nextRetryAtExpr = "now()")
+        insertRawOutboxRow(dead, tenantA, status = "DEAD", nextRetryAtExpr = "now()")
+        entityManager.clear()
+
+        val ids = adapter.findDispatchable(50).map { it.id }
+
+        assertTrue(pendingDue in ids, "due PENDING row must be dispatchable")
+        assertTrue(failedDue in ids, "due FAILED row must be dispatchable")
+        assertTrue(failedFuture !in ids, "FAILED row with future next_retry_at must not be dispatchable yet")
+        assertTrue(delivered !in ids, "DELIVERED rows must never be dispatchable")
+        assertTrue(dead !in ids, "DEAD rows must never be dispatchable")
+    }
+
+    @Test
+    fun `findDispatchable respects the limit`() {
+        repeat(3) { insertRawOutboxRow(UUID.randomUUID(), tenantA, status = "PENDING") }
+        entityManager.clear()
+
+        val dispatchable = adapter.findDispatchable(2)
+
+        assertEquals(2, dispatchable.size)
+    }
+
+    @Test
+    fun `findDispatchable orders rows by created_at ascending`() {
+        val oldest = UUID.randomUUID()
+        val middle = UUID.randomUUID()
+        val newest = UUID.randomUUID()
+
+        insertRawOutboxRow(newest, tenantA, status = "PENDING", createdAtExpr = "now()")
+        insertRawOutboxRow(oldest, tenantA, status = "PENDING", createdAtExpr = "now() - interval '10 seconds'")
+        insertRawOutboxRow(middle, tenantA, status = "PENDING", createdAtExpr = "now() - interval '5 seconds'")
+        entityManager.clear()
+
+        val ids = adapter.findDispatchable(50).map { it.id }
+
+        assertEquals(listOf(oldest, middle, newest), ids)
     }
 }

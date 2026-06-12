@@ -272,6 +272,7 @@ rtk test mvn test -pl app
 
 - `docs/evm-chain-reader.md` — `EvmChainReader` fallback/recovery (Web3j `ethGetLogs`)
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
+- `docs/webhook-outbox-poller.md` — WebhookOutboxPoller (#55): delivers transaction.committed/settled/reconciliation.unmatched events to per-tenant webhooks
 - `application/chain/AlchemyWebhookPort.kt` — port interface
 - `infrastructure/chain/AlchemyWebhookService.kt` — implementation
 - `api/internal/AlchemyWebhookController.kt` — HTTP entry point

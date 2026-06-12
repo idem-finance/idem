@@ -2,6 +2,7 @@ package finance.idem.infrastructure.persistence.outbox
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import finance.idem.application.outbox.OutboxStatus
+import finance.idem.application.outbox.WebhookOutboxDispatch
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.TenantId
@@ -59,20 +60,37 @@ class WebhookOutboxRepositoryAdapter(
     }
 
     @Transactional
-    fun markDelivered(id: UUID, tenantId: TenantId) {
+    override fun markDelivered(id: UUID, tenantId: TenantId) {
         setTenantId(tenantId)
         jpaRepository.markDelivered(id.toString(), tenantId.value.toString(), Instant.now())
     }
 
     @Transactional
-    fun markFailedForRetry(id: UUID, tenantId: TenantId, attempts: Int, nextRetryAt: Instant, lastError: String?) {
+    override fun markFailedForRetry(id: UUID, tenantId: TenantId, attempts: Int, nextRetryAt: Instant, lastError: String?) {
         setTenantId(tenantId)
         jpaRepository.markFailedForRetry(id.toString(), tenantId.value.toString(), attempts, nextRetryAt, lastError)
     }
 
     @Transactional
-    fun markDead(id: UUID, tenantId: TenantId, lastError: String?) {
+    override fun markDead(id: UUID, tenantId: TenantId, lastError: String?) {
         setTenantId(tenantId)
         jpaRepository.markDead(id.toString(), tenantId.value.toString(), lastError)
     }
+
+    /**
+     * Cross-tenant — deliberately does NOT call `setTenantId`. Relies on
+     * `webhook_outbox` having NO FORCE RLS (V12): the table-owner role sees
+     * PENDING/FAILED rows across all tenants with no `app.tenant_id` set.
+     */
+    @Transactional(readOnly = true)
+    override fun findDispatchable(limit: Int): List<WebhookOutboxDispatch> =
+        jpaRepository.findDispatchable(limit).map {
+            WebhookOutboxDispatch(
+                id = it.id,
+                tenantId = TenantId(it.tenantId),
+                eventType = it.eventType,
+                payload = it.payload,
+                attempts = it.attempts,
+            )
+        }
 }

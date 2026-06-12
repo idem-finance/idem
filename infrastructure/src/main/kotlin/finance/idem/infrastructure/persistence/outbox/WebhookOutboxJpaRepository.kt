@@ -15,6 +15,22 @@ interface WebhookOutboxJpaRepository : JpaRepository<WebhookOutboxDataModel, UUI
         statuses: List<OutboxStatus>,
     ): List<WebhookOutboxDataModel>
 
+    /**
+     * Cross-tenant — relies on `webhook_outbox` having NO FORCE RLS (V12), so
+     * the table-owner role sees PENDING/FAILED rows across all tenants with
+     * no `app.tenant_id` set.
+     */
+    @Query(
+        value = """
+            SELECT * FROM webhook_outbox
+            WHERE status IN ('PENDING','FAILED') AND next_retry_at <= now()
+            ORDER BY created_at ASC
+            LIMIT :limit
+        """,
+        nativeQuery = true,
+    )
+    fun findDispatchable(@Param("limit") limit: Int): List<WebhookOutboxDataModel>
+
     @Modifying
     @Query(
         value = """
