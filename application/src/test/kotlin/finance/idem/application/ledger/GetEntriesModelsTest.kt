@@ -23,7 +23,7 @@ class GetEntriesModelsTest {
     private val now = Instant.now()
 
     @Test
-    fun `QueryEntriesQuery holds all fields`() {
+    fun `GetEntriesQuery holds all fields`() {
         val query = GetEntriesQuery(accountId, tenantId, from = now, to = now, limit = 25, cursor = "abc")
         assertEquals(accountId, query.accountId)
         assertEquals(tenantId, query.tenantId)
@@ -35,7 +35,7 @@ class GetEntriesModelsTest {
     }
 
     @Test
-    fun `QueryEntriesQuery defaults limit to 50 and optional fields to null`() {
+    fun `GetEntriesQuery defaults limit to 50 and optional fields to null`() {
         val query = GetEntriesQuery(accountId, tenantId)
         assertEquals(50, query.limit)
         assertNull(query.from)
@@ -76,7 +76,7 @@ class GetEntriesModelsTest {
         val error = EntriesAccountNotFound(accountId)
 
         assertEquals(accountId, error.accountId)
-        assertIs<QueryEntriesError>(error)
+        assertIs<GetEntriesError>(error)
     }
 
     @Test
@@ -84,6 +84,6 @@ class GetEntriesModelsTest {
         val error = InvalidCursor("bad-token")
 
         assertEquals("bad-token", error.cursor)
-        assertIs<QueryEntriesError>(error)
+        assertIs<GetEntriesError>(error)
     }
 }

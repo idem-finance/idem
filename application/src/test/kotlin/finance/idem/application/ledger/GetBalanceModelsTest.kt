@@ -43,7 +43,7 @@ class GetBalanceModelsTest {
     }
 
     @Test
-    fun `QueryBalanceError AccountNotFound carries accountId and message`() {
+    fun `GetBalanceError AccountNotFound carries accountId and message`() {
         val error = BalanceAccountNotFound(accountId)
         assertEquals(accountId, error.accountId)
         assertIs<GetBalanceError>(error)

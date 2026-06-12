@@ -9,8 +9,8 @@ import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidCursor
 import finance.idem.application.ledger.InvalidStatementRange
 import finance.idem.application.ledger.GetEntriesQuery
-import finance.idem.application.ledger.QueryEntriesUseCase
-import finance.idem.application.ledger.QueryBalanceUseCase
+import finance.idem.application.ledger.GetEntriesUseCase
+import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.StatementMovement
 import finance.idem.core.AccountId
@@ -42,10 +42,10 @@ class AccountControllerTest {
     lateinit var mockMvc: MockMvc
 
     @MockitoBean
-    lateinit var queryBalancePort: QueryBalanceUseCase
+    lateinit var getBalanceUseCase: GetBalanceUseCase
 
     @MockitoBean
-    lateinit var queryEntriesUseCase: QueryEntriesUseCase
+    lateinit var getEntriesUseCase: GetEntriesUseCase
 
     @MockitoBean
     lateinit var generateStatementUseCase: GenerateStatementUseCase
@@ -97,7 +97,7 @@ class AccountControllerTest {
 
     @Test
     fun `happy path returns 200 with balance`() {
-        whenever(queryBalancePort.execute(any())).thenReturn(Result.success(balanceFor(accountId)))
+        whenever(getBalanceUseCase.execute(any())).thenReturn(Result.success(balanceFor(accountId)))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance") {
             header("X-Tenant-Id", tenantId)
@@ -128,7 +128,7 @@ class AccountControllerTest {
 
     @Test
     fun `account not found returns 404`() {
-        whenever(queryBalancePort.execute(any()))
+        whenever(getBalanceUseCase.execute(any()))
             .thenReturn(Result.failure(BalanceAccountNotFound(AccountId(accountId))))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance") {
@@ -141,7 +141,7 @@ class AccountControllerTest {
     @Test
     fun `asOf parameter is forwarded to query`() {
         val asOf = "2026-05-01T00:00:00Z"
-        whenever(queryBalancePort.execute(any())).thenReturn(Result.success(balanceFor(accountId)))
+        whenever(getBalanceUseCase.execute(any())).thenReturn(Result.success(balanceFor(accountId)))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance?asOf=$asOf") {
             header("X-Tenant-Id", tenantId)
@@ -153,7 +153,7 @@ class AccountControllerTest {
     @Test
     fun `listEntries happy path returns 200 with entries and nextCursor`() {
         val line = lineFor(accountId, description = "Pix received")
-        whenever(queryEntriesUseCase.execute(any()))
+        whenever(getEntriesUseCase.execute(any()))
             .thenReturn(Result.success(EntryPage(AccountId(accountId), listOf(line), "next-cursor-token")))
 
         mockMvc.get("/api/v1/accounts/$accountId/entries") {
@@ -172,7 +172,7 @@ class AccountControllerTest {
 
     @Test
     fun `listEntries account not found returns 404`() {
-        whenever(queryEntriesUseCase.execute(any()))
+        whenever(getEntriesUseCase.execute(any()))
             .thenReturn(Result.failure(EntriesAccountNotFound(AccountId(accountId))))
 
         mockMvc.get("/api/v1/accounts/$accountId/entries") {
@@ -214,7 +214,7 @@ class AccountControllerTest {
 
     @Test
     fun `listEntries with invalid cursor returns 400 INVALID_CURSOR`() {
-        whenever(queryEntriesUseCase.execute(any()))
+        whenever(getEntriesUseCase.execute(any()))
             .thenReturn(Result.failure(InvalidCursor("garbage")))
 
         mockMvc.get("/api/v1/accounts/$accountId/entries?cursor=garbage") {
@@ -227,7 +227,7 @@ class AccountControllerTest {
 
     @Test
     fun `listEntries forwards from, to, limit and cursor into the query`() {
-        whenever(queryEntriesUseCase.execute(any()))
+        whenever(getEntriesUseCase.execute(any()))
             .thenReturn(Result.success(EntryPage(AccountId(accountId), emptyList(), null)))
 
         mockMvc.get("/api/v1/accounts/$accountId/entries?from=2026-05-01T00:00:00Z&to=2026-05-28T00:00:00Z&limit=10&cursor=abc") {
@@ -237,7 +237,7 @@ class AccountControllerTest {
         }
 
         val captor = argumentCaptor<GetEntriesQuery>()
-        verify(queryEntriesUseCase).execute(captor.capture())
+        verify(getEntriesUseCase).execute(captor.capture())
         val query = captor.firstValue
         kotlin.test.assertEquals(AccountId(accountId), query.accountId)
         kotlin.test.assertEquals(Instant.parse("2026-05-01T00:00:00Z"), query.from)

@@ -6,7 +6,7 @@ import finance.idem.application.ledger.GenerateStatementQuery
 import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidStatementRange
 import finance.idem.application.ledger.GetBalanceQuery
-import finance.idem.application.ledger.QueryBalanceUseCase
+import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.StatementMovement
 import finance.idem.core.ledger.TransactionRepository
@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 @Transactional(readOnly = true)
 class GenerateStatementService(
-    private val queryBalanceUseCase: QueryBalanceUseCase,
+    private val getBalanceUseCase: GetBalanceUseCase,
     private val transactionRepository: TransactionRepository,
 ) : GenerateStatementUseCase {
 
@@ -26,11 +26,11 @@ class GenerateStatementService(
             return Result.failure(InvalidStatementRange(query.from, query.to))
         }
 
-        val opening = queryBalanceUseCase
+        val opening = getBalanceUseCase
             .execute(GetBalanceQuery(query.accountId, query.tenantId, asOf = query.from))
             .getOrElse { error -> return Result.failure(error.toStatementError(query)) }
 
-        val closing = queryBalanceUseCase
+        val closing = getBalanceUseCase
             .execute(GetBalanceQuery(query.accountId, query.tenantId, asOf = query.to))
             .getOrElse { error -> return Result.failure(error.toStatementError(query)) }
 

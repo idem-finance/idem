@@ -7,9 +7,9 @@ import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidCursor
 import finance.idem.application.ledger.InvalidStatementRange
 import finance.idem.application.ledger.GetEntriesQuery
-import finance.idem.application.ledger.QueryEntriesUseCase
+import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.application.ledger.GetBalanceQuery
-import finance.idem.application.ledger.QueryBalanceUseCase
+import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.core.AccountId
 import finance.idem.core.TenantId
@@ -33,8 +33,8 @@ import java.util.UUID
 @RequestMapping("/api/v1/accounts")
 @Tag(name = "Accounts", description = "Account balance queries")
 class AccountController(
-    private val queryBalanceUseCase: QueryBalanceUseCase,
-    private val queryEntriesUseCase: QueryEntriesUseCase,
+    private val getBalanceUseCase: GetBalanceUseCase,
+    private val getEntriesUseCase: GetEntriesUseCase,
     private val generateStatementUseCase: GenerateStatementUseCase,
 ) {
 
@@ -66,7 +66,7 @@ class AccountController(
             asOf = asOf,
         )
 
-        return queryBalanceUseCase.execute(query).fold(
+        return getBalanceUseCase.execute(query).fold(
             onSuccess = { balance ->
                 ResponseEntity.ok(BalanceResponse.from(balance))
             },
@@ -129,7 +129,7 @@ class AccountController(
             cursor = cursor,
         )
 
-        return queryEntriesUseCase.execute(query).fold(
+        return getEntriesUseCase.execute(query).fold(
             onSuccess = { page ->
                 ResponseEntity.ok(EntryTimelineResponse.from(page))
             },
