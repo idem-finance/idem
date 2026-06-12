@@ -27,10 +27,10 @@ class FlywayMigrationTest {
         .load()
 
     @Test
-    fun `all 13 migrations apply cleanly`() {
+    fun `all 14 migrations apply cleanly`() {
         flyway().migrate()
         val applied = flyway().info().applied()
-        assertEquals(13, applied.size)
+        assertEquals(14, applied.size)
         assertTrue(applied.none { it.state.isFailed() }, "No migration should be in failed state")
     }
 
