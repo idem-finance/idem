@@ -5,11 +5,10 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import finance.idem.application.chain.QuickNodeWebhookPort
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.infrastructure.security.HmacSigner
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.security.MessageDigest
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 @Service
 class QuickNodeWebhookService(
@@ -28,11 +27,13 @@ class QuickNodeWebhookService(
     private val solanaReader: SolanaChainReader? =
         chainReaders.filterIsInstance<SolanaChainReader>().firstOrNull()
 
-    override fun handle(signature: String?, rawBody: String): Result<Unit> {
+    override fun handle(signature: String?, nonce: String?, timestamp: String?, rawBody: String): Result<Unit> {
         val signingKey = config.quicknodeWebhookSecret
         if (signingKey.isNotBlank()) {
-            if (signature == null || !isValidSignature(signingKey, rawBody, signature)) {
-                log.warn("QuickNode webhook rejected — invalid or missing X-QN-Signature")
+            if (signature == null || nonce == null || timestamp == null ||
+                !isValidSignature(signingKey, nonce, timestamp, rawBody, signature)
+            ) {
+                log.warn("QuickNode webhook rejected — invalid or missing X-QN-Signature/X-QN-Nonce/X-QN-Timestamp")
                 return Result.failure(IllegalArgumentException("Invalid or missing X-QN-Signature"))
             }
         } else {
@@ -95,11 +96,13 @@ class QuickNodeWebhookService(
     }
 
     companion object {
-        internal fun isValidSignature(secret: String, body: String, header: String): Boolean {
-            val mac = Mac.getInstance("HmacSHA256")
-            mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
-            val expected = mac.doFinal(body.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
+        /**
+         * QuickNode signs `nonce + timestamp + rawBody` (in that order, UTF-8) with the
+         * stream's security token — NOT the raw body alone. See "How to Validate Incoming
+         * Streams Webhook Messages" (QuickNode docs).
+         */
+        internal fun isValidSignature(secret: String, nonce: String, timestamp: String, body: String, header: String): Boolean {
+            val expected = HmacSigner.hexHmacSha256(secret, nonce + timestamp + body)
             return MessageDigest.isEqual(
                 expected.toByteArray(Charsets.UTF_8),
                 header.toByteArray(Charsets.UTF_8),
