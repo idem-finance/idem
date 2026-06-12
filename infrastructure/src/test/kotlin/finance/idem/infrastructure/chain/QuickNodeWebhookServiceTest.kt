@@ -38,6 +38,8 @@ class QuickNodeWebhookServiceTest {
     private lateinit var service: QuickNodeWebhookService
 
     private val signingKey = "test-webhook-signing-key"
+    private val testNonce = "test-nonce-123"
+    private val testTimestamp = "1718000000"
     private val objectMapper = ObjectMapper().registerKotlinModule()
 
     private val testSignature = "5UfgJ5vHh9KKmSE38wLvSQvTestSignatureAAAAAAAA"
@@ -78,7 +80,7 @@ class QuickNodeWebhookServiceTest {
 
     @Test
     fun `returns failure when X-QN-Signature is missing and secret is configured`() {
-        val result = service.handle(null, buildBody(testSignature, testSlot))
+        val result = service.handle(null, testNonce, testTimestamp, buildBody(testSignature, testSlot))
 
         assertTrue(result.isFailure)
         verify(postTransactionUseCase, never()).execute(any())
@@ -86,7 +88,36 @@ class QuickNodeWebhookServiceTest {
 
     @Test
     fun `returns failure when X-QN-Signature is wrong`() {
-        val result = service.handle("deadbeef0000", buildBody(testSignature, testSlot))
+        val result = service.handle("deadbeef0000", testNonce, testTimestamp, buildBody(testSignature, testSlot))
+
+        assertTrue(result.isFailure)
+        verify(postTransactionUseCase, never()).execute(any())
+    }
+
+    @Test
+    fun `returns failure when X-QN-Nonce is missing and secret is configured`() {
+        val body = buildBody(testSignature, testSlot)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), null, testTimestamp, body)
+
+        assertTrue(result.isFailure)
+        verify(postTransactionUseCase, never()).execute(any())
+    }
+
+    @Test
+    fun `returns failure when X-QN-Timestamp is missing and secret is configured`() {
+        val body = buildBody(testSignature, testSlot)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, null, body)
+
+        assertTrue(result.isFailure)
+        verify(postTransactionUseCase, never()).execute(any())
+    }
+
+    @Test
+    fun `returns failure when signature was computed over body alone (legacy scheme)`() {
+        val body = buildBody(testSignature, testSlot)
+        val legacySignature = computeHmac(signingKey, "", "", body)
+
+        val result = service.handle(legacySignature, testNonce, testTimestamp, body)
 
         assertTrue(result.isFailure)
         verify(postTransactionUseCase, never()).execute(any())
@@ -104,7 +135,7 @@ class QuickNodeWebhookServiceTest {
         )
         whenever(watchedAddressRepository.findByChainKey("SOLANA")).thenReturn(emptyList())
 
-        val result = devService.handle(null, buildBody(testSignature, testSlot))
+        val result = devService.handle(null, null, null, buildBody(testSignature, testSlot))
 
         assertTrue(result.isSuccess)
     }
@@ -115,7 +146,7 @@ class QuickNodeWebhookServiceTest {
     fun `returns success and does not process when body is not valid JSON`() {
         val body = "not-json"
 
-        val result = service.handle(computeHmac(signingKey, body), body)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
@@ -126,7 +157,7 @@ class QuickNodeWebhookServiceTest {
     fun `returns success and does not process legacy bare-array body (no data envelope)`() {
         val body = """[{"signature":"$testSignature","slot":$testSlot,"network":"mainnet-beta"}]"""
 
-        val result = service.handle(computeHmac(signingKey, body), body)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
@@ -137,7 +168,7 @@ class QuickNodeWebhookServiceTest {
     fun `returns success and processes nothing when data array is empty`() {
         val body = """{"data":[],"metadata":{"streamId":"st_test","dataset":"block"}}"""
 
-        val result = service.handle(computeHmac(signingKey, body), body)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
@@ -150,7 +181,7 @@ class QuickNodeWebhookServiceTest {
     fun `returns success and ignores unknown network`() {
         val body = """{"data":[{"signature":"$testSignature","slot":$testSlot,"network":"devnet"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
 
-        val result = service.handle(computeHmac(signingKey, body), body)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
@@ -170,7 +201,7 @@ class QuickNodeWebhookServiceTest {
         )
         val body = buildBody(testSignature, testSlot)
 
-        val result = noReaderService.handle(computeHmac(signingKey, body), body)
+        val result = noReaderService.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
@@ -191,7 +222,7 @@ class QuickNodeWebhookServiceTest {
         whenever(solanaReader.decodeTransfer(tx, testSignature, testSlot, watchedAddress)).thenReturn(transfer)
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId(UUID.randomUUID())))
 
-        val result = service.handle(computeHmac(signingKey, body), body)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         assertTrue(result.isSuccess)
 
@@ -212,7 +243,7 @@ class QuickNodeWebhookServiceTest {
         whenever(watchedAddressRepository.findByChainKey("SOLANA")).thenReturn(emptyList())
         whenever(checkpointRepository.findByChainKey("SOLANA")).thenReturn(null)
 
-        val result = service.handle(computeHmac(signingKey, body), body)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
@@ -226,7 +257,7 @@ class QuickNodeWebhookServiceTest {
         whenever(checkpointRepository.findByChainKey("SOLANA")).thenReturn(null)
         whenever(solanaReader.getTransaction(testSignature)).thenReturn(null)
 
-        val result = service.handle(computeHmac(signingKey, body), body)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
@@ -242,7 +273,7 @@ class QuickNodeWebhookServiceTest {
         whenever(solanaReader.getTransaction(testSignature)).thenReturn(tx)
         whenever(solanaReader.decodeTransfer(any(), any(), any(), any())).thenReturn(null)
 
-        val result = service.handle(computeHmac(signingKey, body), body)
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         assertTrue(result.isSuccess)
         verify(postTransactionUseCase, never()).execute(any())
@@ -257,7 +288,7 @@ class QuickNodeWebhookServiceTest {
             ChainCheckpoint("SOLANA", testSlot, Instant.now())
         )
 
-        service.handle(computeHmac(signingKey, body), body)
+        service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
         verify(checkpointRepository, never()).save(any(), any())
     }
@@ -268,22 +299,38 @@ class QuickNodeWebhookServiceTest {
     fun `isValidSignature returns true for correct HMAC`() {
         val key = "secret"
         val body = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
-        val sig = computeHmac(key, body)
-        assertTrue(QuickNodeWebhookService.isValidSignature(key, body, sig))
+        val sig = computeHmac(key, testNonce, testTimestamp, body)
+        assertTrue(QuickNodeWebhookService.isValidSignature(key, testNonce, testTimestamp, body, sig))
     }
 
     @Test
     fun `isValidSignature returns false for wrong signature`() {
         val key = "secret"
         val body = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
-        assertFalse(QuickNodeWebhookService.isValidSignature(key, body, "deadbeef"))
+        assertFalse(QuickNodeWebhookService.isValidSignature(key, testNonce, testTimestamp, body, "deadbeef"))
     }
 
     @Test
     fun `isValidSignature returns false when key differs`() {
         val body = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
-        val sig = computeHmac("correct-key", body)
-        assertFalse(QuickNodeWebhookService.isValidSignature("wrong-key", body, sig))
+        val sig = computeHmac("correct-key", testNonce, testTimestamp, body)
+        assertFalse(QuickNodeWebhookService.isValidSignature("wrong-key", testNonce, testTimestamp, body, sig))
+    }
+
+    @Test
+    fun `isValidSignature returns false when nonce differs`() {
+        val key = "secret"
+        val body = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
+        val sig = computeHmac(key, "nonce-a", testTimestamp, body)
+        assertFalse(QuickNodeWebhookService.isValidSignature(key, "nonce-b", testTimestamp, body, sig))
+    }
+
+    @Test
+    fun `isValidSignature returns false when timestamp differs`() {
+        val key = "secret"
+        val body = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
+        val sig = computeHmac(key, testNonce, "1718000000", body)
+        assertFalse(QuickNodeWebhookService.isValidSignature(key, testNonce, "1718000099", body, sig))
     }
 
     @Test
@@ -320,9 +367,9 @@ class QuickNodeWebhookServiceTest {
         watchedAddress = watchedAddress,
     )
 
-    private fun computeHmac(key: String, body: String): String {
+    private fun computeHmac(key: String, nonce: String, timestamp: String, body: String): String {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
-        return mac.doFinal(body.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        return mac.doFinal((nonce + timestamp + body).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
 }

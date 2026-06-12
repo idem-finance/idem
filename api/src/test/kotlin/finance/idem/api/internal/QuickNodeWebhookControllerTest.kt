@@ -23,13 +23,15 @@ class QuickNodeWebhookControllerTest {
 
     @Test
     fun `returns 401 when port signals authentication failure`() {
-        whenever(port.handle(any(), any()))
+        whenever(port.handle(any(), any(), any(), any()))
             .thenReturn(Result.failure(IllegalArgumentException("bad sig")))
 
         mockMvc.post("/internal/webhooks/quicknode") {
             contentType = MediaType.APPLICATION_JSON
             content = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
             header("X-QN-Signature", "deadbeef")
+            header("X-QN-Nonce", "test-nonce-123")
+            header("X-QN-Timestamp", "1718000000")
         }.andExpect {
             status { isUnauthorized() }
         }
@@ -37,21 +39,23 @@ class QuickNodeWebhookControllerTest {
 
     @Test
     fun `returns 200 when port processes successfully`() {
-        whenever(port.handle(any(), any()))
+        whenever(port.handle(any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
 
         mockMvc.post("/internal/webhooks/quicknode") {
             contentType = MediaType.APPLICATION_JSON
             content = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
             header("X-QN-Signature", "valid-hmac")
+            header("X-QN-Nonce", "test-nonce-123")
+            header("X-QN-Timestamp", "1718000000")
         }.andExpect {
             status { isOk() }
         }
     }
 
     @Test
-    fun `returns 200 when signature header is absent and port succeeds (dev mode)`() {
-        whenever(port.handle(isNull(), any()))
+    fun `returns 200 when signature, nonce and timestamp headers are absent and port succeeds (dev mode)`() {
+        whenever(port.handle(isNull(), isNull(), isNull(), any()))
             .thenReturn(Result.success(Unit))
 
         mockMvc.post("/internal/webhooks/quicknode") {

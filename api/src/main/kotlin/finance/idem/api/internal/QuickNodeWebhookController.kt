@@ -16,8 +16,10 @@ class QuickNodeWebhookController(private val port: QuickNodeWebhookPort) {
     @PostMapping("/quicknode")
     fun receive(
         @RequestHeader(value = "X-QN-Signature", required = false) signature: String?,
+        @RequestHeader(value = "X-QN-Nonce", required = false) nonce: String?,
+        @RequestHeader(value = "X-QN-Timestamp", required = false) timestamp: String?,
         @RequestBody rawBody: String,
-    ): ResponseEntity<Void> = port.handle(signature, rawBody).fold(
+    ): ResponseEntity<Void> = port.handle(signature, nonce, timestamp, rawBody).fold(
         onSuccess = { ResponseEntity.ok().build() },
         onFailure = { ResponseEntity.status(HttpStatus.UNAUTHORIZED).build() },
     )

@@ -80,10 +80,10 @@ sequenceDiagram
     participant PS as PostTransactionUseCase
     participant DB as PostgreSQL
 
-    QN->>CTRL: POST /internal/webhooks/quicknode\n(X-QN-Signature, {data, metadata} JSON body)
-    CTRL->>SVC: handle(signature, rawBody)
-    SVC->>SVC: isValidSignature(secret, rawBody, signature)
-    alt invalid or missing signature
+    QN->>CTRL: POST /internal/webhooks/quicknode\n(X-QN-Signature, X-QN-Nonce, X-QN-Timestamp, {data, metadata} JSON body)
+    CTRL->>SVC: handle(signature, nonce, timestamp, rawBody)
+    SVC->>SVC: isValidSignature(secret, nonce, timestamp, rawBody, signature)
+    alt invalid or missing signature/nonce/timestamp
         SVC-->>CTRL: Result.failure
         CTRL-->>QN: 401 Unauthorized
     end
@@ -113,9 +113,9 @@ sequenceDiagram
 
 A customer sends 100 USDC on Solana mainnet to your watched address `HN7cABqLq...`. QuickNode detects the confirmed transaction and calls your endpoint:
 
-1. `POST /internal/webhooks/quicknode` arrives with `X-QN-Signature: abc123...` and a `{"data": [...], "metadata": {...}}` JSON object body.
-2. Controller delegates to `QuickNodeWebhookService.handle(signature, rawBody)`.
-3. HMAC-SHA256 of the raw body is computed with the configured secret and compared with the header using `MessageDigest.isEqual` (constant-time). Match → continue; mismatch → return `Result.failure` → 401.
+1. `POST /internal/webhooks/quicknode` arrives with `X-QN-Signature: abc123...`, `X-QN-Nonce: a1b2c3...`, `X-QN-Timestamp: 1718000000`, and a `{"data": [...], "metadata": {...}}` JSON object body.
+2. Controller delegates to `QuickNodeWebhookService.handle(signature, nonce, timestamp, rawBody)`.
+3. HMAC-SHA256 of `nonce + timestamp + rawBody` is computed with the configured secret and compared with the `X-QN-Signature` header using `MessageDigest.isEqual` (constant-time). Match → continue; mismatch (or missing signature/nonce/timestamp) → return `Result.failure` → 401.
 4. Body is deserialized as `QuickNodeStreamPayload`; `.data` yields `List<QuickNodeWebhookPayload>`. `metadata.streamId` is retained and attached to any "unrecognised network" WARN log for that payload.
 5. `network = "mainnet-beta"` → `chainKey = "SOLANA"`.
 6. Fetches watched addresses for `SOLANA` — finds `HN7cABqLq...` watching USDC.
@@ -132,16 +132,28 @@ A customer sends 100 USDC on Solana mainnet to your watched address `HN7cABqLq..
 
 ## HMAC signature validation
 
-QuickNode signs each webhook request body with a shared secret and includes it in `X-QN-Signature`.
+QuickNode signs `nonce + timestamp + rawBody` with the stream's shared secret and includes the
+result in `X-QN-Signature`. `nonce` and `timestamp` come from the `X-QN-Nonce` and
+`X-QN-Timestamp` request headers respectively — the body alone is **not** the signed material.
 
 ```
-HMAC-SHA256(secret, rawBody) == X-QN-Signature
+HMAC-SHA256(secret, X-QN-Nonce + X-QN-Timestamp + rawBody) == X-QN-Signature
 ```
 
 Implementation notes:
+- Computed via the shared `HmacSigner.hexHmacSha256` (also used by `WebhookOutboxPoller`'s
+  outgoing signatures — see `docs/webhook-outbox-poller.md`).
 - Comparison uses `MessageDigest.isEqual` — constant-time, prevents timing attacks.
 - If `idem.chain.quicknode-webhook-secret` is **blank**, HMAC validation is skipped with a WARN log. Dev mode only — never run in production without a secret.
+- If the secret is configured and any of `X-QN-Signature`, `X-QN-Nonce`, or `X-QN-Timestamp` is missing, the request is rejected with 401.
 - The raw request body must be read as bytes before any JSON parsing.
+
+**Verify against a real delivery**: the concatenation order (`nonce + timestamp + payload`,
+UTF-8, hex digest) is taken from QuickNode's "How to Validate Incoming Streams Webhook Messages"
+guide but has not yet been verified against a live signed delivery — confirm header names,
+concatenation order, and encoding byte-for-byte during QA (#99). Replay protection
+(`X-QN-Nonce` dedup or `X-QN-Timestamp` freshness window) is **not implemented** and is tracked
+as a follow-up.
 
 ---
 
@@ -187,6 +199,10 @@ idem:
 
 The endpoint `POST /internal/webhooks/quicknode` is registered unconditionally. In production, always configure the secret.
 
+When `quicknode-webhook-secret` is configured, QuickNode must also send `X-QN-Nonce` and
+`X-QN-Timestamp` alongside `X-QN-Signature` — all three are part of the HMAC scheme (see
+"HMAC signature validation" above). These headers are not required in dev mode (blank secret).
+
 ### Stream filter function dependency
 
 Every QuickNode Streams delivery is wrapped in a `{"data": [...], "metadata": {...}}` envelope —
@@ -209,7 +225,7 @@ ever configured against this endpoint, the log line identifies which Stream is m
 
 | Condition | Behaviour |
 |---|---|
-| Missing or invalid `X-QN-Signature` | Return `Result.failure` → 401 |
+| Missing or invalid `X-QN-Signature`, `X-QN-Nonce`, or `X-QN-Timestamp` (when secret is configured) | Return `Result.failure` → 401 |
 | Body is not a `{data, metadata}` JSON object (or otherwise unparseable) | Log WARN, return `Result.success` |
 | `data` array is empty (e.g. metadata-only/heartbeat delivery) | No-op — return `Result.success`, no payloads processed |
 | Unknown `network` value | Log WARN (includes `metadata.streamId` for the delivering Stream), return `Result.success` — QuickNode retries on 5xx only |
@@ -227,7 +243,7 @@ Returning 200 even on processing errors is intentional: QuickNode retries on 4xx
 
 | Test class | Type |
 |---|---|
-| `QuickNodeWebhookServiceTest` | Unit (Mockito) — HMAC validation, dev mode, unknown network, valid USDC transfer, unmatched decode, null getTransaction, checkpoint invariants |
+| `QuickNodeWebhookServiceTest` | Unit (Mockito) — HMAC validation (nonce+timestamp+body scheme, missing headers, legacy-scheme regression), dev mode, unknown network, valid USDC transfer, unmatched decode, null getTransaction, checkpoint invariants |
 | `QuickNodeWebhookControllerTest` | Unit (MockMvc) — 200 on success, 401 on failure, absent header |
 
 ```bash
@@ -244,4 +260,4 @@ rtk test mvn test -pl infrastructure,api
 - `application/chain/QuickNodeWebhookPort.kt` — port interface
 - `infrastructure/chain/QuickNodeWebhookService.kt` — implementation
 - `api/internal/QuickNodeWebhookController.kt` — HTTP entry point
-- Issues [#74](https://github.com/idem-finance/idem/issues/74)
+- Issues [#74](https://github.com/idem-finance/idem/issues/74), [#99](https://github.com/idem-finance/idem/issues/99)
