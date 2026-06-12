@@ -39,23 +39,23 @@ class QuickNodeWebhookService(
             log.warn("QuickNode webhook secret not configured — HMAC validation skipped (dev mode)")
         }
 
-        val payloads = runCatching {
-            objectMapper.readValue<List<QuickNodeWebhookPayload>>(rawBody)
+        val streamPayload = runCatching {
+            objectMapper.readValue<QuickNodeStreamPayload>(rawBody)
         }.getOrElse {
             log.warn("QuickNode webhook: failed to parse payload: ${it.message}")
             return Result.success(Unit)
         }
 
-        for (payload in payloads) {
-            processPayload(payload)
+        for (payload in streamPayload.data) {
+            processPayload(payload, streamPayload.metadata.streamId)
         }
 
         return Result.success(Unit)
     }
 
-    private fun processPayload(payload: QuickNodeWebhookPayload) {
+    private fun processPayload(payload: QuickNodeWebhookPayload, streamId: String) {
         val chainKey = networkToChainKey(payload.network) ?: run {
-            log.warn("QuickNode webhook: unrecognised network '${payload.network}' — ignoring")
+            log.warn("QuickNode webhook: unrecognised network '${payload.network}' (streamId=$streamId) — ignoring")
             return
         }
 

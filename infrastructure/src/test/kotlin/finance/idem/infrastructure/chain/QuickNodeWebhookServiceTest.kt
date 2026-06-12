@@ -122,11 +122,33 @@ class QuickNodeWebhookServiceTest {
         verify(checkpointRepository, never()).save(any(), any())
     }
 
+    @Test
+    fun `returns success and does not process legacy bare-array body (no data envelope)`() {
+        val body = """[{"signature":"$testSignature","slot":$testSlot,"network":"mainnet-beta"}]"""
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase, never()).execute(any())
+        verify(checkpointRepository, never()).save(any(), any())
+    }
+
+    @Test
+    fun `returns success and processes nothing when data array is empty`() {
+        val body = """{"data":[],"metadata":{"streamId":"st_test","dataset":"block"}}"""
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase, never()).execute(any())
+        verify(checkpointRepository, never()).save(any(), any())
+    }
+
     // -- network routing --
 
     @Test
     fun `returns success and ignores unknown network`() {
-        val body = """[{"signature":"$testSignature","slot":$testSlot,"network":"devnet"}]"""
+        val body = """{"data":[{"signature":"$testSignature","slot":$testSlot,"network":"devnet"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
 
         val result = service.handle(computeHmac(signingKey, body), body)
 
@@ -245,7 +267,7 @@ class QuickNodeWebhookServiceTest {
     @Test
     fun `isValidSignature returns true for correct HMAC`() {
         val key = "secret"
-        val body = """[{"signature":"abc","slot":1,"network":"mainnet-beta"}]"""
+        val body = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
         val sig = computeHmac(key, body)
         assertTrue(QuickNodeWebhookService.isValidSignature(key, body, sig))
     }
@@ -253,13 +275,13 @@ class QuickNodeWebhookServiceTest {
     @Test
     fun `isValidSignature returns false for wrong signature`() {
         val key = "secret"
-        val body = """[{"signature":"abc","slot":1,"network":"mainnet-beta"}]"""
+        val body = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
         assertFalse(QuickNodeWebhookService.isValidSignature(key, body, "deadbeef"))
     }
 
     @Test
     fun `isValidSignature returns false when key differs`() {
-        val body = """[{"signature":"abc","slot":1,"network":"mainnet-beta"}]"""
+        val body = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
         val sig = computeHmac("correct-key", body)
         assertFalse(QuickNodeWebhookService.isValidSignature("wrong-key", body, sig))
     }
@@ -282,7 +304,7 @@ class QuickNodeWebhookServiceTest {
     // -- helpers --
 
     private fun buildBody(signature: String, slot: Long, network: String = "mainnet-beta"): String =
-        """[{"signature":"$signature","slot":$slot,"network":"$network"}]"""
+        """{"data":[{"signature":"$signature","slot":$slot,"network":"$network"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
 
     private fun buildTransfer() = DetectedTransfer(
         idempotencyKey = "SOLANA:$testSignature:2",

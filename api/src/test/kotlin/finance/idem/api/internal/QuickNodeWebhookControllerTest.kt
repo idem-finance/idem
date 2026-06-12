@@ -28,7 +28,7 @@ class QuickNodeWebhookControllerTest {
 
         mockMvc.post("/internal/webhooks/quicknode") {
             contentType = MediaType.APPLICATION_JSON
-            content = """[{"signature":"abc","slot":1,"network":"mainnet-beta"}]"""
+            content = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
             header("X-QN-Signature", "deadbeef")
         }.andExpect {
             status { isUnauthorized() }
@@ -42,7 +42,7 @@ class QuickNodeWebhookControllerTest {
 
         mockMvc.post("/internal/webhooks/quicknode") {
             contentType = MediaType.APPLICATION_JSON
-            content = """[{"signature":"abc","slot":1,"network":"mainnet-beta"}]"""
+            content = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
             header("X-QN-Signature", "valid-hmac")
         }.andExpect {
             status { isOk() }
@@ -56,7 +56,7 @@ class QuickNodeWebhookControllerTest {
 
         mockMvc.post("/internal/webhooks/quicknode") {
             contentType = MediaType.APPLICATION_JSON
-            content = """[{"signature":"abc","slot":1,"network":"mainnet-beta"}]"""
+            content = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
         }.andExpect {
             status { isOk() }
         }

@@ -80,14 +80,14 @@ sequenceDiagram
     participant PS as PostTransactionUseCase
     participant DB as PostgreSQL
 
-    QN->>CTRL: POST /internal/webhooks/quicknode\n(X-QN-Signature, JSON body)
+    QN->>CTRL: POST /internal/webhooks/quicknode\n(X-QN-Signature, {data, metadata} JSON body)
     CTRL->>SVC: handle(signature, rawBody)
     SVC->>SVC: isValidSignature(secret, rawBody, signature)
     alt invalid or missing signature
         SVC-->>CTRL: Result.failure
         CTRL-->>QN: 401 Unauthorized
     end
-    SVC->>SVC: parse body → List<QuickNodeWebhookPayload>
+    SVC->>SVC: parse body → QuickNodeStreamPayload.data : List<QuickNodeWebhookPayload>
     loop for each payload
         SVC->>SVC: networkToChainKey(payload.network) → "SOLANA"
         SVC->>WAR: findByChainKey("SOLANA")
@@ -113,10 +113,10 @@ sequenceDiagram
 
 A customer sends 100 USDC on Solana mainnet to your watched address `HN7cABqLq...`. QuickNode detects the confirmed transaction and calls your endpoint:
 
-1. `POST /internal/webhooks/quicknode` arrives with `X-QN-Signature: abc123...` and a JSON array body.
+1. `POST /internal/webhooks/quicknode` arrives with `X-QN-Signature: abc123...` and a `{"data": [...], "metadata": {...}}` JSON object body.
 2. Controller delegates to `QuickNodeWebhookService.handle(signature, rawBody)`.
 3. HMAC-SHA256 of the raw body is computed with the configured secret and compared with the header using `MessageDigest.isEqual` (constant-time). Match → continue; mismatch → return `Result.failure` → 401.
-4. Body is deserialized as `List<QuickNodeWebhookPayload>`.
+4. Body is deserialized as `QuickNodeStreamPayload`; `.data` yields `List<QuickNodeWebhookPayload>`. `metadata.streamId` is retained and attached to any "unrecognised network" WARN log for that payload.
 5. `network = "mainnet-beta"` → `chainKey = "SOLANA"`.
 6. Fetches watched addresses for `SOLANA` — finds `HN7cABqLq...` watching USDC.
 7. Reads current checkpoint for `SOLANA`: `lastSlot = 154,600,000`.
@@ -187,6 +187,22 @@ idem:
 
 The endpoint `POST /internal/webhooks/quicknode` is registered unconditionally. In production, always configure the secret.
 
+### Stream filter function dependency
+
+Every QuickNode Streams delivery is wrapped in a `{"data": [...], "metadata": {...}}` envelope —
+`QuickNodeStreamPayload` deserializes this envelope and `.data` is parsed as
+`List<QuickNodeWebhookPayload>` (`signature`, `slot`, `network`).
+
+This assumes the QuickNode Stream's **filter function** (configured on the QuickNode dashboard /
+in `idem-infra`, outside this repo) reduces each `data` element to that `{signature, slot,
+network}` shape. If the Stream is reconfigured to deliver raw datasets (e.g. full blocks or
+transactions) without such a filter, `data` elements will deserialize to
+`{signature="", slot=0, network=""}` and be silently dropped as an "unrecognised network" —
+see [#94](https://github.com/idem-finance/idem/issues/94) for the verification follow-up.
+
+The "unrecognised network" WARN includes `metadata.streamId`, so if more than one Stream is
+ever configured against this endpoint, the log line identifies which Stream is misconfigured.
+
 ---
 
 ## Error handling
@@ -194,8 +210,9 @@ The endpoint `POST /internal/webhooks/quicknode` is registered unconditionally. 
 | Condition | Behaviour |
 |---|---|
 | Missing or invalid `X-QN-Signature` | Return `Result.failure` → 401 |
-| Unparseable body | Log WARN, return `Result.success` |
-| Unknown `network` value | Log WARN, return `Result.success` — QuickNode retries on 5xx only |
+| Body is not a `{data, metadata}` JSON object (or otherwise unparseable) | Log WARN, return `Result.success` |
+| `data` array is empty (e.g. metadata-only/heartbeat delivery) | No-op — return `Result.success`, no payloads processed |
+| Unknown `network` value | Log WARN (includes `metadata.streamId` for the delivering Stream), return `Result.success` — QuickNode retries on 5xx only |
 | `solanaReader` null (no `rpc-url` configured) | Log WARN, skip payload — checkpoint NOT advanced |
 | No `WatchedAddress` configured for `SOLANA` | Skip decode/post, but checkpoint IS still advanced to `payload.slot` — **differs from `AlchemyWebhookService`**, which returns early without advancing the checkpoint when no addresses are watched |
 | `getTransaction` returns null | Log WARN, advance checkpoint, no decode |
