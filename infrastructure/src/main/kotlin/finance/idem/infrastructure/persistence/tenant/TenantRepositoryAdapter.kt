@@ -1,0 +1,31 @@
+package finance.idem.infrastructure.persistence.tenant
+
+import finance.idem.application.port.TenantRepository
+import finance.idem.application.tenant.TenantWebhookConfig
+import finance.idem.core.TenantId
+import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
+
+@Component
+class TenantRepositoryAdapter(
+    private val jpaRepository: TenantJpaRepository,
+) : TenantRepository {
+
+    /**
+     * Cross-tenant — deliberately does NOT set `app.tenant_id`. Relies on
+     * `tenants` having NO FORCE RLS (V13): the table-owner role can resolve
+     * any tenant's webhook config while WebhookOutboxPoller iterates
+     * cross-tenant dispatchable rows.
+     */
+    @Transactional(readOnly = true)
+    override fun findWebhookConfig(tenantId: TenantId): TenantWebhookConfig? {
+        val tenant = jpaRepository.findById(tenantId.value).orElse(null) ?: return null
+        val url = tenant.webhookUrl
+        val secret = tenant.webhookSecret
+        return if (!url.isNullOrBlank() && !secret.isNullOrBlank()) {
+            TenantWebhookConfig(webhookUrl = url, webhookSecret = secret)
+        } else {
+            null
+        }
+    }
+}

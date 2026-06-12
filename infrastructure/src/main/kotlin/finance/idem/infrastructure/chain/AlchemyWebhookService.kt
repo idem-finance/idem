@@ -9,12 +9,11 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.infrastructure.security.HmacSigner
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.security.MessageDigest
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 @Service
 class AlchemyWebhookService(
@@ -137,10 +136,7 @@ class AlchemyWebhookService(
         private const val ADDRESS_ACTIVITY_TYPE = "ADDRESS_ACTIVITY"
 
         internal fun isValidSignature(signingKey: String, rawBody: String, signature: String): Boolean {
-            val mac = Mac.getInstance("HmacSHA256")
-            mac.init(SecretKeySpec(signingKey.toByteArray(Charsets.UTF_8), "HmacSHA256"))
-            val expected = mac.doFinal(rawBody.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
+            val expected = HmacSigner.hexHmacSha256(signingKey, rawBody)
             return MessageDigest.isEqual(
                 expected.toByteArray(Charsets.UTF_8),
                 signature.toByteArray(Charsets.UTF_8),

@@ -40,6 +40,11 @@ idem:
   reconciliation:
     enabled: true
     matching-window-hours: 24
+  webhook:
+    timeout-ms: 5000
+    max-attempts: 5
+    batch-size: 50
+    poll-interval-ms: 5000
 
 ---
 spring:

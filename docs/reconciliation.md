@@ -361,6 +361,7 @@ rtk test mvn test -pl app                   # AlchemyWebhookIntegrationTest (ful
 
 - `docs/domain-model.md` — `Settlement`, `EntryStatus`, `SettlementRepository`
 - `docs/evm-chain-reader.md`, `docs/solana-chain-reader.md`, `docs/tron-chain-reader.md` — on-chain entry sources that feed `PostTransactionService`
+- `docs/webhook-outbox-poller.md` — WebhookOutboxPoller (#55): delivers transaction.committed/settled/reconciliation.unmatched events to per-tenant webhooks
 - `infrastructure/.../service/BasicReconciliationService.kt`
 - `infrastructure/.../service/PostTransactionService.kt` — call site
 - `infrastructure/.../persistence/reconciliation/SettlementRepositoryAdapter.kt`

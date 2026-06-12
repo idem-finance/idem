@@ -27,10 +27,10 @@ class FlywayMigrationTest {
         .load()
 
     @Test
-    fun `all 12 migrations apply cleanly`() {
+    fun `all 13 migrations apply cleanly`() {
         flyway().migrate()
         val applied = flyway().info().applied()
-        assertEquals(12, applied.size)
+        assertEquals(13, applied.size)
         assertTrue(applied.none { it.state.isFailed() }, "No migration should be in failed state")
     }
 
@@ -41,7 +41,7 @@ class FlywayMigrationTest {
         val expectedTables = listOf(
             "accounts", "transactions", "journal_lines",
             "audit_log", "webhook_outbox", "chain_checkpoint", "idempotency_keys", "api_keys",
-            "watched_addresses",
+            "watched_addresses", "tenants",
         )
 
         postgres.createConnection("").use { conn ->
@@ -134,6 +134,39 @@ class FlywayMigrationTest {
             )
             rs.next()
             assertEquals(2, rs.getInt(1), "Owner role should see PENDING rows across tenants without app.tenant_id set")
+        }
+    }
+
+    @Test
+    fun `tenants is readable across tenants without app_tenant_id (NO FORCE RLS)`() {
+        flyway().migrate()
+
+        val tenantA = "d0000000-0000-0000-0000-000000000001"
+        val tenantB = "d0000000-0000-0000-0000-000000000002"
+
+        fun insertTenant(tenantId: String) {
+            postgres.createConnection("").use { conn ->
+                conn.autoCommit = false
+                conn.createStatement().execute("SET LOCAL app.tenant_id = '$tenantId'")
+                conn.prepareStatement(
+                    "INSERT INTO tenants (id, webhook_url, webhook_secret) VALUES (?::uuid, 'https://example.com/webhook', 'secret')"
+                ).use { it.setString(1, tenantId); it.executeUpdate() }
+                conn.commit()
+            }
+        }
+
+        insertTenant(tenantA)
+        insertTenant(tenantB)
+
+        // No app.tenant_id set on this connection — NO FORCE RLS lets the owner role (idem)
+        // see rows across tenants, which #55's WebhookOutboxPoller relies on to resolve each
+        // dispatch row's per-tenant webhook config.
+        postgres.createConnection("").use { conn ->
+            val rs = conn.createStatement().executeQuery(
+                "SELECT COUNT(*) FROM tenants WHERE id IN ('$tenantA'::uuid, '$tenantB'::uuid)"
+            )
+            rs.next()
+            assertEquals(2, rs.getInt(1), "Owner role should see tenant rows across tenants without app.tenant_id set")
         }
     }
 }
