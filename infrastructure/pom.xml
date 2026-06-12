@@ -134,6 +134,7 @@
                         <!-- QuickNodeWebhookPayload / QuickNodeStreamPayload data classes — Kotlin-generated synthetic branches -->
                         <exclude>finance/idem/infrastructure/chain/QuickNodeWebhookPayload*</exclude>
                         <exclude>finance/idem/infrastructure/chain/QuickNodeStreamPayload*</exclude>
+                        <exclude>finance/idem/infrastructure/chain/QuickNodeStreamMetadata*</exclude>
                         <!-- TronChainReader inner data classes — Kotlin-generated synthetic bytecode -->
                         <exclude>finance/idem/infrastructure/chain/TronChainReader$*</exclude>
                         <!-- TronNetworkConfig — Kotlin data class synthetic branches -->

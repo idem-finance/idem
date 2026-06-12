@@ -15,4 +15,10 @@ data class QuickNodeWebhookPayload(
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class QuickNodeStreamPayload(
     @JsonProperty("data") val data: List<QuickNodeWebhookPayload> = emptyList(),
+    @JsonProperty("metadata") val metadata: QuickNodeStreamMetadata = QuickNodeStreamMetadata(),
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class QuickNodeStreamMetadata(
+    @JsonProperty("streamId") val streamId: String = "",
 )

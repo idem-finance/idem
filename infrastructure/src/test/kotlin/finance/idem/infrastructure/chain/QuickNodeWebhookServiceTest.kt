@@ -123,6 +123,17 @@ class QuickNodeWebhookServiceTest {
     }
 
     @Test
+    fun `returns success and does not process legacy bare-array body (no data envelope)`() {
+        val body = """[{"signature":"$testSignature","slot":$testSlot,"network":"mainnet-beta"}]"""
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase, never()).execute(any())
+        verify(checkpointRepository, never()).save(any(), any())
+    }
+
+    @Test
     fun `returns success and processes nothing when data array is empty`() {
         val body = """{"data":[],"metadata":{"streamId":"st_test","dataset":"block"}}"""
 

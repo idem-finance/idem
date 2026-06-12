@@ -116,7 +116,7 @@ A customer sends 100 USDC on Solana mainnet to your watched address `HN7cABqLq..
 1. `POST /internal/webhooks/quicknode` arrives with `X-QN-Signature: abc123...` and a `{"data": [...], "metadata": {...}}` JSON object body.
 2. Controller delegates to `QuickNodeWebhookService.handle(signature, rawBody)`.
 3. HMAC-SHA256 of the raw body is computed with the configured secret and compared with the header using `MessageDigest.isEqual` (constant-time). Match → continue; mismatch → return `Result.failure` → 401.
-4. Body is deserialized as `QuickNodeStreamPayload`; `.data` yields `List<QuickNodeWebhookPayload>`. `metadata` is ignored.
+4. Body is deserialized as `QuickNodeStreamPayload`; `.data` yields `List<QuickNodeWebhookPayload>`. `metadata.streamId` is retained and attached to any "unrecognised network" WARN log for that payload.
 5. `network = "mainnet-beta"` → `chainKey = "SOLANA"`.
 6. Fetches watched addresses for `SOLANA` — finds `HN7cABqLq...` watching USDC.
 7. Reads current checkpoint for `SOLANA`: `lastSlot = 154,600,000`.
@@ -200,6 +200,9 @@ transactions) without such a filter, `data` elements will deserialize to
 `{signature="", slot=0, network=""}` and be silently dropped as an "unrecognised network" —
 see [#94](https://github.com/idem-finance/idem/issues/94) for the verification follow-up.
 
+The "unrecognised network" WARN includes `metadata.streamId`, so if more than one Stream is
+ever configured against this endpoint, the log line identifies which Stream is misconfigured.
+
 ---
 
 ## Error handling
@@ -209,7 +212,7 @@ see [#94](https://github.com/idem-finance/idem/issues/94) for the verification f
 | Missing or invalid `X-QN-Signature` | Return `Result.failure` → 401 |
 | Body is not a `{data, metadata}` JSON object (or otherwise unparseable) | Log WARN, return `Result.success` |
 | `data` array is empty (e.g. metadata-only/heartbeat delivery) | No-op — return `Result.success`, no payloads processed |
-| Unknown `network` value | Log WARN, return `Result.success` — QuickNode retries on 5xx only |
+| Unknown `network` value | Log WARN (includes `metadata.streamId` for the delivering Stream), return `Result.success` — QuickNode retries on 5xx only |
 | `solanaReader` null (no `rpc-url` configured) | Log WARN, skip payload — checkpoint NOT advanced |
 | No `WatchedAddress` configured for `SOLANA` | Skip decode/post, but checkpoint IS still advanced to `payload.slot` — **differs from `AlchemyWebhookService`**, which returns early without advancing the checkpoint when no addresses are watched |
 | `getTransaction` returns null | Log WARN, advance checkpoint, no decode |
