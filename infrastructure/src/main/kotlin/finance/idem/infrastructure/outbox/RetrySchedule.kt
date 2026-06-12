@@ -17,6 +17,16 @@ object RetrySchedule {
         4 to Duration.ofMinutes(10),
     )
 
+    /**
+     * Highest valid value for `idem.webhook.max-attempts`. `backoff` defines delays
+     * for attempts `1..(MAX_SUPPORTED_ATTEMPTS - 1)`; attempt `MAX_SUPPORTED_ATTEMPTS`
+     * has no delay and is the terminal attempt that triggers `DEAD`. Values above
+     * this are rejected by [WebhookOutboxPoller]'s init check -- [nextRetryDelay]
+     * would otherwise return `null` (no entry in `backoff`) for attempts in
+     * `MAX_SUPPORTED_ATTEMPTS until maxAttempts`, causing premature `DEAD` marking.
+     */
+    val MAX_SUPPORTED_ATTEMPTS = backoff.size + 1
+
     fun nextRetryDelay(attempts: Int, maxAttempts: Int): Duration? =
         if (attempts >= maxAttempts) null else backoff[attempts]
 }

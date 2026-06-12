@@ -36,4 +36,9 @@ class RetryScheduleTest {
     fun `attempts beyond maxAttempts have no further retry`() {
         assertNull(RetrySchedule.nextRetryDelay(6, maxAttempts = 5))
     }
+
+    @Test
+    fun `MAX_SUPPORTED_ATTEMPTS reflects the backoff table size`() {
+        assertEquals(5, RetrySchedule.MAX_SUPPORTED_ATTEMPTS)
+    }
 }
