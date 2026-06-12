@@ -8,9 +8,8 @@ import finance.idem.application.ledger.EntryPage
 import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidCursor
 import finance.idem.application.ledger.InvalidStatementRange
-import finance.idem.application.ledger.QueryEntriesQuery
+import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.QueryEntriesUseCase
-import finance.idem.application.ledger.QueryBalanceError
 import finance.idem.application.ledger.QueryBalanceUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.StatementMovement
@@ -237,7 +236,7 @@ class AccountControllerTest {
             status { isOk() }
         }
 
-        val captor = argumentCaptor<QueryEntriesQuery>()
+        val captor = argumentCaptor<GetEntriesQuery>()
         verify(queryEntriesUseCase).execute(captor.capture())
         val query = captor.firstValue
         kotlin.test.assertEquals(AccountId(accountId), query.accountId)

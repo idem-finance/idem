@@ -4,7 +4,7 @@ import finance.idem.application.ledger.EntriesAccountNotFound
 import finance.idem.application.ledger.EntryCursor
 import finance.idem.application.ledger.EntryPage
 import finance.idem.application.ledger.InvalidCursor
-import finance.idem.application.ledger.QueryEntriesQuery
+import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.QueryEntriesUseCase
 import finance.idem.core.ledger.AccountRepository
 import finance.idem.core.ledger.JournalLineRepository
@@ -18,7 +18,7 @@ class QueryEntriesService(
     private val journalLineRepository: JournalLineRepository,
 ) : QueryEntriesUseCase {
 
-    override fun execute(query: QueryEntriesQuery): Result<EntryPage> {
+    override fun execute(query: GetEntriesQuery): Result<EntryPage> {
         accountRepository.findById(query.accountId, query.tenantId)
             ?: return Result.failure(EntriesAccountNotFound(query.accountId))
 

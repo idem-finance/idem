@@ -4,7 +4,7 @@ import finance.idem.application.ledger.Balance
 import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.GenerateStatementQuery
 import finance.idem.application.ledger.InvalidStatementRange
-import finance.idem.application.ledger.QueryBalanceQuery
+import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.application.ledger.QueryBalanceUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.core.AccountId
@@ -91,7 +91,7 @@ class GenerateStatementServiceTest {
     fun `returns StatementAccountNotFound when account does not exist`() {
         val from = now.minusSeconds(7200)
         val to = now
-        whenever(queryBalanceUseCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = from)))
+        whenever(queryBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
             .thenReturn(Result.failure(BalanceAccountNotFound(accountId)))
 
         val result = service.execute(GenerateStatementQuery(accountId, tenantId, from, to))
@@ -136,12 +136,12 @@ class GenerateStatementServiceTest {
             .thenReturn(listOf(txBefore, txInRange, txAtTo))
 
         val realBalanceService = QueryBalanceService(accountRepository, transactionRepository)
-        val opening = realBalanceService.execute(QueryBalanceQuery(accountId, tenantId, asOf = from)).getOrThrow()
-        val closing = realBalanceService.execute(QueryBalanceQuery(accountId, tenantId, asOf = to)).getOrThrow()
+        val opening = realBalanceService.execute(GetBalanceQuery(accountId, tenantId, asOf = from)).getOrThrow()
+        val closing = realBalanceService.execute(GetBalanceQuery(accountId, tenantId, asOf = to)).getOrThrow()
 
-        whenever(queryBalanceUseCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = from)))
+        whenever(queryBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
             .thenReturn(Result.success(opening))
-        whenever(queryBalanceUseCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = to)))
+        whenever(queryBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = to)))
             .thenReturn(Result.success(closing))
 
         val statement = service.execute(GenerateStatementQuery(accountId, tenantId, from, to)).getOrThrow()
@@ -170,12 +170,12 @@ class GenerateStatementServiceTest {
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(txAtFrom))
 
         val realBalanceService = QueryBalanceService(accountRepository, transactionRepository)
-        val opening = realBalanceService.execute(QueryBalanceQuery(accountId, tenantId, asOf = from)).getOrThrow()
-        val closing = realBalanceService.execute(QueryBalanceQuery(accountId, tenantId, asOf = to)).getOrThrow()
+        val opening = realBalanceService.execute(GetBalanceQuery(accountId, tenantId, asOf = from)).getOrThrow()
+        val closing = realBalanceService.execute(GetBalanceQuery(accountId, tenantId, asOf = to)).getOrThrow()
 
-        whenever(queryBalanceUseCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = from)))
+        whenever(queryBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
             .thenReturn(Result.success(opening))
-        whenever(queryBalanceUseCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = to)))
+        whenever(queryBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = to)))
             .thenReturn(Result.success(closing))
 
         val statement = service.execute(GenerateStatementQuery(accountId, tenantId, from, to)).getOrThrow()
@@ -196,9 +196,9 @@ class GenerateStatementServiceTest {
         ) }
 
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(txAtTo))
-        whenever(queryBalanceUseCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = from)))
+        whenever(queryBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
             .thenReturn(Result.success(balance("0", asOf = from)))
-        whenever(queryBalanceUseCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = to)))
+        whenever(queryBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = to)))
             .thenReturn(Result.success(balance("150", asOf = to)))
 
         val statement = service.execute(GenerateStatementQuery(accountId, tenantId, from, to)).getOrThrow()
@@ -230,9 +230,9 @@ class GenerateStatementServiceTest {
         ) }
 
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(txOnChain, txUsd))
-        whenever(queryBalanceUseCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = from)))
+        whenever(queryBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
             .thenReturn(Result.success(balance("0", asOf = from)))
-        whenever(queryBalanceUseCase.execute(QueryBalanceQuery(accountId, tenantId, asOf = to)))
+        whenever(queryBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = to)))
             .thenReturn(Result.success(balance("0", asOf = to)))
 
         val statement = service.execute(GenerateStatementQuery(accountId, tenantId, from, to)).getOrThrow()

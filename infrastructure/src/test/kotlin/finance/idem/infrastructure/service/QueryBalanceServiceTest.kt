@@ -1,8 +1,7 @@
 package finance.idem.infrastructure.service
 
 import finance.idem.application.ledger.BalanceAccountNotFound
-import finance.idem.application.ledger.QueryBalanceError
-import finance.idem.application.ledger.QueryBalanceQuery
+import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
@@ -82,7 +81,7 @@ class QueryBalanceServiceTest {
     @Test
     fun `returns AccountNotFound when account does not exist`() {
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(null)
-        val result = service.execute(QueryBalanceQuery(accountId, tenantId))
+        val result = service.execute(GetBalanceQuery(accountId, tenantId))
         assertTrue(result.isFailure)
         assertIs<BalanceAccountNotFound>(result.exceptionOrNull())
     }
@@ -91,7 +90,7 @@ class QueryBalanceServiceTest {
     fun `returns zero balance for account with no transactions`() {
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(emptyList())
-        val balance = service.execute(QueryBalanceQuery(accountId, tenantId)).getOrThrow()
+        val balance = service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow()
         assertTrue(balance.amount.isZero())
         assertEquals(FiatCurrency.BRL, balance.currency)
         assertEquals(EntryType.DEBIT, balance.normalBalance)
@@ -104,7 +103,7 @@ class QueryBalanceServiceTest {
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
             tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
         ))
-        assertEquals(MonetaryAmount.of("1000"), service.execute(QueryBalanceQuery(accountId, tenantId)).getOrThrow().amount)
+        assertEquals(MonetaryAmount.of("1000"), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount)
     }
 
     @Test
@@ -115,7 +114,7 @@ class QueryBalanceServiceTest {
             tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
             tx({ id -> listOf(line(id, EntryType.CREDIT, "400", accountId), line(id, EntryType.DEBIT, "400", other)) }),
         ))
-        assertEquals(MonetaryAmount.of("600"), service.execute(QueryBalanceQuery(accountId, tenantId)).getOrThrow().amount)
+        assertEquals(MonetaryAmount.of("600"), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount)
     }
 
     @Test
@@ -125,7 +124,7 @@ class QueryBalanceServiceTest {
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
             tx({ id -> listOf(line(id, EntryType.CREDIT, "500", accountId), line(id, EntryType.DEBIT, "500", other)) }),
         ))
-        assertEquals(MonetaryAmount.of("500"), service.execute(QueryBalanceQuery(accountId, tenantId)).getOrThrow().amount)
+        assertEquals(MonetaryAmount.of("500"), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount)
     }
 
     @Test
@@ -137,7 +136,7 @@ class QueryBalanceServiceTest {
             tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }, occurredAt = now.minusSeconds(7200)),
             tx({ id -> listOf(line(id, EntryType.DEBIT, "500", accountId), line(id, EntryType.CREDIT, "500", other)) }, occurredAt = now),
         ))
-        assertEquals(MonetaryAmount.of("1000"), service.execute(QueryBalanceQuery(accountId, tenantId, asOf = cutoff)).getOrThrow().amount)
+        assertEquals(MonetaryAmount.of("1000"), service.execute(GetBalanceQuery(accountId, tenantId, asOf = cutoff)).getOrThrow().amount)
     }
 
     @Test
@@ -148,7 +147,7 @@ class QueryBalanceServiceTest {
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
             tx({ id -> listOf(line(id, EntryType.DEBIT, "750", accountId), line(id, EntryType.CREDIT, "750", other)) }, occurredAt = cutoff),
         ))
-        assertEquals(MonetaryAmount.of("750"), service.execute(QueryBalanceQuery(accountId, tenantId, asOf = cutoff)).getOrThrow().amount)
+        assertEquals(MonetaryAmount.of("750"), service.execute(GetBalanceQuery(accountId, tenantId, asOf = cutoff)).getOrThrow().amount)
     }
 
     @Test
@@ -158,7 +157,7 @@ class QueryBalanceServiceTest {
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
             tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
         ))
-        assertEquals(MonetaryAmount.of("1000"), service.execute(QueryBalanceQuery(accountId, tenantId)).getOrThrow().amount)
+        assertEquals(MonetaryAmount.of("1000"), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount)
     }
 
     @Test
@@ -176,13 +175,13 @@ class QueryBalanceServiceTest {
                 JournalLine(UUID.randomUUID(), id, other, tenantId, EntryType.CREDIT, onChainEntry, null, now, "system"),
             )}),
         ))
-        assertTrue(service.execute(QueryBalanceQuery(accountId, tenantId)).getOrThrow().amount.isZero())
+        assertTrue(service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount.isZero())
     }
 
     @Test
     fun `computedAt reflects the injected clock`() {
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(emptyList())
-        assertEquals(now, service.execute(QueryBalanceQuery(accountId, tenantId)).getOrThrow().computedAt)
+        assertEquals(now, service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().computedAt)
     }
 }

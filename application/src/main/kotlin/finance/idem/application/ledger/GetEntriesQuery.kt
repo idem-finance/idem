@@ -4,8 +4,11 @@ import finance.idem.core.AccountId
 import finance.idem.core.TenantId
 import java.time.Instant
 
-data class QueryBalanceQuery(
+data class GetEntriesQuery(
     val accountId: AccountId,
     val tenantId: TenantId,
-    val asOf: Instant? = null,
+    val from: Instant? = null,
+    val to: Instant? = null,
+    val limit: Int = 50,
+    val cursor: String? = null,
 )

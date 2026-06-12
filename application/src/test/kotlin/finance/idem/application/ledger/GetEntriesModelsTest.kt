@@ -16,7 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
-class QueryEntriesModelsTest {
+class GetEntriesModelsTest {
 
     private val accountId = AccountId.generate()
     private val tenantId = TenantId.generate()
@@ -24,7 +24,7 @@ class QueryEntriesModelsTest {
 
     @Test
     fun `QueryEntriesQuery holds all fields`() {
-        val query = QueryEntriesQuery(accountId, tenantId, from = now, to = now, limit = 25, cursor = "abc")
+        val query = GetEntriesQuery(accountId, tenantId, from = now, to = now, limit = 25, cursor = "abc")
         assertEquals(accountId, query.accountId)
         assertEquals(tenantId, query.tenantId)
         assertEquals(now, query.from)
@@ -36,7 +36,7 @@ class QueryEntriesModelsTest {
 
     @Test
     fun `QueryEntriesQuery defaults limit to 50 and optional fields to null`() {
-        val query = QueryEntriesQuery(accountId, tenantId)
+        val query = GetEntriesQuery(accountId, tenantId)
         assertEquals(50, query.limit)
         assertNull(query.from)
         assertNull(query.to)

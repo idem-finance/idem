@@ -6,10 +6,9 @@ import finance.idem.application.ledger.GenerateStatementQuery
 import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidCursor
 import finance.idem.application.ledger.InvalidStatementRange
-import finance.idem.application.ledger.QueryEntriesQuery
+import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.QueryEntriesUseCase
-import finance.idem.application.ledger.QueryBalanceError
-import finance.idem.application.ledger.QueryBalanceQuery
+import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.application.ledger.QueryBalanceUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.core.AccountId
@@ -61,7 +60,7 @@ class AccountController(
                 .body(ErrorResponse("INVALID_TENANT_ID", "X-Tenant-Id must be a valid UUID"))
         }
 
-        val query = QueryBalanceQuery(
+        val query = GetBalanceQuery(
             accountId = AccountId(accountId),
             tenantId = tenantId,
             asOf = asOf,
@@ -121,7 +120,7 @@ class AccountController(
                 .body(ErrorResponse("INVALID_RANGE", "from must not be after to"))
         }
 
-        val query = QueryEntriesQuery(
+        val query = GetEntriesQuery(
             accountId = AccountId(accountId),
             tenantId = tenantId,
             from = from,

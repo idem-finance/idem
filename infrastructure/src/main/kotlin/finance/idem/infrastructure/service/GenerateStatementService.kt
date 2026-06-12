@@ -5,7 +5,7 @@ import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.GenerateStatementQuery
 import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidStatementRange
-import finance.idem.application.ledger.QueryBalanceQuery
+import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.application.ledger.QueryBalanceUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.StatementMovement
@@ -27,11 +27,11 @@ class GenerateStatementService(
         }
 
         val opening = queryBalanceUseCase
-            .execute(QueryBalanceQuery(query.accountId, query.tenantId, asOf = query.from))
+            .execute(GetBalanceQuery(query.accountId, query.tenantId, asOf = query.from))
             .getOrElse { error -> return Result.failure(error.toStatementError(query)) }
 
         val closing = queryBalanceUseCase
-            .execute(QueryBalanceQuery(query.accountId, query.tenantId, asOf = query.to))
+            .execute(GetBalanceQuery(query.accountId, query.tenantId, asOf = query.to))
             .getOrElse { error -> return Result.failure(error.toStatementError(query)) }
 
         val movements = transactionRepository

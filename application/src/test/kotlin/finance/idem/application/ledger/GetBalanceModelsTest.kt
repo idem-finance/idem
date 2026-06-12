@@ -10,15 +10,15 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
-class QueryBalanceModelsTest {
+class GetBalanceModelsTest {
 
     private val accountId = AccountId.generate()
     private val tenantId = TenantId.generate()
     private val now = Instant.now()
 
     @Test
-    fun `QueryBalanceQuery holds all fields`() {
-        val query = QueryBalanceQuery(accountId, tenantId, asOf = now)
+    fun `GetBalanceQuery holds all fields`() {
+        val query = GetBalanceQuery(accountId, tenantId, asOf = now)
         assertEquals(accountId, query.accountId)
         assertEquals(tenantId, query.tenantId)
         assertEquals(now, query.asOf)
@@ -26,8 +26,8 @@ class QueryBalanceModelsTest {
     }
 
     @Test
-    fun `QueryBalanceQuery asOf defaults to null`() {
-        val query = QueryBalanceQuery(accountId, tenantId)
+    fun `GetBalanceQuery asOf defaults to null`() {
+        val query = GetBalanceQuery(accountId, tenantId)
         assertEquals(null, query.asOf)
     }
 
@@ -46,6 +46,6 @@ class QueryBalanceModelsTest {
     fun `QueryBalanceError AccountNotFound carries accountId and message`() {
         val error = BalanceAccountNotFound(accountId)
         assertEquals(accountId, error.accountId)
-        assertIs<QueryBalanceError>(error)
+        assertIs<GetBalanceError>(error)
     }
 }
