@@ -42,6 +42,8 @@ idem:
     matching-window-hours: 24
   webhook:
     timeout-ms: 5000
+    # RetrySchedule supports 1-5 (5s/30s/2m/10m backoff, then DEAD); WebhookOutboxPoller
+    # fails fast at startup if this is set outside that range.
     max-attempts: 5
     batch-size: 50
     poll-interval-ms: 5000

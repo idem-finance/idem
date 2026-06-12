@@ -23,6 +23,7 @@ import java.net.http.HttpResponse
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class WebhookOutboxPollerTest {
@@ -176,6 +177,21 @@ class WebhookOutboxPollerTest {
 
         verifyNoInteractions(tenantRepository)
         verifyNoInteractions(httpClient)
+    }
+
+    @Test
+    fun `constructor rejects maxAttempts above RetrySchedule's supported range`() {
+        assertFailsWith<IllegalArgumentException> { poller(maxAttempts = RetrySchedule.MAX_SUPPORTED_ATTEMPTS + 1) }
+    }
+
+    @Test
+    fun `constructor rejects maxAttempts below 1`() {
+        assertFailsWith<IllegalArgumentException> { poller(maxAttempts = 0) }
+    }
+
+    @Test
+    fun `constructor accepts maxAttempts at the lower boundary`() {
+        poller(maxAttempts = 1)
     }
 
     @Test

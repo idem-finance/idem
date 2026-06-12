@@ -24,6 +24,13 @@ class WebhookOutboxPoller(
     @Value("\${idem.webhook.max-attempts:5}") private val maxAttempts: Int,
     @Value("\${idem.webhook.batch-size:50}") private val batchSize: Int,
 ) {
+    init {
+        require(maxAttempts in 1..RetrySchedule.MAX_SUPPORTED_ATTEMPTS) {
+            "idem.webhook.max-attempts must be between 1 and ${RetrySchedule.MAX_SUPPORTED_ATTEMPTS} " +
+                "(RetrySchedule defines backoff delays for attempts 1..${RetrySchedule.MAX_SUPPORTED_ATTEMPTS - 1}); got $maxAttempts"
+        }
+    }
+
     private val log = LoggerFactory.getLogger(javaClass)
 
     @Scheduled(fixedDelayString = "\${idem.webhook.poll-interval-ms:5000}")

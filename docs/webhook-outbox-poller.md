@@ -193,6 +193,13 @@ documented inline with the NO FORCE RLS rationale.
 `last_error`. `DEAD` rows are permanently excluded from `findDispatchable`
 (not `PENDING`/`FAILED`); there is no automatic revival.
 
+`idem.webhook.max-attempts` is bounded to `1..RetrySchedule.MAX_SUPPORTED_ATTEMPTS`
+(currently `1..5`, matching the table above). `WebhookOutboxPoller`'s `init` block
+validates this at Spring context startup — a value outside that range fails fast
+with an `IllegalArgumentException` rather than causing rows to be marked `DEAD`
+prematurely once `attempts` exceeds the entries defined in `RetrySchedule`'s backoff
+table.
+
 ---
 
 ## HMAC signing (outgoing)
@@ -227,7 +234,7 @@ idem:
 | Property | Default | Notes |
 |---|---|---|
 | `idem.webhook.timeout-ms` | `5000` | `HttpRequest` timeout per delivery attempt. |
-| `idem.webhook.max-attempts` | `5` | Total attempts before a row is marked `DEAD` (see retry table above). |
+| `idem.webhook.max-attempts` | `5` | Total attempts before a row is marked `DEAD` (see retry table above). Must be in `1..5` -- enforced at startup. |
 | `idem.webhook.batch-size` | `50` | Max rows fetched per `poll()` tick, across all tenants. |
 | `idem.webhook.poll-interval-ms` | `5000` | `@Scheduled(fixedDelayString = ...)` interval. Integration tests override to `200` for fast scheduling. |
 
