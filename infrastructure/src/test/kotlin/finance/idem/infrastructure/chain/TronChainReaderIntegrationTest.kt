@@ -4,6 +4,7 @@ import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
 import com.github.tomakehurst.wiremock.client.WireMock.equalTo
 import com.github.tomakehurst.wiremock.client.WireMock.get
+import com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
 import com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED
@@ -152,6 +153,40 @@ class TronChainReaderIntegrationTest {
         assertEquals(2, result.size)
         assertEquals(blockId + 1, result[0].entry.blockNumber)
         assertEquals(blockId + 2, result[1].entry.blockNumber)
+    }
+
+    @Test
+    fun `poll sends TRON-PRO-API-KEY header when api key is configured`() {
+        stubTransfers(transfersResponse(txHash, blockId, senderWallet, watchedWallet, usdtContract, "1000000"))
+
+        val mockRepo = mock<WatchedAddressRepository>()
+        whenever(mockRepo.findByChainKey("TRON")).thenReturn(listOf(watched))
+        val readerWithApiKey = TronChainReader(
+            apiUrl = "http://localhost:${wireMock.port()}",
+            watchedAddressRepository = mockRepo,
+            requestDelayMs = 0,
+            pageSize = 2,
+            apiKey = "test-tron-key",
+        )
+
+        readerWithApiKey.poll(blockId - 1)
+
+        wireMock.verify(
+            getRequestedFor(urlPathEqualTo("/api/token_trc20/transfers"))
+                .withHeader("TRON-PRO-API-KEY", equalTo("test-tron-key"))
+        )
+    }
+
+    @Test
+    fun `poll does not send TRON-PRO-API-KEY header when api key is blank`() {
+        stubTransfers(transfersResponse(txHash, blockId, senderWallet, watchedWallet, usdtContract, "1000000"))
+
+        reader.poll(blockId - 1)
+
+        wireMock.verify(
+            getRequestedFor(urlPathEqualTo("/api/token_trc20/transfers"))
+                .withoutHeader("TRON-PRO-API-KEY")
+        )
     }
 
     @Test

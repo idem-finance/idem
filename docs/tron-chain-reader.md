@@ -230,9 +230,18 @@ idem:
   chain:
     tron:
       api-url: https://apilist.tronscan.org
+      api-key: "${TRONSCAN_API_KEY:}"
 ```
 
-`api-url` defaults to blank — the Tron reader is disabled unless explicitly configured. In production, consider a Tronscan Pro API key for higher rate limits.
+`api-url` defaults to blank — the Tron reader is disabled unless explicitly configured.
+
+`api-key` defaults to blank. When non-blank, every Tronscan request includes a
+`TRON-PRO-API-KEY: <api-key>` header. Per Tronscan's support center, since 2025-08-31
+unauthenticated requests to `apilist.tronscan.org` are no longer guaranteed any QPS — they're
+capped at 20 req/s shared globally across all unauthenticated callers, with a follow-up
+announcement signalling a move toward mandatory API keys for all requests. Configure
+`TRONSCAN_API_KEY` in production deployments to avoid silent throttling (see
+[#95](https://github.com/idem-finance/idem/issues/95)).
 
 ---
 
@@ -283,4 +292,4 @@ rtk test mvn test -pl infrastructure
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
 - `docs/evm-chain-reader.md` — EVM counterpart (Alchemy webhook primary, Web3j fallback)
 - `infrastructure/chain/EvmChainReaderFactory.kt` — factory that wires all chain readers
-- Issues [#49](https://github.com/idem-finance/idem/issues/49), [#76](https://github.com/idem-finance/idem/issues/76)
+- Issues [#49](https://github.com/idem-finance/idem/issues/49), [#76](https://github.com/idem-finance/idem/issues/76), [#95](https://github.com/idem-finance/idem/issues/95)

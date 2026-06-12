@@ -34,7 +34,7 @@ class EvmChainReaderFactory(
                 add(SolanaChainReader(config.solana.rpcUrl, watchedAddressRepository))
             }
             if (config.tron.apiUrl.isNotBlank()) {
-                add(TronChainReader(config.tron.apiUrl, watchedAddressRepository))
+                add(TronChainReader(config.tron.apiUrl, watchedAddressRepository, apiKey = config.tron.apiKey))
             }
         }
         return readers
