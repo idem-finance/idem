@@ -3,7 +3,7 @@ package finance.idem.infrastructure.service
 import finance.idem.application.ledger.EntriesAccountNotFound
 import finance.idem.application.ledger.EntryCursor
 import finance.idem.application.ledger.InvalidCursor
-import finance.idem.application.ledger.ListEntriesQuery
+import finance.idem.application.ledger.QueryEntriesQuery
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
@@ -35,12 +35,12 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
-class ListEntriesServiceTest {
+class QueryEntriesServiceTest {
 
     @Mock lateinit var accountRepository: AccountRepository
     @Mock lateinit var journalLineRepository: JournalLineRepository
 
-    private lateinit var service: ListEntriesService
+    private lateinit var service: QueryEntriesService
 
     private val tenantId = TenantId.generate()
     private val accountId = AccountId.generate()
@@ -48,7 +48,7 @@ class ListEntriesServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = ListEntriesService(accountRepository, journalLineRepository)
+        service = QueryEntriesService(accountRepository, journalLineRepository)
     }
 
     private fun account() = Account.create(
@@ -72,7 +72,7 @@ class ListEntriesServiceTest {
     fun `returns EntriesAccountNotFound when account does not exist`() {
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(null)
 
-        val result = service.execute(ListEntriesQuery(accountId, tenantId))
+        val result = service.execute(QueryEntriesQuery(accountId, tenantId))
 
         assertTrue(result.isFailure)
         assertIs<EntriesAccountNotFound>(result.exceptionOrNull())
@@ -84,7 +84,7 @@ class ListEntriesServiceTest {
         whenever(journalLineRepository.findByAccountId(accountId, tenantId, null, null, null, null, 51))
             .thenReturn(listOf(line(now), line(now.minusSeconds(60))))
 
-        val page = service.execute(ListEntriesQuery(accountId, tenantId)).getOrThrow()
+        val page = service.execute(QueryEntriesQuery(accountId, tenantId)).getOrThrow()
 
         assertEquals(2, page.entries.size)
         assertNull(page.nextCursor)
@@ -97,7 +97,7 @@ class ListEntriesServiceTest {
         whenever(journalLineRepository.findByAccountId(accountId, tenantId, null, null, null, null, 3))
             .thenReturn(rows)
 
-        val page = service.execute(ListEntriesQuery(accountId, tenantId, limit = 2)).getOrThrow()
+        val page = service.execute(QueryEntriesQuery(accountId, tenantId, limit = 2)).getOrThrow()
 
         assertEquals(2, page.entries.size)
         assertEquals(rows.take(2), page.entries)
@@ -109,7 +109,7 @@ class ListEntriesServiceTest {
     fun `invalid cursor returns InvalidCursor`() {
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(account())
 
-        val result = service.execute(ListEntriesQuery(accountId, tenantId, cursor = "not-a-valid-cursor"))
+        val result = service.execute(QueryEntriesQuery(accountId, tenantId, cursor = "not-a-valid-cursor"))
 
         assertTrue(result.isFailure)
         assertIs<InvalidCursor>(result.exceptionOrNull())
@@ -122,7 +122,7 @@ class ListEntriesServiceTest {
         whenever(journalLineRepository.findByAccountId(any(), any(), isNull(), isNull(), eq(anchor.createdAt), eq(anchor.id), any()))
             .thenReturn(emptyList())
 
-        val page = service.execute(ListEntriesQuery(accountId, tenantId, cursor = anchor.encode())).getOrThrow()
+        val page = service.execute(QueryEntriesQuery(accountId, tenantId, cursor = anchor.encode())).getOrThrow()
 
         assertTrue(page.entries.isEmpty())
         verify(journalLineRepository).findByAccountId(accountId, tenantId, null, null, anchor.createdAt, anchor.id, 51)
@@ -136,7 +136,7 @@ class ListEntriesServiceTest {
         whenever(journalLineRepository.findByAccountId(accountId, tenantId, from, to, null, null, 51))
             .thenReturn(emptyList())
 
-        service.execute(ListEntriesQuery(accountId, tenantId, from = from, to = to)).getOrThrow()
+        service.execute(QueryEntriesQuery(accountId, tenantId, from = from, to = to)).getOrThrow()
 
         verify(journalLineRepository).findByAccountId(accountId, tenantId, from, to, null, null, 51)
     }

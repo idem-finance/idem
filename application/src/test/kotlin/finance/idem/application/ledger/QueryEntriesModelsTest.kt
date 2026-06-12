@@ -16,15 +16,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
-class ListEntriesModelsTest {
+class QueryEntriesModelsTest {
 
     private val accountId = AccountId.generate()
     private val tenantId = TenantId.generate()
     private val now = Instant.now()
 
     @Test
-    fun `ListEntriesQuery holds all fields`() {
-        val query = ListEntriesQuery(accountId, tenantId, from = now, to = now, limit = 25, cursor = "abc")
+    fun `QueryEntriesQuery holds all fields`() {
+        val query = QueryEntriesQuery(accountId, tenantId, from = now, to = now, limit = 25, cursor = "abc")
         assertEquals(accountId, query.accountId)
         assertEquals(tenantId, query.tenantId)
         assertEquals(now, query.from)
@@ -35,8 +35,8 @@ class ListEntriesModelsTest {
     }
 
     @Test
-    fun `ListEntriesQuery defaults limit to 50 and optional fields to null`() {
-        val query = ListEntriesQuery(accountId, tenantId)
+    fun `QueryEntriesQuery defaults limit to 50 and optional fields to null`() {
+        val query = QueryEntriesQuery(accountId, tenantId)
         assertEquals(50, query.limit)
         assertNull(query.from)
         assertNull(query.to)
@@ -76,7 +76,7 @@ class ListEntriesModelsTest {
         val error = EntriesAccountNotFound(accountId)
 
         assertEquals(accountId, error.accountId)
-        assertIs<ListEntriesError>(error)
+        assertIs<QueryEntriesError>(error)
     }
 
     @Test
@@ -84,6 +84,6 @@ class ListEntriesModelsTest {
         val error = InvalidCursor("bad-token")
 
         assertEquals("bad-token", error.cursor)
-        assertIs<ListEntriesError>(error)
+        assertIs<QueryEntriesError>(error)
     }
 }
