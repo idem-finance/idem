@@ -3,7 +3,7 @@ package finance.idem.infrastructure.service
 import finance.idem.application.ledger.Balance
 import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.GetBalanceQuery
-import finance.idem.application.ledger.QueryBalanceUseCase
+import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.core.EntryType
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.ledger.AccountRepository
@@ -16,11 +16,11 @@ import java.time.Instant
 
 @Service
 @Transactional(readOnly = true)
-class QueryBalanceService(
+class GetBalanceService(
     private val accountRepository: AccountRepository,
     private val transactionRepository: TransactionRepository,
     private val clock: Clock = Clock.systemUTC(),
-) : QueryBalanceUseCase {
+) : GetBalanceUseCase {
 
     override fun execute(query: GetBalanceQuery): Result<Balance> {
         val account = accountRepository.findById(query.accountId, query.tenantId)

@@ -1,5 +1,5 @@
 package finance.idem.application.ledger
 
-interface QueryBalanceUseCase {
+interface GetBalanceUseCase {
     fun execute(query: GetBalanceQuery): Result<Balance>
 }

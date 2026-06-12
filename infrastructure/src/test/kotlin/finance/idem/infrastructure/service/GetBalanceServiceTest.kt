@@ -32,12 +32,12 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
-class QueryBalanceServiceTest {
+class GetBalanceServiceTest {
 
     @Mock lateinit var accountRepository: AccountRepository
     @Mock lateinit var transactionRepository: TransactionRepository
 
-    private lateinit var service: QueryBalanceService
+    private lateinit var service: GetBalanceService
 
     private val tenantId = TenantId.generate()
     private val accountId = AccountId.generate()
@@ -46,7 +46,7 @@ class QueryBalanceServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = QueryBalanceService(accountRepository, transactionRepository, fixedClock)
+        service = GetBalanceService(accountRepository, transactionRepository, fixedClock)
     }
 
     private fun assetAccount() = Account.create(

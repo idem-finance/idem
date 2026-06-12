@@ -1,5 +1,5 @@
 package finance.idem.application.ledger
 
-interface QueryEntriesUseCase {
+interface GetEntriesUseCase {
     fun execute(query: GetEntriesQuery): Result<EntryPage>
 }

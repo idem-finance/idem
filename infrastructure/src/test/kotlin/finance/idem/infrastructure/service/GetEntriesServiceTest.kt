@@ -35,12 +35,12 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
-class QueryEntriesServiceTest {
+class GetEntriesServiceTest {
 
     @Mock lateinit var accountRepository: AccountRepository
     @Mock lateinit var journalLineRepository: JournalLineRepository
 
-    private lateinit var service: QueryEntriesService
+    private lateinit var service: GetEntriesService
 
     private val tenantId = TenantId.generate()
     private val accountId = AccountId.generate()
@@ -48,7 +48,7 @@ class QueryEntriesServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = QueryEntriesService(accountRepository, journalLineRepository)
+        service = GetEntriesService(accountRepository, journalLineRepository)
     }
 
     private fun account() = Account.create(
