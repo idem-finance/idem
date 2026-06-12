@@ -81,7 +81,7 @@ class AccountController(
     @Operation(summary = "Get a paginated, reverse-chronological timeline of journal entries for an account")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Page of journal entries returned successfully"),
-        ApiResponse(responseCode = "400", description = "Missing or invalid X-Tenant-Id, invalid accountId/limit, or invalid cursor"),
+        ApiResponse(responseCode = "400", description = "Missing or invalid X-Tenant-Id, invalid accountId/limit/range, or invalid cursor"),
         ApiResponse(responseCode = "404", description = "Account not found for this tenant"),
     )
     fun listEntries(
@@ -89,9 +89,9 @@ class AccountController(
         @RequestHeader("X-Tenant-Id") tenantIdStr: String,
         @Parameter(description = "Account UUID")
         @PathVariable accountId: UUID,
-        @Parameter(description = "Inclusive lower bound on createdAt")
+        @Parameter(description = "Inclusive lower bound on createdAt; must not be after 'to' if both are present")
         @RequestParam(required = false) from: Instant?,
-        @Parameter(description = "Inclusive upper bound on createdAt")
+        @Parameter(description = "Inclusive upper bound on createdAt; must not be before 'from' if both are present")
         @RequestParam(required = false) to: Instant?,
         @Parameter(description = "Max entries per page, 1-200")
         @RequestParam(defaultValue = "50") limit: Int,
@@ -108,6 +108,11 @@ class AccountController(
         if (limit < 1 || limit > 200) {
             return ResponseEntity.badRequest()
                 .body(ErrorResponse("INVALID_LIMIT", "limit must be between 1 and 200"))
+        }
+
+        if (from != null && to != null && from.isAfter(to)) {
+            return ResponseEntity.badRequest()
+                .body(ErrorResponse("INVALID_RANGE", "from must not be after to"))
         }
 
         val query = ListEntriesQuery(

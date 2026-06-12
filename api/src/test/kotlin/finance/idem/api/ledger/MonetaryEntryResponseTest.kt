@@ -12,10 +12,10 @@ import java.math.BigDecimal
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
-class MonetaryEntryResponseDtoTest {
+class MonetaryEntryResponseTest {
 
     @Test
-    fun `FiatEntryResponseDto from produces correct dto`() {
+    fun `FiatEntryResponse from produces correct dto`() {
         val entry = FiatEntry(
             amount = MonetaryAmount.of("100.00"),
             currency = FiatCurrency.BRL,
@@ -23,7 +23,7 @@ class MonetaryEntryResponseDtoTest {
             bankReference = "ref-001",
         )
 
-        val dto = assertIs<FiatEntryResponseDto>(MonetaryEntryResponseDto.from(entry))
+        val dto = assertIs<FiatEntryResponse>(MonetaryEntryResponse.from(entry))
         assertEquals(BigDecimal("100.00"), dto.amount)
         assertEquals(FiatCurrency.BRL, dto.currency)
         assertEquals(PaymentRail.PIX, dto.rail)
@@ -46,13 +46,13 @@ class MonetaryEntryResponseDtoTest {
     }
 
     @Test
-    fun `FiatEntryResponseDto defaults bankReference to null when omitted`() {
-        val dto = FiatEntryResponseDto(BigDecimal("50.00"), FiatCurrency.USD, PaymentRail.ACH)
+    fun `FiatEntryResponse defaults bankReference to null when omitted`() {
+        val dto = FiatEntryResponse(BigDecimal("50.00"), FiatCurrency.USD, PaymentRail.ACH)
         assertEquals(null, dto.bankReference)
     }
 
     @Test
-    fun `OnChainEntryResponseDto from produces correct dto`() {
+    fun `OnChainEntryResponse from produces correct dto`() {
         val entry = OnChainEntry(
             amount = MonetaryAmount.of("1.000000"),
             token = StablecoinToken.USDC,
@@ -64,7 +64,7 @@ class MonetaryEntryResponseDtoTest {
             fromAddress = "0xSender",
         )
 
-        val dto = assertIs<OnChainEntryResponseDto>(MonetaryEntryResponseDto.from(entry))
+        val dto = assertIs<OnChainEntryResponse>(MonetaryEntryResponse.from(entry))
         assertEquals(BigDecimal("1.000000"), dto.amount)
         assertEquals(StablecoinToken.USDC, dto.token)
         assertEquals(ChainId.EVM, dto.chainId)
@@ -95,8 +95,8 @@ class MonetaryEntryResponseDtoTest {
     }
 
     @Test
-    fun `OnChainEntryResponseDto defaults fromAddress to null when omitted`() {
-        val dto = OnChainEntryResponseDto(
+    fun `OnChainEntryResponse defaults fromAddress to null when omitted`() {
+        val dto = OnChainEntryResponse(
             amount = BigDecimal("1.000000"),
             token = StablecoinToken.USDC,
             chainId = ChainId.EVM,

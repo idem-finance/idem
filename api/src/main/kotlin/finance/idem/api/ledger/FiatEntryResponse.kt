@@ -5,14 +5,14 @@ import finance.idem.core.PaymentRail
 import finance.idem.core.monetary.FiatEntry
 import java.math.BigDecimal
 
-data class FiatEntryResponseDto(
+data class FiatEntryResponse(
     val amount: BigDecimal,
     val currency: FiatCurrency,
     val rail: PaymentRail,
     val bankReference: String? = null,
-) : MonetaryEntryResponseDto() {
+) : MonetaryEntryResponse() {
     companion object {
-        fun from(entry: FiatEntry) = FiatEntryResponseDto(
+        fun from(entry: FiatEntry) = FiatEntryResponse(
             amount = entry.amount.value,
             currency = entry.currency,
             rail = entry.rail,

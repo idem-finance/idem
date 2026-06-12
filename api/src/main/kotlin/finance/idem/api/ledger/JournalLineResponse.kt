@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 import java.time.Instant
 import java.util.UUID
 
-data class JournalLineResponseDto(
+data class JournalLineResponse(
     @Schema(description = "Journal line UUID")
     val entryId: UUID,
     @Schema(description = "Transaction UUID this entry belongs to")
@@ -14,16 +14,19 @@ data class JournalLineResponseDto(
     @Schema(description = "DEBIT or CREDIT")
     val type: EntryType,
     @Schema(description = "The monetary entry posted (fiat or on-chain)")
-    val monetary: MonetaryEntryResponseDto,
+    val monetary: MonetaryEntryResponse,
+    @Schema(description = "Optional human-readable description of this entry")
+    val description: String? = null,
     @Schema(description = "Timestamp when the entry was created")
     val createdAt: Instant,
 ) {
     companion object {
-        fun from(line: JournalLine) = JournalLineResponseDto(
+        fun from(line: JournalLine) = JournalLineResponse(
             entryId = line.id,
             transactionId = line.transactionId.value,
             type = line.entryType,
-            monetary = MonetaryEntryResponseDto.from(line.monetaryEntry),
+            monetary = MonetaryEntryResponse.from(line.monetaryEntry),
+            description = line.description,
             createdAt = line.createdAt,
         )
     }

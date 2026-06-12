@@ -54,13 +54,18 @@ class AccountControllerTest {
         computedAt = Instant.parse("2026-05-28T12:00:00Z"),
     )
 
-    private fun lineFor(accountId: UUID, createdAt: Instant = Instant.parse("2026-05-28T12:00:00Z")) = JournalLine(
+    private fun lineFor(
+        accountId: UUID,
+        createdAt: Instant = Instant.parse("2026-05-28T12:00:00Z"),
+        description: String? = null,
+    ) = JournalLine(
         id = UUID.randomUUID(),
         transactionId = TransactionId.generate(),
         accountId = AccountId(accountId),
         tenantId = TenantId(UUID.fromString(tenantId)),
         entryType = EntryType.DEBIT,
         monetaryEntry = FiatEntry(MonetaryAmount.of("100.00"), FiatCurrency.BRL, PaymentRail.PIX),
+        description = description,
         createdAt = createdAt,
         createdBy = "system",
     )
@@ -122,7 +127,7 @@ class AccountControllerTest {
 
     @Test
     fun `listEntries happy path returns 200 with entries and nextCursor`() {
-        val line = lineFor(accountId)
+        val line = lineFor(accountId, description = "Pix received")
         whenever(listEntriesUseCase.execute(any()))
             .thenReturn(Result.success(EntryPage(AccountId(accountId), listOf(line), "next-cursor-token")))
 
@@ -135,6 +140,7 @@ class AccountControllerTest {
             jsonPath("$.entries[0].type") { value("DEBIT") }
             jsonPath("$.entries[0].monetary.type") { value("FIAT") }
             jsonPath("$.entries[0].monetary.currency") { value("BRL") }
+            jsonPath("$.entries[0].description") { value("Pix received") }
             jsonPath("$.nextCursor") { value("next-cursor-token") }
         }
     }
@@ -168,6 +174,16 @@ class AccountControllerTest {
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_LIMIT") }
+        }
+    }
+
+    @Test
+    fun `listEntries with from after to returns 400 INVALID_RANGE`() {
+        mockMvc.get("/api/v1/accounts/$accountId/entries?from=2026-05-28T00:00:00Z&to=2026-05-01T00:00:00Z") {
+            header("X-Tenant-Id", tenantId)
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_RANGE") }
         }
     }
 

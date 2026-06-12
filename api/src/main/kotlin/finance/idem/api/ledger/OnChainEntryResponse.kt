@@ -5,7 +5,7 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.monetary.OnChainEntry
 import java.math.BigDecimal
 
-data class OnChainEntryResponseDto(
+data class OnChainEntryResponse(
     val amount: BigDecimal,
     val token: StablecoinToken,
     val chainId: ChainId,
@@ -14,9 +14,9 @@ data class OnChainEntryResponseDto(
     val walletAddress: String,
     val tokenContract: String,
     val fromAddress: String? = null,
-) : MonetaryEntryResponseDto() {
+) : MonetaryEntryResponse() {
     companion object {
-        fun from(entry: OnChainEntry) = OnChainEntryResponseDto(
+        fun from(entry: OnChainEntry) = OnChainEntryResponse(
             amount = entry.amount.value,
             token = entry.token,
             chainId = entry.chainId,
