@@ -2,12 +2,14 @@ package finance.idem.api.ledger
 
 import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.EntriesAccountNotFound
+import finance.idem.application.ledger.GenerateStatementQuery
+import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidCursor
-import finance.idem.application.ledger.ListEntriesQuery
-import finance.idem.application.ledger.ListEntriesUseCase
-import finance.idem.application.ledger.QueryBalanceError
-import finance.idem.application.ledger.QueryBalanceQuery
-import finance.idem.application.ledger.QueryBalanceUseCase
+import finance.idem.application.ledger.GetEntriesQuery
+import finance.idem.application.ledger.GetEntriesUseCase
+import finance.idem.application.ledger.GetBalanceQuery
+import finance.idem.application.ledger.GetBalanceUseCase
+import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.core.AccountId
 import finance.idem.core.TenantId
 import io.swagger.v3.oas.annotations.Operation
@@ -29,8 +31,9 @@ import java.util.UUID
 @RequestMapping("/api/v1/accounts")
 @Tag(name = "Accounts", description = "Account balance queries")
 class AccountController(
-    private val queryBalanceUseCase: QueryBalanceUseCase,
-    private val listEntriesUseCase: ListEntriesUseCase,
+    private val getBalanceUseCase: GetBalanceUseCase,
+    private val getEntriesUseCase: GetEntriesUseCase,
+    private val generateStatementUseCase: GenerateStatementUseCase,
 ) {
 
     @GetMapping("/{accountId}/balance")
@@ -55,13 +58,13 @@ class AccountController(
                 .body(ErrorResponse("INVALID_TENANT_ID", "X-Tenant-Id must be a valid UUID"))
         }
 
-        val query = QueryBalanceQuery(
+        val query = GetBalanceQuery(
             accountId = AccountId(accountId),
             tenantId = tenantId,
             asOf = asOf,
         )
 
-        return queryBalanceUseCase.execute(query).fold(
+        return getBalanceUseCase.execute(query).fold(
             onSuccess = { balance ->
                 ResponseEntity.ok(BalanceResponse.from(balance))
             },
@@ -115,7 +118,7 @@ class AccountController(
                 .body(ErrorResponse("INVALID_RANGE", "from must not be after to"))
         }
 
-        val query = ListEntriesQuery(
+        val query = GetEntriesQuery(
             accountId = AccountId(accountId),
             tenantId = tenantId,
             from = from,
@@ -124,7 +127,7 @@ class AccountController(
             cursor = cursor,
         )
 
-        return listEntriesUseCase.execute(query).fold(
+        return getEntriesUseCase.execute(query).fold(
             onSuccess = { page ->
                 ResponseEntity.ok(EntryTimelineResponse.from(page))
             },
@@ -135,6 +138,63 @@ class AccountController(
                     is InvalidCursor ->
                         ResponseEntity.badRequest()
                             .body(ErrorResponse("INVALID_CURSOR", error.message ?: "Invalid cursor"))
+                    else ->
+                        ResponseEntity.internalServerError()
+                            .body(ErrorResponse("INTERNAL_ERROR", error.message ?: "Unexpected error"))
+                }
+            },
+        )
+    }
+
+    @GetMapping("/{accountId}/statement")
+    @Operation(summary = "Generate an account statement for a period, with opening/closing balances and movements")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Statement generated successfully"),
+        ApiResponse(responseCode = "400", description = "Missing or invalid X-Tenant-Id, missing from/to, invalid accountId format, or from after to"),
+        ApiResponse(responseCode = "404", description = "Account not found for this tenant"),
+    )
+    fun getStatement(
+        @Parameter(description = "Tenant UUID", required = true)
+        @RequestHeader("X-Tenant-Id") tenantIdStr: String,
+        @Parameter(description = "Account UUID")
+        @PathVariable accountId: UUID,
+        @Parameter(description = "Inclusive lower bound on occurredAt for the statement period", required = true)
+        @RequestParam(required = false) from: Instant?,
+        @Parameter(description = "Inclusive upper bound on occurredAt for the statement period", required = true)
+        @RequestParam(required = false) to: Instant?,
+    ): ResponseEntity<Any> {
+        val tenantId = try {
+            TenantId(UUID.fromString(tenantIdStr))
+        } catch (_: IllegalArgumentException) {
+            return ResponseEntity.badRequest()
+                .body(ErrorResponse("INVALID_TENANT_ID", "X-Tenant-Id must be a valid UUID"))
+        }
+
+        if (from == null || to == null) {
+            return ResponseEntity.badRequest()
+                .body(ErrorResponse("MISSING_PARAMETER", "from and to are required"))
+        }
+
+        if (from.isAfter(to)) {
+            return ResponseEntity.badRequest()
+                .body(ErrorResponse("INVALID_RANGE", "from must not be after to"))
+        }
+
+        val query = GenerateStatementQuery(
+            accountId = AccountId(accountId),
+            tenantId = tenantId,
+            from = from,
+            to = to,
+        )
+
+        return generateStatementUseCase.execute(query).fold(
+            onSuccess = { statement ->
+                ResponseEntity.ok(StatementResponse.from(statement))
+            },
+            onFailure = { error ->
+                when (error) {
+                    is StatementAccountNotFound ->
+                        ResponseEntity.notFound().build()
                     else ->
                         ResponseEntity.internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", error.message ?: "Unexpected error"))

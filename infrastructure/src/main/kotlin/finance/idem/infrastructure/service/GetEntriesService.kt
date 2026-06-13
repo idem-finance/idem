@@ -4,8 +4,8 @@ import finance.idem.application.ledger.EntriesAccountNotFound
 import finance.idem.application.ledger.EntryCursor
 import finance.idem.application.ledger.EntryPage
 import finance.idem.application.ledger.InvalidCursor
-import finance.idem.application.ledger.ListEntriesQuery
-import finance.idem.application.ledger.ListEntriesUseCase
+import finance.idem.application.ledger.GetEntriesQuery
+import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.core.ledger.AccountRepository
 import finance.idem.core.ledger.JournalLineRepository
 import org.springframework.stereotype.Service
@@ -13,12 +13,12 @@ import org.springframework.transaction.annotation.Transactional
 
 @Service
 @Transactional(readOnly = true)
-class ListEntriesService(
+class GetEntriesService(
     private val accountRepository: AccountRepository,
     private val journalLineRepository: JournalLineRepository,
-) : ListEntriesUseCase {
+) : GetEntriesUseCase {
 
-    override fun execute(query: ListEntriesQuery): Result<EntryPage> {
+    override fun execute(query: GetEntriesQuery): Result<EntryPage> {
         accountRepository.findById(query.accountId, query.tenantId)
             ?: return Result.failure(EntriesAccountNotFound(query.accountId))
 
