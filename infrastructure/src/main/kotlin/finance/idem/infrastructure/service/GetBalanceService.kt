@@ -4,11 +4,9 @@ import finance.idem.application.ledger.Balance
 import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.application.ledger.GetBalanceUseCase
-import finance.idem.core.EntryType
-import finance.idem.core.MonetaryAmount
 import finance.idem.core.ledger.AccountRepository
+import finance.idem.core.ledger.BalanceCalculator
 import finance.idem.core.ledger.TransactionRepository
-import finance.idem.core.monetary.FiatEntry
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -33,26 +31,7 @@ class GetBalanceService(
                 if (cutoff != null) txs.filter { it.occurredAt <= cutoff } else txs
             }
 
-        var debits = MonetaryAmount.ZERO
-        var credits = MonetaryAmount.ZERO
-
-        for (tx in transactions) {
-            for (line in tx.lines) {
-                if (line.accountId != query.accountId) continue
-                val entry = line.monetaryEntry
-                if (entry !is FiatEntry) continue
-                if (entry.currency != account.currency) continue
-                when (line.entryType) {
-                    EntryType.DEBIT  -> debits  = debits  + entry.amount
-                    EntryType.CREDIT -> credits = credits + entry.amount
-                }
-            }
-        }
-
-        val net = when (account.normalBalance) {
-            EntryType.DEBIT  -> debits - credits
-            EntryType.CREDIT -> credits - debits
-        }
+        val net = BalanceCalculator.compute(account, transactions)
 
         return Result.success(
             Balance(

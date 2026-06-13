@@ -1,14 +1,13 @@
 package finance.idem.infrastructure.service
 
 import finance.idem.application.ledger.AccountStatement
-import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.GenerateStatementQuery
 import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidStatementRange
-import finance.idem.application.ledger.GetBalanceQuery
-import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.StatementMovement
+import finance.idem.core.ledger.AccountRepository
+import finance.idem.core.ledger.BalanceCalculator
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.monetary.FiatEntry
 import org.springframework.stereotype.Service
@@ -17,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 @Transactional(readOnly = true)
 class GenerateStatementService(
-    private val getBalanceUseCase: GetBalanceUseCase,
+    private val accountRepository: AccountRepository,
     private val transactionRepository: TransactionRepository,
 ) : GenerateStatementUseCase {
 
@@ -26,49 +25,47 @@ class GenerateStatementService(
             return Result.failure(InvalidStatementRange(query.from, query.to))
         }
 
-        val opening = getBalanceUseCase
-            .execute(GetBalanceQuery(query.accountId, query.tenantId, asOf = query.from))
-            .getOrElse { error -> return Result.failure(error.toStatementError(query)) }
+        val account = accountRepository.findById(query.accountId, query.tenantId)
+            ?: return Result.failure(StatementAccountNotFound(query.accountId))
 
-        val closing = getBalanceUseCase
-            .execute(GetBalanceQuery(query.accountId, query.tenantId, asOf = query.to))
-            .getOrElse { error -> return Result.failure(error.toStatementError(query)) }
+        val transactions = transactionRepository.findByAccountId(query.accountId, query.tenantId)
 
-        val movements = transactionRepository
-            .findByAccountId(query.accountId, query.tenantId)
+        val openingTransactions = transactions.filter { it.occurredAt <= query.from }
+        val openingBalance = BalanceCalculator.compute(account, openingTransactions)
+
+        val movementTransactions = transactions
             .filter { it.occurredAt > query.from && it.occurredAt <= query.to }
             .sortedBy { it.occurredAt }
-            .flatMap { tx ->
-                tx.lines
-                    .filter { it.accountId == query.accountId }
-                    .mapNotNull { line ->
-                        val entry = line.monetaryEntry
-                        if (entry !is FiatEntry || entry.currency != opening.currency) return@mapNotNull null
-                        StatementMovement(
-                            transactionId = tx.id,
-                            type = line.entryType,
-                            amount = entry.amount,
-                            description = line.description,
-                            occurredAt = tx.occurredAt,
-                        )
-                    }
-            }
+
+        val movements = movementTransactions.flatMap { tx ->
+            tx.lines
+                .filter { it.accountId == query.accountId }
+                .mapNotNull { line ->
+                    val entry = line.monetaryEntry
+                    if (entry !is FiatEntry || entry.currency != account.currency) return@mapNotNull null
+                    StatementMovement(
+                        transactionId = tx.id,
+                        type = line.entryType,
+                        amount = entry.amount,
+                        description = line.description,
+                        occurredAt = tx.occurredAt,
+                    )
+                }
+        }
+
+        val netMovements = BalanceCalculator.compute(account, movementTransactions)
+        val closingBalance = openingBalance + netMovements
 
         return Result.success(
             AccountStatement(
                 accountId = query.accountId,
-                currency = opening.currency,
+                currency = account.currency,
                 from = query.from,
                 to = query.to,
-                openingBalance = opening.amount,
-                closingBalance = closing.amount,
+                openingBalance = openingBalance,
+                closingBalance = closingBalance,
                 movements = movements,
             )
         )
-    }
-
-    private fun Throwable.toStatementError(query: GenerateStatementQuery): Throwable = when (this) {
-        is BalanceAccountNotFound -> StatementAccountNotFound(query.accountId)
-        else -> this
     }
 }

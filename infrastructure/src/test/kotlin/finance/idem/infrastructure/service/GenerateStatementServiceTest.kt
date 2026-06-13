@@ -1,11 +1,7 @@
 package finance.idem.infrastructure.service
 
-import finance.idem.application.ledger.Balance
-import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.GenerateStatementQuery
 import finance.idem.application.ledger.InvalidStatementRange
-import finance.idem.application.ledger.GetBalanceQuery
-import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.core.AccountId
 import finance.idem.core.ChainId
@@ -22,14 +18,17 @@ import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
-import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.MonetaryEntry
+import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.kotlin.any
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.time.Instant
 import java.util.UUID
@@ -40,7 +39,6 @@ import kotlin.test.assertTrue
 @ExtendWith(MockitoExtension::class)
 class GenerateStatementServiceTest {
 
-    @Mock lateinit var getBalanceUseCase: GetBalanceUseCase
     @Mock lateinit var accountRepository: AccountRepository
     @Mock lateinit var transactionRepository: TransactionRepository
 
@@ -52,7 +50,7 @@ class GenerateStatementServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = GenerateStatementService(getBalanceUseCase, transactionRepository)
+        service = GenerateStatementService(accountRepository, transactionRepository)
     }
 
     private fun account() = Account.create(
@@ -80,19 +78,13 @@ class GenerateStatementServiceTest {
         )
     }
 
-    private fun balance(amount: String, asOf: Instant) = Balance(
-        accountId = accountId, currency = FiatCurrency.BRL, amount = MonetaryAmount.of(amount),
-        normalBalance = EntryType.DEBIT, computedAt = asOf,
-    )
-
     private fun otherAccountId() = AccountId.generate()
 
     @Test
     fun `returns StatementAccountNotFound when account does not exist`() {
         val from = now.minusSeconds(7200)
         val to = now
-        whenever(getBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
-            .thenReturn(Result.failure(BalanceAccountNotFound(accountId)))
+        whenever(accountRepository.findById(accountId, tenantId)).thenReturn(null)
 
         val result = service.execute(GenerateStatementQuery(accountId, tenantId, from, to))
 
@@ -135,23 +127,14 @@ class GenerateStatementServiceTest {
         whenever(transactionRepository.findByAccountId(accountId, tenantId))
             .thenReturn(listOf(txBefore, txInRange, txAtTo))
 
-        val realBalanceService = GetBalanceService(accountRepository, transactionRepository)
-        val opening = realBalanceService.execute(GetBalanceQuery(accountId, tenantId, asOf = from)).getOrThrow()
-        val closing = realBalanceService.execute(GetBalanceQuery(accountId, tenantId, asOf = to)).getOrThrow()
-
-        whenever(getBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
-            .thenReturn(Result.success(opening))
-        whenever(getBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = to)))
-            .thenReturn(Result.success(closing))
-
         val statement = service.execute(GenerateStatementQuery(accountId, tenantId, from, to)).getOrThrow()
 
         val net = statement.movements.fold(MonetaryAmount.ZERO) { acc2, m ->
             if (m.type == acc.normalBalance) acc2 + m.amount else acc2 - m.amount
         }
-        assertEquals(closing.amount, opening.amount + net)
-        assertEquals(MonetaryAmount.of("1000"), opening.amount)
-        assertEquals(MonetaryAmount.of("1300"), closing.amount)
+        assertEquals(statement.closingBalance, statement.openingBalance + net)
+        assertEquals(MonetaryAmount.of("1000"), statement.openingBalance)
+        assertEquals(MonetaryAmount.of("1300"), statement.closingBalance)
     }
 
     @Test
@@ -169,18 +152,9 @@ class GenerateStatementServiceTest {
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(acc)
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(txAtFrom))
 
-        val realBalanceService = GetBalanceService(accountRepository, transactionRepository)
-        val opening = realBalanceService.execute(GetBalanceQuery(accountId, tenantId, asOf = from)).getOrThrow()
-        val closing = realBalanceService.execute(GetBalanceQuery(accountId, tenantId, asOf = to)).getOrThrow()
-
-        whenever(getBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
-            .thenReturn(Result.success(opening))
-        whenever(getBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = to)))
-            .thenReturn(Result.success(closing))
-
         val statement = service.execute(GenerateStatementQuery(accountId, tenantId, from, to)).getOrThrow()
 
-        assertEquals(MonetaryAmount.of("300"), opening.amount)
+        assertEquals(MonetaryAmount.of("300"), statement.openingBalance)
         assertTrue(statement.movements.isEmpty())
     }
 
@@ -189,17 +163,15 @@ class GenerateStatementServiceTest {
         val from = now.minusSeconds(3600)
         val to = now
         val other = otherAccountId()
+        val acc = account()
 
         val txAtTo = tx(to) { id -> listOf(
             line(id, EntryType.DEBIT, brlFiat("150"), accountId),
             line(id, EntryType.CREDIT, brlFiat("150"), other),
         ) }
 
+        whenever(accountRepository.findById(accountId, tenantId)).thenReturn(acc)
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(txAtTo))
-        whenever(getBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
-            .thenReturn(Result.success(balance("0", asOf = from)))
-        whenever(getBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = to)))
-            .thenReturn(Result.success(balance("150", asOf = to)))
 
         val statement = service.execute(GenerateStatementQuery(accountId, tenantId, from, to)).getOrThrow()
 
@@ -213,6 +185,7 @@ class GenerateStatementServiceTest {
         val from = now.minusSeconds(3600)
         val to = now
         val other = otherAccountId()
+        val acc = account()
 
         val onChainEntry = OnChainEntry(
             amount = MonetaryAmount.of("180.00"), token = StablecoinToken.USDC,
@@ -229,14 +202,24 @@ class GenerateStatementServiceTest {
             line(id, EntryType.CREDIT, usdFiat("100"), other),
         ) }
 
+        whenever(accountRepository.findById(accountId, tenantId)).thenReturn(acc)
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(txOnChain, txUsd))
-        whenever(getBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = from)))
-            .thenReturn(Result.success(balance("0", asOf = from)))
-        whenever(getBalanceUseCase.execute(GetBalanceQuery(accountId, tenantId, asOf = to)))
-            .thenReturn(Result.success(balance("0", asOf = to)))
 
         val statement = service.execute(GenerateStatementQuery(accountId, tenantId, from, to)).getOrThrow()
 
         assertTrue(statement.movements.isEmpty())
+    }
+
+    @Test
+    fun `findByAccountId is called exactly once per request`() {
+        val from = now.minusSeconds(3600)
+        val to = now
+
+        whenever(accountRepository.findById(accountId, tenantId)).thenReturn(account())
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(emptyList())
+
+        service.execute(GenerateStatementQuery(accountId, tenantId, from, to))
+
+        verify(transactionRepository, times(1)).findByAccountId(any(), any())
     }
 }
