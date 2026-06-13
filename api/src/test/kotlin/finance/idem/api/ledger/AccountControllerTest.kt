@@ -260,6 +260,7 @@ class AccountControllerTest {
             jsonPath("$.movements[0].type") { value("DEBIT") }
             jsonPath("$.movements[0].amount") { value(500.00) }
             jsonPath("$.movements[0].description") { value("Pix received") }
+            jsonPath("$.movements[0].occurredAt") { value("2026-05-10T00:00:00Z") }
         }
     }
 

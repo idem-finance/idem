@@ -17,7 +17,7 @@ data class StatementMovementResponse(
     @Schema(description = "Optional human-readable description of this movement")
     val description: String?,
     @Schema(description = "Timestamp when the underlying transaction occurred")
-    val createdAt: Instant,
+    val occurredAt: Instant,
 ) {
     companion object {
         fun from(movement: StatementMovement) = StatementMovementResponse(
@@ -25,7 +25,7 @@ data class StatementMovementResponse(
             type = movement.type,
             amount = movement.amount.value,
             description = movement.description,
-            createdAt = movement.occurredAt,
+            occurredAt = movement.occurredAt,
         )
     }
 }
