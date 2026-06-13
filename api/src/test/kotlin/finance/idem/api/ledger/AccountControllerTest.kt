@@ -1,5 +1,6 @@
 package finance.idem.api.ledger
 
+import finance.idem.api.security.TestSecurityConfig
 import finance.idem.application.ledger.AccountStatement
 import finance.idem.application.ledger.Balance
 import finance.idem.application.ledger.BalanceAccountNotFound
@@ -28,6 +29,9 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
+import org.springframework.context.annotation.Import
+import org.springframework.security.authentication.TestingAuthenticationToken
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
@@ -35,6 +39,7 @@ import java.time.Instant
 import java.util.UUID
 
 @WebMvcTest(AccountController::class)
+@Import(TestSecurityConfig::class)
 class AccountControllerTest {
 
     @Autowired
@@ -49,8 +54,11 @@ class AccountControllerTest {
     @MockitoBean
     lateinit var generateStatementUseCase: GenerateStatementUseCase
 
-    private val tenantId = UUID.randomUUID().toString()
+    private val tenantId = TenantId(UUID.randomUUID())
     private val accountId = UUID.randomUUID()
+
+    private fun mockAuth(vararg scopes: String): TestingAuthenticationToken =
+        TestingAuthenticationToken(tenantId, null, *scopes)
 
     private fun balanceFor(accountId: UUID) = Balance(
         accountId = AccountId(accountId),
@@ -68,7 +76,7 @@ class AccountControllerTest {
         id = UUID.randomUUID(),
         transactionId = TransactionId.generate(),
         accountId = AccountId(accountId),
-        tenantId = TenantId(UUID.fromString(tenantId)),
+        tenantId = tenantId,
         entryType = EntryType.DEBIT,
         monetaryEntry = FiatEntry(MonetaryAmount.of("100.00"), FiatCurrency.BRL, PaymentRail.PIX),
         description = description,
@@ -99,7 +107,7 @@ class AccountControllerTest {
         whenever(getBalanceUseCase.execute(any())).thenReturn(Result.success(balanceFor(accountId)))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isOk() }
             jsonPath("$.accountId") { value(accountId.toString()) }
@@ -110,18 +118,18 @@ class AccountControllerTest {
     }
 
     @Test
-    fun `missing X-Tenant-Id returns 400`() {
+    fun `no authentication returns 401`() {
         mockMvc.get("/api/v1/accounts/$accountId/balance")
-            .andExpect { status { isBadRequest() } }
+            .andExpect { status { isUnauthorized() } }
     }
 
     @Test
-    fun `invalid UUID in X-Tenant-Id returns 400`() {
+    fun `wrong scope returns 403`() {
         mockMvc.get("/api/v1/accounts/$accountId/balance") {
-            header("X-Tenant-Id", "not-a-uuid")
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
         }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("INVALID_TENANT_ID") }
+            status { isForbidden() }
+            jsonPath("$.code") { value("insufficient_scope") }
         }
     }
 
@@ -131,7 +139,7 @@ class AccountControllerTest {
             .thenReturn(Result.failure(BalanceAccountNotFound(AccountId(accountId))))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isNotFound() }
         }
@@ -143,9 +151,22 @@ class AccountControllerTest {
         whenever(getBalanceUseCase.execute(any())).thenReturn(Result.success(balanceFor(accountId)))
 
         mockMvc.get("/api/v1/accounts/$accountId/balance?asOf=$asOf") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isOk() }
+        }
+    }
+
+    @Test
+    fun `getBalance unexpected use case error returns 500`() {
+        whenever(getBalanceUseCase.execute(any()))
+            .thenReturn(Result.failure(RuntimeException("boom")))
+
+        mockMvc.get("/api/v1/accounts/$accountId/balance") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_ERROR") }
         }
     }
 
@@ -156,7 +177,7 @@ class AccountControllerTest {
             .thenReturn(Result.success(EntryPage(AccountId(accountId), listOf(line), "next-cursor-token")))
 
         mockMvc.get("/api/v1/accounts/$accountId/entries") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isOk() }
             jsonPath("$.accountId") { value(accountId.toString()) }
@@ -175,7 +196,7 @@ class AccountControllerTest {
             .thenReturn(Result.failure(EntriesAccountNotFound(AccountId(accountId))))
 
         mockMvc.get("/api/v1/accounts/$accountId/entries") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isNotFound() }
         }
@@ -184,7 +205,7 @@ class AccountControllerTest {
     @Test
     fun `listEntries with limit 0 returns 400 INVALID_LIMIT`() {
         mockMvc.get("/api/v1/accounts/$accountId/entries?limit=0") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_LIMIT") }
@@ -194,7 +215,7 @@ class AccountControllerTest {
     @Test
     fun `listEntries with limit 201 returns 400 INVALID_LIMIT`() {
         mockMvc.get("/api/v1/accounts/$accountId/entries?limit=201") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_LIMIT") }
@@ -204,7 +225,7 @@ class AccountControllerTest {
     @Test
     fun `listEntries with from after to returns 400 INVALID_RANGE`() {
         mockMvc.get("/api/v1/accounts/$accountId/entries?from=2026-05-28T00:00:00Z&to=2026-05-01T00:00:00Z") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_RANGE") }
@@ -217,7 +238,7 @@ class AccountControllerTest {
             .thenReturn(Result.failure(InvalidCursor("garbage")))
 
         mockMvc.get("/api/v1/accounts/$accountId/entries?cursor=garbage") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_CURSOR") }
@@ -230,7 +251,7 @@ class AccountControllerTest {
             .thenReturn(Result.success(EntryPage(AccountId(accountId), emptyList(), null)))
 
         mockMvc.get("/api/v1/accounts/$accountId/entries?from=2026-05-01T00:00:00Z&to=2026-05-28T00:00:00Z&limit=10&cursor=abc") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isOk() }
         }
@@ -246,11 +267,24 @@ class AccountControllerTest {
     }
 
     @Test
+    fun `listEntries unexpected use case error returns 500`() {
+        whenever(getEntriesUseCase.execute(any()))
+            .thenReturn(Result.failure(RuntimeException("boom")))
+
+        mockMvc.get("/api/v1/accounts/$accountId/entries") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_ERROR") }
+        }
+    }
+
+    @Test
     fun `statement happy path returns 200 with opening, closing and movements`() {
         whenever(generateStatementUseCase.execute(any())).thenReturn(Result.success(statementFor(accountId)))
 
         mockMvc.get("/api/v1/accounts/$accountId/statement?from=2026-05-01T00:00:00Z&to=2026-05-28T00:00:00Z") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isOk() }
             jsonPath("$.accountId") { value(accountId.toString()) }
@@ -267,7 +301,7 @@ class AccountControllerTest {
     @Test
     fun `statement missing from returns 400 MISSING_PARAMETER`() {
         mockMvc.get("/api/v1/accounts/$accountId/statement?to=2026-05-28T00:00:00Z") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("MISSING_PARAMETER") }
@@ -277,7 +311,7 @@ class AccountControllerTest {
     @Test
     fun `statement missing to returns 400 MISSING_PARAMETER`() {
         mockMvc.get("/api/v1/accounts/$accountId/statement?from=2026-05-01T00:00:00Z") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("MISSING_PARAMETER") }
@@ -290,7 +324,7 @@ class AccountControllerTest {
         val to = Instant.parse("2026-05-01T00:00:00Z")
 
         mockMvc.get("/api/v1/accounts/$accountId/statement?from=$from&to=$to") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_RANGE") }
@@ -303,9 +337,22 @@ class AccountControllerTest {
             .thenReturn(Result.failure(StatementAccountNotFound(AccountId(accountId))))
 
         mockMvc.get("/api/v1/accounts/$accountId/statement?from=2026-05-01T00:00:00Z&to=2026-05-28T00:00:00Z") {
-            header("X-Tenant-Id", tenantId)
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
         }.andExpect {
             status { isNotFound() }
+        }
+    }
+
+    @Test
+    fun `statement unexpected use case error returns 500`() {
+        whenever(generateStatementUseCase.execute(any()))
+            .thenReturn(Result.failure(RuntimeException("boom")))
+
+        mockMvc.get("/api/v1/accounts/$accountId/statement?from=2026-05-01T00:00:00Z&to=2026-05-28T00:00:00Z") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_ERROR") }
         }
     }
 }
