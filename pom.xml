@@ -38,6 +38,7 @@
         <module>api</module>
         <module>mcp</module>
         <module>app</module>
+        <module>sdk-kotlin</module>
     </modules>
 
     <properties>
@@ -84,6 +85,11 @@
             <dependency>
                 <groupId>finance.idem</groupId>
                 <artifactId>mcp</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>finance.idem</groupId>
+                <artifactId>idem-sdk-kotlin</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

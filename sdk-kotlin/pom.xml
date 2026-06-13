@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>finance.idem</groupId>
+        <artifactId>idem</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>idem-sdk-kotlin</artifactId>
+    <name>idem-sdk-kotlin</name>
+    <description>Standalone Kotlin HTTP client SDK for the Idem ledger REST API — depends on
+    nothing else in this repo, published independently to Maven Central</description>
+
+    <!--
+        Intentionally empty <dependencies>: only kotlin-stdlib, kotlin-reflect, and
+        kotlin-test-junit5 are inherited from the root pom. Ktor/Jackson/coroutines added in #57.
+        Adding a dependency on core/application/infrastructure/api/mcp/app here is a build violation.
+    -->
+
+</project>
