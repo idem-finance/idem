@@ -47,7 +47,7 @@ class ApiKeyService(
         val cacheKey = cacheKey(prefix)
 
         redisTemplate.opsForValue().get(cacheKey)?.let { json ->
-            return deserializeFromCache(json)
+            deserializeFromCache(json)?.let { return it }
         }
 
         val apiKey = apiKeyRepository.findByPrefix(prefix) ?: return null
@@ -80,11 +80,16 @@ class ApiKeyService(
             )
         )
 
-    private fun deserializeFromCache(json: String): ValidatedApiKey {
+    private fun deserializeFromCache(json: String): ValidatedApiKey? {
         val cached: CachedEntry = objectMapper.readValue(json)
+        val scopes = cached.scopes.mapNotNullTo(mutableSetOf()) { name ->
+            runCatching { ApiScope.valueOf(name) }.getOrNull()
+        }
+        // Unknown scope name means cache entry is stale (e.g. post-migration rename) — force DB re-validation.
+        if (scopes.size != cached.scopes.size) return null
         return ValidatedApiKey(
             tenantId = TenantId.of(cached.tenantId),
-            scopes = cached.scopes.mapTo(mutableSetOf()) { ApiScope.valueOf(it) },
+            scopes = scopes,
         )
     }
 
