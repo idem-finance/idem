@@ -7,7 +7,6 @@ import finance.idem.application.ledger.EntriesAccountNotFound
 import finance.idem.application.ledger.EntryPage
 import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidCursor
-import finance.idem.application.ledger.InvalidStatementRange
 import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.application.ledger.GetBalanceUseCase
@@ -288,8 +287,6 @@ class AccountControllerTest {
     fun `statement with from after to returns 400 INVALID_RANGE`() {
         val from = Instant.parse("2026-05-28T00:00:00Z")
         val to = Instant.parse("2026-05-01T00:00:00Z")
-        whenever(generateStatementUseCase.execute(any()))
-            .thenReturn(Result.failure(InvalidStatementRange(from, to)))
 
         mockMvc.get("/api/v1/accounts/$accountId/statement?from=$from&to=$to") {
             header("X-Tenant-Id", tenantId)

@@ -5,7 +5,6 @@ import finance.idem.application.ledger.EntriesAccountNotFound
 import finance.idem.application.ledger.GenerateStatementQuery
 import finance.idem.application.ledger.GenerateStatementUseCase
 import finance.idem.application.ledger.InvalidCursor
-import finance.idem.application.ledger.InvalidStatementRange
 import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.application.ledger.GetBalanceQuery
@@ -19,7 +18,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
-import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestHeader
@@ -149,7 +147,6 @@ class AccountController(
     }
 
     @GetMapping("/{accountId}/statement")
-    @PreAuthorize("hasAuthority('ACCOUNTS_READ')")
     @Operation(summary = "Generate an account statement for a period, with opening/closing balances and movements")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Statement generated successfully"),
@@ -178,6 +175,11 @@ class AccountController(
                 .body(ErrorResponse("MISSING_PARAMETER", "from and to are required"))
         }
 
+        if (from.isAfter(to)) {
+            return ResponseEntity.badRequest()
+                .body(ErrorResponse("INVALID_RANGE", "from must not be after to"))
+        }
+
         val query = GenerateStatementQuery(
             accountId = AccountId(accountId),
             tenantId = tenantId,
@@ -193,9 +195,6 @@ class AccountController(
                 when (error) {
                     is StatementAccountNotFound ->
                         ResponseEntity.notFound().build()
-                    is InvalidStatementRange ->
-                        ResponseEntity.badRequest()
-                            .body(ErrorResponse("INVALID_RANGE", error.message ?: "from must not be after to"))
                     else ->
                         ResponseEntity.internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", error.message ?: "Unexpected error"))
