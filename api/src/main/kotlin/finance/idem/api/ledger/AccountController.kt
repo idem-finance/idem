@@ -17,10 +17,12 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -37,26 +39,22 @@ class AccountController(
 ) {
 
     @GetMapping("/{accountId}/balance")
+    @PreAuthorize("hasAuthority('ACCOUNTS_READ')")
     @Operation(summary = "Get account balance, optionally as of a past point in time")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Balance computed successfully"),
-        ApiResponse(responseCode = "400", description = "Missing or invalid X-Tenant-Id, or invalid accountId format"),
+        ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
+        ApiResponse(responseCode = "403", description = "API key does not have the ACCOUNTS_READ scope"),
         ApiResponse(responseCode = "404", description = "Account not found for this tenant"),
     )
     fun getBalance(
-        @Parameter(description = "Tenant UUID", required = true)
-        @RequestHeader("X-Tenant-Id") tenantIdStr: String,
         @Parameter(description = "Account UUID")
         @PathVariable accountId: UUID,
         @Parameter(description = "Return balance as of this ISO-8601 instant (omit for current balance)")
         @RequestParam(required = false) asOf: Instant?,
     ): ResponseEntity<Any> {
-        val tenantId = try {
-            TenantId(UUID.fromString(tenantIdStr))
-        } catch (_: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_TENANT_ID", "X-Tenant-Id must be a valid UUID"))
-        }
+        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         val query = GetBalanceQuery(
             accountId = AccountId(accountId),
@@ -81,15 +79,16 @@ class AccountController(
     }
 
     @GetMapping("/{accountId}/entries")
+    @PreAuthorize("hasAuthority('ACCOUNTS_READ')")
     @Operation(summary = "Get a paginated, reverse-chronological timeline of journal entries for an account")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Page of journal entries returned successfully"),
-        ApiResponse(responseCode = "400", description = "Missing or invalid X-Tenant-Id, invalid accountId/limit/range, or invalid cursor"),
+        ApiResponse(responseCode = "400", description = "Invalid accountId/limit/range, or invalid cursor"),
+        ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
+        ApiResponse(responseCode = "403", description = "API key does not have the ACCOUNTS_READ scope"),
         ApiResponse(responseCode = "404", description = "Account not found for this tenant"),
     )
     fun listEntries(
-        @Parameter(description = "Tenant UUID", required = true)
-        @RequestHeader("X-Tenant-Id") tenantIdStr: String,
         @Parameter(description = "Account UUID")
         @PathVariable accountId: UUID,
         @Parameter(description = "Inclusive lower bound on createdAt; must not be after 'to' if both are present")
@@ -101,12 +100,8 @@ class AccountController(
         @Parameter(description = "Opaque pagination cursor from a previous page's nextCursor")
         @RequestParam(required = false) cursor: String?,
     ): ResponseEntity<Any> {
-        val tenantId = try {
-            TenantId(UUID.fromString(tenantIdStr))
-        } catch (_: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_TENANT_ID", "X-Tenant-Id must be a valid UUID"))
-        }
+        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         if (limit < 1 || limit > 200) {
             return ResponseEntity.badRequest()
@@ -147,15 +142,16 @@ class AccountController(
     }
 
     @GetMapping("/{accountId}/statement")
+    @PreAuthorize("hasAuthority('ACCOUNTS_READ')")
     @Operation(summary = "Generate an account statement for a period, with opening/closing balances and movements")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Statement generated successfully"),
-        ApiResponse(responseCode = "400", description = "Missing or invalid X-Tenant-Id, missing from/to, invalid accountId format, or from after to"),
+        ApiResponse(responseCode = "400", description = "Missing from/to, invalid accountId format, or from after to"),
+        ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
+        ApiResponse(responseCode = "403", description = "API key does not have the ACCOUNTS_READ scope"),
         ApiResponse(responseCode = "404", description = "Account not found for this tenant"),
     )
     fun getStatement(
-        @Parameter(description = "Tenant UUID", required = true)
-        @RequestHeader("X-Tenant-Id") tenantIdStr: String,
         @Parameter(description = "Account UUID")
         @PathVariable accountId: UUID,
         @Parameter(description = "Inclusive lower bound on occurredAt for the statement period", required = true)
@@ -163,12 +159,8 @@ class AccountController(
         @Parameter(description = "Inclusive upper bound on occurredAt for the statement period", required = true)
         @RequestParam(required = false) to: Instant?,
     ): ResponseEntity<Any> {
-        val tenantId = try {
-            TenantId(UUID.fromString(tenantIdStr))
-        } catch (_: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_TENANT_ID", "X-Tenant-Id must be a valid UUID"))
-        }
+        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         if (from == null || to == null) {
             return ResponseEntity.badRequest()
