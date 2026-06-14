@@ -13,10 +13,95 @@
     <description>Standalone Kotlin HTTP client SDK for the Idem ledger REST API — depends on
     nothing else in this repo, published independently to Maven Central</description>
 
+    <properties>
+        <!-- Ktor 3.x requires Kotlin 2.0+; this repo pins kotlin.version=1.9.25, so Ktor
+             stays on the 2.3.x line. -->
+        <ktor.version>2.3.13</ktor.version>
+        <kotlinx-coroutines.version>1.7.3</kotlinx-coroutines.version>
+    </properties>
+
     <!--
-        Intentionally empty <dependencies>: only kotlin-stdlib, kotlin-reflect, and
-        kotlin-test-junit5 are inherited from the root pom. Ktor/Jackson/coroutines added in #57.
-        Adding a dependency on core/application/infrastructure/api/mcp/app here is a build violation.
+        No dependency on core/application/infrastructure/api/mcp/app — this module is a
+        standalone HTTP client published independently to Maven Central. Ktor client artifacts
+        are Kotlin-Multiplatform-published; the "-jvm" suffix selects the JVM-only jar.
     -->
+    <dependencies>
+        <dependency>
+            <groupId>io.ktor</groupId>
+            <artifactId>ktor-client-core-jvm</artifactId>
+            <version>${ktor.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.ktor</groupId>
+            <artifactId>ktor-client-cio-jvm</artifactId>
+            <version>${ktor.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.ktor</groupId>
+            <artifactId>ktor-client-content-negotiation-jvm</artifactId>
+            <version>${ktor.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.ktor</groupId>
+            <artifactId>ktor-serialization-jackson-jvm</artifactId>
+            <version>${ktor.version}</version>
+        </dependency>
+
+        <!-- Versions managed by the inherited spring-boot-starter-parent BOM -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.module</groupId>
+            <artifactId>jackson-module-kotlin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jetbrains.kotlinx</groupId>
+            <artifactId>kotlinx-coroutines-core-jvm</artifactId>
+            <version>${kotlinx-coroutines.version}</version>
+        </dependency>
+
+        <!-- Test: Ktor MockEngine — no real server needed -->
+        <dependency>
+            <groupId>io.ktor</groupId>
+            <artifactId>ktor-client-mock-jvm</artifactId>
+            <version>${ktor.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains.kotlinx</groupId>
+            <artifactId>kotlinx-coroutines-test-jvm</artifactId>
+            <version>${kotlinx-coroutines.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <configuration>
+                    <!-- Sealed request/response hierarchies — Kotlin-generated copy$default
+                         synthetic methods produce unexercisable bytecode branches. -->
+                    <excludes>
+                        <exclude>finance/idem/sdk/model/MonetaryEntryRequest*</exclude>
+                        <exclude>finance/idem/sdk/model/MonetaryEntryResponse*</exclude>
+                        <exclude>finance/idem/sdk/model/FiatEntryRequest*</exclude>
+                        <exclude>finance/idem/sdk/model/OnChainEntryRequest*</exclude>
+                        <exclude>finance/idem/sdk/model/FiatEntryResponse*</exclude>
+                        <exclude>finance/idem/sdk/model/OnChainEntryResponse*</exclude>
+                        <exclude>finance/idem/sdk/model/BalanceResponse*</exclude>
+                        <exclude>finance/idem/sdk/model/StatementMovementResponse*</exclude>
+                        <exclude>finance/idem/sdk/model/EntriesPage*</exclude>
+                        <exclude>finance/idem/sdk/model/JournalLineResponse*</exclude>
+                        <exclude>finance/idem/sdk/model/StatementResponse*</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
