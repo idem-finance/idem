@@ -65,7 +65,10 @@ data class Transaction internal constructor(
                 tenantId = tenantId,
                 idempotencyKey = idempotencyKey,
                 lines = lines.toList(),
-                status = TransactionStatus.PENDING,
+                // MVP has no async/2-phase commit — by the time create() validates
+                // successfully, PostTransactionService is about to persist it within
+                // a single @Transactional, so it's committed atomically with that write.
+                status = TransactionStatus.COMMITTED,
                 agentContext = agentContext,
                 metadata = metadata.toMap(),
                 occurredAt = occurredAt,
