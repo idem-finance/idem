@@ -87,12 +87,18 @@ Sealed class rather than a nullable field soup:
 sealed class MonetaryEntry
   ├── FiatEntry(amount: MonetaryAmount, currency: FiatCurrency, bankReference: String?, rail: PaymentRail)
   └── OnChainEntry(amount: MonetaryAmount, token: StablecoinToken, chainId: ChainId, txHash: String,
-                   blockNumber: Long, walletAddress: String, tokenContract: String)
+                   blockNumber: Long, walletAddress: String, tokenContract: String,
+                   fromAddress: String? = null)
 ```
 
 The compiler forces every `when` expression to handle both cases — no forgotten branch, no
 runtime cast. The chain reader produces `OnChainEntry`; a PIX webhook produces `FiatEntry`.
 Both flow through the same `JournalLine → Transaction` path.
+
+`fromAddress` is the on-chain sender, populated by the EVM and Tron chain readers and the
+Alchemy webhook receiver (from the ERC-20 `Transfer` event's `topics[1]` / `from_address`);
+`null` for Solana, which doesn't parse the sender from raw JSON-RPC yet. `BasicReconciliationService`
+uses it as a preferred, non-exclusive match signal — see `docs/reconciliation.md`.
 
 **Invariants enforced in `init` (throws `LedgerInvariantViolation`):**
 - `amount > 0` — zero or negative amounts are a programming error
@@ -220,11 +226,28 @@ interface TransactionRepository {
     fun findByIdempotencyKey(key: String, tenantId: TenantId): Transaction?
     fun findByAccountId(accountId: AccountId, tenantId: TenantId): List<Transaction>
 }
+
+interface JournalLineRepository {
+    fun findByAccountId(
+        accountId: AccountId,
+        tenantId: TenantId,
+        from: Instant?,
+        to: Instant?,
+        afterCreatedAt: Instant?,
+        afterId: UUID?,
+        limit: Int,
+    ): List<JournalLine>
+}
 ```
 
 `tenantId` is always an explicit parameter — never assumed from context. The infrastructure
 adapter activates PostgreSQL RLS via `SET LOCAL app.tenant_id`, but the interface signature
 makes the multi-tenancy contract visible to every caller.
+
+`JournalLineRepository.findByAccountId` is keyset-paginated — `afterCreatedAt`/`afterId`
+anchor a page to the last row of the previous page, ordered `createdAt DESC, id DESC` —
+rather than offset-based. On an append-only, high-write table like `journal_lines`, offset
+pages drift under concurrent inserts, causing skipped or duplicated rows.
 
 ---
 
@@ -358,6 +381,7 @@ Settlement(id: UUID, tenantId: TenantId, accountId: AccountId, amount: MonetaryA
            token: StablecoinToken, chainId: ChainId, walletAddress: String,
            status: EntryStatus, matchedTransactionId: TransactionId? = null,
            txHash: String? = null, blockNumber: Long? = null, confirmedAt: Instant? = null,
+           expectedFromAddress: String? = null,
            createdAt: Instant, createdBy: String)
 ```
 
@@ -367,6 +391,12 @@ matches an incoming transfer) live in the same table. `matchedTransactionId`, `t
 `blockNumber`, and `confirmedAt` are null on PENDING rows and populated when the row
 transitions to SETTLED or is created as UNMATCHED. `Settlement` is a plain `data class`
 with no `init` invariants — matching `JournalLine`'s style.
+
+`expectedFromAddress` is an optional sender-address hint on a PENDING row: when set, it's
+compared case-insensitively against the incoming `OnChainEntry.fromAddress` as a preferred
+"tier 1" match ahead of the amount+FIFO fallback, and a disagreeing sender excludes that row
+from matching entirely. Always `null` today — there is no endpoint yet to register it. See
+`docs/reconciliation.md` for the full matching algorithm.
 
 ### SettlementRepository
 
