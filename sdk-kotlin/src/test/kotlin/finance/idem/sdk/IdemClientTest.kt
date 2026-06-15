@@ -282,6 +282,61 @@ class IdemClientTest {
     }
 
     @Test
+    fun `postTransaction maps 400 to ApiException with traceId from X-Idem-Trace-Id header`() = runTest {
+        val client = clientWith {
+            respond(
+                content = ByteReadChannel("""{"code":"INVALID_REQUEST","message":"lines must be balanced"}"""),
+                status = HttpStatusCode.BadRequest,
+                headers = headersOf(
+                    HttpHeaders.ContentType to listOf("application/json"),
+                    "X-Idem-Trace-Id" to listOf("abc-123-trace"),
+                ),
+            )
+        }
+
+        val exception = assertFailsWith<ApiException> {
+            client.postTransaction(sampleRequest())
+        }
+        assertEquals("abc-123-trace", exception.traceId)
+    }
+
+    @Test
+    fun `postTransaction maps 400 to ApiException with null traceId when header absent`() = runTest {
+        val client = clientWith {
+            respond(
+                content = ByteReadChannel("""{"code":"INVALID_REQUEST","message":"lines must be balanced"}"""),
+                status = HttpStatusCode.BadRequest,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+
+        val exception = assertFailsWith<ApiException> {
+            client.postTransaction(sampleRequest())
+        }
+        assertNull(exception.traceId)
+    }
+
+    @Test
+    fun `postTransaction maps 429 with Retry-After and X-Idem-Trace-Id to RateLimitException`() = runTest {
+        val client = clientWith {
+            respond(
+                content = ByteReadChannel(""),
+                status = HttpStatusCode.TooManyRequests,
+                headers = headersOf(
+                    HttpHeaders.RetryAfter to listOf("30"),
+                    "X-Idem-Trace-Id" to listOf("xyz-789-trace"),
+                ),
+            )
+        }
+
+        val exception = assertFailsWith<RateLimitException> {
+            client.postTransaction(sampleRequest())
+        }
+        assertEquals(30, exception.retryAfterSeconds)
+        assertEquals("xyz-789-trace", exception.traceId)
+    }
+
+    @Test
     fun `postTransaction wraps transport failure as NetworkException`() = runTest {
         val client = clientWith {
             throw IOException("Connection refused")

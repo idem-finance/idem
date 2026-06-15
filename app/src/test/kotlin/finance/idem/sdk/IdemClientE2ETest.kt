@@ -26,6 +26,7 @@ import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfiguration::class)
@@ -240,5 +241,20 @@ class IdemClientE2ETest {
             client.postTransaction(balancedPixRequest(cashAccount, payableAccount))
         }
         assertEquals(403, exception.statusCode)
+    }
+
+    @Test
+    fun `getBalance for unknown account maps 404 to ApiException carrying traceId from X-Idem-Trace-Id header`() = runBlocking {
+        val (rawKey, _) = apiKeyService.generate(TenantId.generate(), setOf(ApiScope.ACCOUNTS_READ))
+        val client = idemClient(rawKey)
+
+        val exception = assertFailsWith<ApiException> {
+            client.getBalance(UUID.randomUUID().toString())
+        }
+
+        assertEquals(404, exception.statusCode)
+        assertEquals("NOT_FOUND", exception.errorCode)
+        assertNotNull(exception.traceId)
+        UUID.fromString(exception.traceId)
     }
 }
