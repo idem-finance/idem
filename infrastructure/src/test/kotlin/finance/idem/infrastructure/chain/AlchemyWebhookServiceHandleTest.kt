@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -28,6 +29,7 @@ class AlchemyWebhookServiceHandleTest {
     private lateinit var watchedAddressRepository: WatchedAddressRepository
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
+    private lateinit var deadLetterRecorder: DeadLetterRecorder
     private lateinit var service: AlchemyWebhookService
 
     private val signingKey = "test-webhook-signing-key"
@@ -55,12 +57,14 @@ class AlchemyWebhookServiceHandleTest {
         watchedAddressRepository = mock()
         checkpointRepository = mock()
         postTransactionUseCase = mock()
+        deadLetterRecorder = mock()
         service = AlchemyWebhookService(
             watchedAddressRepository = watchedAddressRepository,
             chainCheckpointRepository = checkpointRepository,
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(alchemyWebhookSigningKey = signingKey),
+            deadLetterRecorder = deadLetterRecorder,
         )
     }
 
@@ -88,6 +92,7 @@ class AlchemyWebhookServiceHandleTest {
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(alchemyWebhookSigningKey = ""),
+            deadLetterRecorder = deadLetterRecorder,
         )
         whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(emptyList())
 
@@ -142,6 +147,26 @@ class AlchemyWebhookServiceHandleTest {
         assertEquals(2, cmd.lines.size)
 
         verify(checkpointRepository).save("EVM_1", 19_531_250L) // 0x12a05f2
+    }
+
+    @Test
+    fun `delegates to DeadLetterRecorder when postTransactionUseCase fails`() {
+        val body = buildPayload(txHash, watchedWallet, usdcContract, rawValue = "0x000f4240")
+        val error = RuntimeException("conflict")
+
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(
+            ChainCheckpoint("EVM_1", 19_000_000L, Instant.now())
+        )
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.failure(error))
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+
+        val transferCaptor = argumentCaptor<DetectedTransfer>()
+        verify(deadLetterRecorder).record(transferCaptor.capture(), eq("EVM_1"), eq("alchemy-webhook"), eq(error), eq("Alchemy webhook"))
+        assertEquals("EVM_1:$txHash:0", transferCaptor.firstValue.idempotencyKey)
     }
 
     @Test

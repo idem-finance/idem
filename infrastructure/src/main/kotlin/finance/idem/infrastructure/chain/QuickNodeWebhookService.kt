@@ -17,6 +17,7 @@ class QuickNodeWebhookService(
     private val postTransactionUseCase: PostTransactionUseCase,
     private val objectMapper: ObjectMapper,
     private val config: ChainConfig,
+    private val deadLetterRecorder: DeadLetterRecorder,
     chainReaders: List<ChainReader>,
 ) : QuickNodeWebhookPort {
 
@@ -74,9 +75,7 @@ class QuickNodeWebhookService(
                 for (watchedAddress in watched) {
                     val transfer = reader.decodeTransfer(tx, payload.signature, payload.slot, watchedAddress) ?: continue
                     postTransactionUseCase.execute(transfer.toCommand("quicknode-webhook")).onFailure { error ->
-                        log.error(
-                            "QuickNode webhook: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
-                        )
+                        deadLetterRecorder.record(transfer, chainKey, "quicknode-webhook", error, logPrefix = "QuickNode webhook")
                     }
                 }
             } else {

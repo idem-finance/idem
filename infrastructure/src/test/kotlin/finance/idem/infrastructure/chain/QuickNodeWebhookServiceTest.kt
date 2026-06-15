@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -34,6 +35,7 @@ class QuickNodeWebhookServiceTest {
     private lateinit var watchedAddressRepository: WatchedAddressRepository
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
+    private lateinit var deadLetterRecorder: DeadLetterRecorder
     private lateinit var solanaReader: SolanaChainReader
     private lateinit var service: QuickNodeWebhookService
 
@@ -65,6 +67,7 @@ class QuickNodeWebhookServiceTest {
         watchedAddressRepository = mock()
         checkpointRepository = mock()
         postTransactionUseCase = mock()
+        deadLetterRecorder = mock()
         solanaReader = mock()
         service = QuickNodeWebhookService(
             watchedAddressRepository = watchedAddressRepository,
@@ -72,6 +75,7 @@ class QuickNodeWebhookServiceTest {
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(quicknodeWebhookSecret = signingKey),
+            deadLetterRecorder = deadLetterRecorder,
             chainReaders = listOf(solanaReader),
         )
     }
@@ -131,6 +135,7 @@ class QuickNodeWebhookServiceTest {
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(quicknodeWebhookSecret = ""),
+            deadLetterRecorder = deadLetterRecorder,
             chainReaders = listOf(solanaReader),
         )
         whenever(watchedAddressRepository.findByChainKey("SOLANA")).thenReturn(emptyList())
@@ -197,6 +202,7 @@ class QuickNodeWebhookServiceTest {
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(quicknodeWebhookSecret = signingKey),
+            deadLetterRecorder = deadLetterRecorder,
             chainReaders = emptyList(),
         )
         val body = buildBody(testSignature, testSlot)
@@ -235,6 +241,26 @@ class QuickNodeWebhookServiceTest {
         assertEquals(2, cmd.lines.size)
 
         verify(checkpointRepository).save("SOLANA", testSlot)
+    }
+
+    @Test
+    fun `delegates to DeadLetterRecorder when postTransactionUseCase fails`() {
+        val body = buildBody(testSignature, testSlot)
+        val tx = SolanaChainReader.SolanaTransactionResult()
+        val transfer = buildTransfer()
+        val error = RuntimeException("conflict")
+
+        whenever(watchedAddressRepository.findByChainKey("SOLANA")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("SOLANA")).thenReturn(null)
+        whenever(solanaReader.getTransaction(testSignature)).thenReturn(tx)
+        whenever(solanaReader.decodeTransfer(tx, testSignature, testSlot, watchedAddress)).thenReturn(transfer)
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.failure(error))
+
+        val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
+
+        assertTrue(result.isSuccess)
+
+        verify(deadLetterRecorder).record(eq(transfer), eq("SOLANA"), eq("quicknode-webhook"), eq(error), eq("QuickNode webhook"))
     }
 
     @Test

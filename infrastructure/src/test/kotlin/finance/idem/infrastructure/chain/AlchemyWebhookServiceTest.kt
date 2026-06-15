@@ -31,6 +31,7 @@ class AlchemyWebhookServiceTest {
         postTransactionUseCase = mockUseCase,
         objectMapper = objectMapper,
         config = ChainConfig(),
+        deadLetterRecorder = mock<DeadLetterRecorder>(),
     )
 
     private val usdcContract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"

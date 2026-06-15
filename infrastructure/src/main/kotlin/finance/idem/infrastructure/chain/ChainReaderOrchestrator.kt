@@ -31,6 +31,7 @@ class ChainReaderOrchestrator(
     private val chainReaders: List<ChainReader>,
     private val chainCheckpointRepository: ChainCheckpointRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
+    private val deadLetterRecorder: DeadLetterRecorder,
     @Qualifier(ChainRecoveryExecutorConfig.BEAN_NAME) private val chainRecoveryExecutor: Executor,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -58,9 +59,7 @@ class ChainReaderOrchestrator(
 
             transfers.forEach { transfer ->
                 postTransactionUseCase.execute(transfer.toCommand(createdBy)).onFailure { error ->
-                    log.error(
-                        "${reader.chainKey}: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
-                    )
+                    deadLetterRecorder.record(transfer, reader.chainKey, createdBy, error, logPrefix = reader.chainKey)
                 }
             }
 

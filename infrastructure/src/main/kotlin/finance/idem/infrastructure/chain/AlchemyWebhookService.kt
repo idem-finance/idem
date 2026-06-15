@@ -22,6 +22,7 @@ class AlchemyWebhookService(
     private val postTransactionUseCase: PostTransactionUseCase,
     private val objectMapper: ObjectMapper,
     private val config: ChainConfig,
+    private val deadLetterRecorder: DeadLetterRecorder,
 ) : AlchemyWebhookPort {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -60,9 +61,7 @@ class AlchemyWebhookService(
         for (activity in payload.event.activity) {
             val transfer = decodeActivity(activity, chainKey, watched) ?: continue
             postTransactionUseCase.execute(transfer.toCommand("alchemy-webhook")).onFailure { error ->
-                log.error(
-                    "Alchemy webhook: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
-                )
+                deadLetterRecorder.record(transfer, chainKey, "alchemy-webhook", error, logPrefix = "Alchemy webhook")
             }
         }
 
