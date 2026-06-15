@@ -31,7 +31,7 @@ class ChainReaderOrchestrator(
     private val chainReaders: List<ChainReader>,
     private val chainCheckpointRepository: ChainCheckpointRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
-    @Qualifier("chainRecoveryExecutor") private val chainRecoveryExecutor: Executor,
+    @Qualifier(ChainRecoveryExecutorConfig.BEAN_NAME) private val chainRecoveryExecutor: Executor,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 

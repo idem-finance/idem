@@ -137,6 +137,21 @@ synchronization is required:
 Moving the sweep off the main thread changes *which thread* runs
 `pollAndPost()`, not *what* it touches or *how* it's synchronized.
 
+### Shutdown
+
+`chainRecoveryExecutor` (`ChainRecoveryExecutorConfig`) is registered with
+`destroyMethod = "shutdownNow"`, not the JDK-inferred `close()`. The default
+`close()` on an `ExecutorService` blocks up to 1 day waiting for in-flight
+tasks to finish — if the recovery sweep is still running an `ethGetLogs`/Solana
+scan when the context closes (e.g. a rolling restart shortly after a
+long-downtime recovery), that would hang context shutdown. `shutdownNow()`
+interrupts the sweep immediately; it resumes from the last saved
+`ChainCheckpoint` on next startup, so interrupting it is safe.
+
+Each task also runs on a thread named `chain-recovery-N` (via
+`Thread.ofVirtual().name(...)`), so `pollAndPost()` log lines from the sweep
+can be correlated by thread name.
+
 ---
 
 ## Tron scheduled poll
