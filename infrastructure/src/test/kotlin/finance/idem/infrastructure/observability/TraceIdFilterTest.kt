@@ -15,6 +15,7 @@ import org.mockito.kotlin.whenever
 import org.slf4j.MDC
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -78,5 +79,27 @@ class TraceIdFilterTest {
         verify(response).setHeader(eq(TraceIdFilter.TRACE_ID_HEADER), captor.capture())
 
         assertEquals(captor.firstValue, mdcDuringChain)
+    }
+
+    @Test
+    fun `reuses inbound X-Idem-Trace-Id header when it is a valid UUID`() {
+        val inboundTraceId = UUID.randomUUID().toString()
+        whenever(request.getHeader(TraceIdFilter.TRACE_ID_HEADER)).thenReturn(inboundTraceId)
+
+        filter.doFilter(request, response, chain)
+
+        verify(response).setHeader(TraceIdFilter.TRACE_ID_HEADER, inboundTraceId)
+    }
+
+    @Test
+    fun `generates a new trace id when inbound X-Idem-Trace-Id header is not a valid UUID`() {
+        whenever(request.getHeader(TraceIdFilter.TRACE_ID_HEADER)).thenReturn("not-a-uuid")
+
+        filter.doFilter(request, response, chain)
+
+        val captor = argumentCaptor<String>()
+        verify(response).setHeader(eq(TraceIdFilter.TRACE_ID_HEADER), captor.capture())
+        UUID.fromString(captor.firstValue)
+        assertNotEquals("not-a-uuid", captor.firstValue)
     }
 }

@@ -8,9 +8,15 @@ import org.springframework.web.filter.OncePerRequestFilter
 import java.util.UUID
 
 /**
- * Generates a per-request trace/correlation ID, exposes it via the [TRACE_ID_HEADER]
- * response header, and binds it to MDC (key [MDC_KEY]) for the duration of the request
- * so it appears in every log line.
+ * Generates or propagates a per-request trace/correlation ID, exposes it via the
+ * [TRACE_ID_HEADER] response header, and binds it to MDC (key [MDC_KEY]) for the duration
+ * of the request so it appears in every log line.
+ *
+ * If the incoming request already carries a [TRACE_ID_HEADER] that is a syntactically valid
+ * UUID, that value is reused (echoed back and bound to MDC) so callers can correlate a
+ * request across service boundaries. Otherwise — header absent, blank, or not a valid UUID —
+ * a fresh UUID is generated. Restricting reuse to valid UUIDs ensures the value can never
+ * contain characters (e.g. CR/LF) that could be used for log injection via [MDC_KEY].
  *
  * Registered before [finance.idem.infrastructure.security.ApiKeyAuthFilter] so the header
  * and MDC context are present even for unauthenticated (401) responses.
@@ -30,7 +36,9 @@ class TraceIdFilter : OncePerRequestFilter() {
         response: HttpServletResponse,
         chain: FilterChain,
     ) {
-        val traceId = UUID.randomUUID().toString()
+        val traceId = request.getHeader(TRACE_ID_HEADER)
+            ?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+            ?: UUID.randomUUID().toString()
         response.setHeader(TRACE_ID_HEADER, traceId)
         MDC.put(MDC_KEY, traceId)
         try {
