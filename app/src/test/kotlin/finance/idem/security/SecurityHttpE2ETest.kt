@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus
 import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -42,6 +43,7 @@ class SecurityHttpE2ETest {
             String::class.java,
         )
         assertEquals(HttpStatus.UNAUTHORIZED, response.statusCode)
+        assertNotNull(response.headers.getFirst("X-Idem-Trace-Id"))
     }
 
     @Test
@@ -85,6 +87,7 @@ class SecurityHttpE2ETest {
 
         // GetBalanceService returns zero balance (not failure) when no journal lines exist, so 200 is expected.
         assertEquals(HttpStatus.OK, response.statusCode)
+        assertNotNull(response.headers.getFirst("X-Idem-Trace-Id"))
     }
 
     @Test

@@ -41,6 +41,13 @@ class IdemClient(
     val httpClient: HttpClient = defaultHttpClient(),
 ) : Closeable {
 
+    companion object {
+        // Mirrored in infrastructure/src/main/kotlin/finance/idem/infrastructure/observability/TraceIdFilter.kt
+        // (TraceIdFilter.TRACE_ID_HEADER) — duplicated as a literal because sdk-kotlin has zero
+        // dependencies on other repo modules (see sdk-kotlin/pom.xml).
+        private const val TRACE_ID_HEADER = "X-Idem-Trace-Id"
+    }
+
     val baseUrl: String = baseUrl.trimEnd('/')
 
     override fun close() = httpClient.close()
@@ -113,9 +120,10 @@ class IdemClient(
         if (response.status.isSuccess()) {
             return response.body()
         }
+        val traceId = response.headers[TRACE_ID_HEADER]
         if (response.status == HttpStatusCode.TooManyRequests) {
             val retryAfterSeconds = response.headers[HttpHeaders.RetryAfter]?.toIntOrNull() ?: 0
-            throw RateLimitException(retryAfterSeconds = retryAfterSeconds)
+            throw RateLimitException(retryAfterSeconds = retryAfterSeconds, traceId = traceId)
         }
         val error = try {
             response.body<ErrorResponse>()
@@ -130,6 +138,7 @@ class IdemClient(
             statusCode = response.status.value,
             errorCode = error.code,
             message = error.message,
+            traceId = traceId,
         )
     }
 }
