@@ -15,10 +15,10 @@ called `poll()`. `ChainReaderOrchestrator` closes that gap with two
 `@Component`-scoped triggers over the same `List<ChainReader>` bean
 (`EvmChainReaderFactory.chainReaders()`):
 
-| Trigger | When | Readers polled | `createdBy` |
-|---|---|---|---|
-| `onApplicationStarted()` | Once, on `ApplicationStartedEvent` | every reader where `chainKey != "TRON"` (`EVM_1`, `EVM_8453`, `EVM_137`, `SOLANA`) | `"chain-recovery"` |
-| `pollTron()` | Recurring `@Scheduled(fixedDelayString = "${idem.chain.tron.polling-interval-ms:5000}")` | every reader where `chainKey == "TRON"` | `"tron-poller"` |
+| Trigger | When | Readers polled | `createdBy` | Runs on |
+|---|---|---|---|---|
+| `onApplicationStarted()` | Once, on `ApplicationStartedEvent` | every reader where `chainKey != "TRON"` (`EVM_1`, `EVM_8453`, `EVM_137`, `SOLANA`) | `"chain-recovery"` | `chainRecoveryExecutor` — background virtual thread, dispatched fire-and-forget (#88) |
+| `pollTron()` | Recurring `@Scheduled(fixedDelayString = "${idem.chain.tron.polling-interval-ms:5000}")` | every reader where `chainKey == "TRON"` | `"tron-poller"` | `@Scheduled` task-scheduler thread |
 
 EVM and Solana are recovery-only by design — their primary, real-time paths are
 the `AlchemyWebhookService` (#73) and `QuickNodeWebhookService` (#74) HTTP
@@ -26,6 +26,12 @@ receivers, which post entries and advance checkpoints as transfers happen. The
 orchestrator's startup sweep exists purely to replay anything missed while the
 app was down. Tron has no webhook API, so the scheduled poll is its **only**
 mechanism — see `docs/tron-chain-reader.md`.
+
+As of #88, `onApplicationStarted()` itself does no I/O — it submits the sweep to
+`chainRecoveryExecutor` and returns immediately, so `ApplicationReadyEvent` and
+Kubernetes readiness probes are never delayed by RPC-heavy `poll()` calls (wide
+`ethGetLogs` ranges, paginated Solana `getSignaturesForAddress`). See
+"Concurrency & readiness" below.
 
 ---
 
@@ -45,6 +51,7 @@ graph TD
     subgraph infrastructure.chain
         CR["ChainReader «interface»\n(EVM_1, EVM_8453, EVM_137, SOLANA, TRON)"]
         ORCH["ChainReaderOrchestrator"]
+        EXEC["chainRecoveryExecutor\n(virtual-thread-per-task)"]
         DT["DetectedTransfer.toCommand(createdBy)\nDetectedTransfer.toFailedChainTransfer(chainKey, source, error)"]
         MR["MeterRegistry\nidem.chain.dead_letter{chain_key,source}"]
     end
@@ -54,7 +61,9 @@ graph TD
         SCHED["@Scheduled fixedDelay\nidem.chain.tron.polling-interval-ms"]
     end
 
-    ASE -->|"onApplicationStarted()"| ORCH
+    ASE -->|"onApplicationStarted()\n(returns immediately)"| ORCH
+    ORCH -->|"execute { recoverySweep }"| EXEC
+    EXEC -->|"runs recoverySweep on a\nbackground virtual thread"| ORCH
     SCHED -->|"pollTron()"| ORCH
     ORCH -->|"findByChainKey / save"| ChainCheckpoint
     ORCH -->|"poll(checkpoint)"| CR
@@ -75,12 +84,18 @@ sequenceDiagram
     autonumber
     participant Boot as Spring Boot\n(ApplicationStartedEvent)
     participant ORCH as ChainReaderOrchestrator
+    participant EXEC as chainRecoveryExecutor\n(virtual thread)
     participant CR as ChainReader\n(EVM_1 / EVM_8453 / EVM_137 / SOLANA)
     participant CKP as ChainCheckpointRepository
     participant PTU as PostTransactionUseCase
     participant DB as PostgreSQL
 
     Boot->>ORCH: ApplicationStartedEvent
+    ORCH->>EXEC: execute(recoverySweep)
+    ORCH-->>Boot: returns immediately
+    Note over Boot: ApplicationReadyEvent / readiness probe proceeds unblocked
+
+    EXEC->>ORCH: run recoverySweep (background virtual thread)
     loop for each reader where chainKey != "TRON"
         ORCH->>CKP: findByChainKey(chainKey) → lastBlock (or 0)
         ORCH->>CR: poll(checkpoint)
@@ -96,6 +111,51 @@ sequenceDiagram
         end
     end
 ```
+
+---
+
+## Concurrency & readiness (#88)
+
+`onApplicationStarted()` returns immediately — the recovery sweep runs on
+`chainRecoveryExecutor` (virtual-thread-per-task), so `ApplicationReadyEvent` /
+Kubernetes readiness probes are never delayed by RPC-heavy `poll()` calls.
+
+This means the recovery sweep can now run concurrently with `pollTron()`'s
+first scheduled invocation. This concurrency already existed before #88:
+`@Scheduled` tasks start during `context.refresh()`, before
+`ApplicationStartedEvent` fires, so the Tron poller could already overlap with
+the (then synchronous) recovery sweep on the main thread. No new
+synchronization is required:
+
+- `chain_checkpoint` is keyed by `chainKey` (PK). The recovery sweep only ever
+  reads/writes `EVM_1` / `EVM_8453` / `EVM_137` / `SOLANA` rows
+  (`chainKey != "TRON"`); `pollTron()` only ever reads/writes the `TRON` row.
+  The two triggers never touch the same row.
+- Each `pollAndPost(reader, createdBy)` call — whether dispatched from the
+  recovery sweep or from `pollTron()` — drives an independently
+  `@Transactional` `postTransactionUseCase.execute()` and
+  `chainCheckpointRepository.save()`. Transactional proxies are
+  thread-agnostic; running on a virtual thread changes nothing here.
+- Within the recovery sweep itself, readers are polled sequentially
+  (`forEach`) on a single virtual thread — no intra-sweep concurrency either.
+
+Moving the sweep off the main thread changes *which thread* runs
+`pollAndPost()`, not *what* it touches or *how* it's synchronized.
+
+### Shutdown
+
+`chainRecoveryExecutor` (`ChainRecoveryExecutorConfig`) is registered with
+`destroyMethod = "shutdownNow"`, not the JDK-inferred `close()`. The default
+`close()` on an `ExecutorService` blocks up to 1 day waiting for in-flight
+tasks to finish — if the recovery sweep is still running an `ethGetLogs`/Solana
+scan when the context closes (e.g. a rolling restart shortly after a
+long-downtime recovery), that would hang context shutdown. `shutdownNow()`
+interrupts the sweep immediately; it resumes from the last saved
+`ChainCheckpoint` on next startup, so interrupting it is safe.
+
+Each task also runs on a thread named `chain-recovery-N` (via
+`Thread.ofVirtual().name(...)`), so `pollAndPost()` log lines from the sweep
+can be correlated by thread name.
 
 ---
 
@@ -315,8 +375,8 @@ tables).
 
 | Test class | Type |
 |---|---|
-| `ChainReaderOrchestratorTest` | Unit (Mockito-Kotlin) — dispatch by `chainKey`, `createdBy` wiring, checkpoint advancement, exception isolation, dead-letter counter + `FailedChainTransferRepository.save()` on `Result.failure` (#87), and that a failing dead-letter write doesn't block checkpoint advancement |
-| `ChainReaderOrchestratorIntegrationTest` | Integration (Testcontainers Postgres) — end-to-end startup recovery and scheduled Tron poll against real `ChainCheckpointRepository`/`TransactionRepository`; plus a `Result.failure` (missing account) producing a real `failed_chain_transfers` row and `idem.chain.dead_letter` counter increment (#87) |
+| `ChainReaderOrchestratorTest` | Unit (Mockito-Kotlin) — dispatch by `chainKey`, `createdBy` wiring, checkpoint advancement, exception isolation, dead-letter counter + `FailedChainTransferRepository.save()` on `Result.failure` (#87) including that a failing dead-letter write doesn't block checkpoint advancement, and (#88) that `onApplicationStarted()` submits the recovery sweep to `chainRecoveryExecutor` rather than running it inline |
+| `ChainReaderOrchestratorIntegrationTest` | Integration (Testcontainers Postgres) — end-to-end startup recovery and scheduled Tron poll against real `ChainCheckpointRepository`/`TransactionRepository`; both startup-recovery assertions (#88) use `Awaitility` since the sweep now runs asynchronously on `chainRecoveryExecutor`, including a `Result.failure` (missing account) producing a real `failed_chain_transfers` row and `idem.chain.dead_letter` counter increment (#87) |
 | `FailedChainTransferRepositoryAdapterTest` | Integration (Testcontainers Postgres, `@DataJpaTest`) — `save()` persists all fields with `resolved = false`, and `ON CONFLICT (idempotency_key) DO NOTHING` keeps `save()` idempotent (#87) |
 | `AlchemyWebhookServiceHandleTest` / `QuickNodeWebhookServiceTest` | Unit — dead-letter counter + `FailedChainTransferRepository.save()` on `Result.failure` at the webhook receivers (#87) |
 

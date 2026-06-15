@@ -23,6 +23,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.Executor
 
 class ChainReaderOrchestratorTest {
 
@@ -30,6 +31,8 @@ class ChainReaderOrchestratorTest {
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var failedChainTransferRepository: FailedChainTransferRepository
     private lateinit var meterRegistry: SimpleMeterRegistry
+
+    private val recoveryExecutor: Executor = Executor { it.run() }
 
     private val tenantId = "00000000-0000-0000-0000-000000000001"
     private val debitAccountId = "00000000-0000-0000-0000-000000000002"
@@ -46,7 +49,7 @@ class ChainReaderOrchestratorTest {
 
     private fun orchestrator(readers: List<ChainReader>): ChainReaderOrchestrator =
         ChainReaderOrchestrator(
-            readers, checkpointRepository, postTransactionUseCase, failedChainTransferRepository, meterRegistry,
+            readers, checkpointRepository, postTransactionUseCase, failedChainTransferRepository, meterRegistry, recoveryExecutor,
         )
 
     private fun fakeReader(chainKey: String, vararg transfers: DetectedTransfer): ChainReader {
@@ -220,5 +223,24 @@ class ChainReaderOrchestratorTest {
         orchestrator.onApplicationStarted()
 
         verify(checkpointRepository).save("EVM_1", 100L)
+    }
+
+    @Test
+    fun `onApplicationStarted submits the recovery sweep to chainRecoveryExecutor instead of running inline`() {
+        val evmReader = fakeReader("EVM_1")
+        val executor = mock<Executor>()
+
+        val orchestrator = ChainReaderOrchestrator(
+            listOf(evmReader), checkpointRepository, postTransactionUseCase, failedChainTransferRepository, meterRegistry, executor,
+        )
+        orchestrator.onApplicationStarted()
+
+        val taskCaptor = argumentCaptor<Runnable>()
+        verify(executor).execute(taskCaptor.capture())
+        verify(evmReader, never()).poll(any())
+
+        taskCaptor.firstValue.run()
+
+        verify(evmReader).poll(0L)
     }
 }

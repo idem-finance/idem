@@ -172,38 +172,46 @@ class ChainReaderOrchestratorIntegrationTest {
 
     @Test
     fun `startup recovery polls the EVM reader once and posts the transfer`() {
-        verify(fakeEvmReader, times(1)).poll(0L)
+        // onApplicationStarted() dispatches to chainRecoveryExecutor and returns immediately,
+        // so the sweep may still be running on its background virtual thread here.
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            verify(fakeEvmReader, times(1)).poll(0L)
 
-        val checkpoint = chainCheckpointRepository.findByChainKey("EVM_1")
-        assertNotNull(checkpoint)
-        assertEquals(100L, checkpoint.lastBlock)
+            val checkpoint = chainCheckpointRepository.findByChainKey("EVM_1")
+            assertNotNull(checkpoint)
+            assertEquals(100L, checkpoint.lastBlock)
 
-        val txId = idempotencyStore.find(fakeConfig.evmTransfer.idempotencyKey, fakeConfig.tenantId)
-        assertNotNull(txId)
-        val tx = transactionRepository.findById(txId, fakeConfig.tenantId)
-        assertNotNull(tx)
-        assertEquals(2, tx.lines.size)
-        assertEquals("chain-recovery", tx.createdBy)
+            val txId = idempotencyStore.find(fakeConfig.evmTransfer.idempotencyKey, fakeConfig.tenantId)
+            assertNotNull(txId)
+            val tx = transactionRepository.findById(txId, fakeConfig.tenantId)
+            assertNotNull(tx)
+            assertEquals(2, tx.lines.size)
+            assertEquals("chain-recovery", tx.createdBy)
+        }
     }
 
     @Test
     fun `startup recovery dead-letters a transfer whose account does not exist`() {
-        val checkpoint = chainCheckpointRepository.findByChainKey("EVM_8453")
-        assertNotNull(checkpoint)
-        assertEquals(fakeConfig.deadLetterTransfer.entry.blockNumber, checkpoint.lastBlock)
+        // onApplicationStarted() dispatches to chainRecoveryExecutor and returns immediately,
+        // so the sweep may still be running on its background virtual thread here.
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            val checkpoint = chainCheckpointRepository.findByChainKey("EVM_8453")
+            assertNotNull(checkpoint)
+            assertEquals(fakeConfig.deadLetterTransfer.entry.blockNumber, checkpoint.lastBlock)
 
-        val counter = meterRegistry.get(ChainMetrics.DEAD_LETTER_COUNTER)
-            .tag(ChainMetrics.TAG_CHAIN_KEY, "EVM_8453")
-            .tag(ChainMetrics.TAG_SOURCE, "chain-recovery")
-            .counter()
-        assertEquals(1.0, counter.count())
+            val counter = meterRegistry.get(ChainMetrics.DEAD_LETTER_COUNTER)
+                .tag(ChainMetrics.TAG_CHAIN_KEY, "EVM_8453")
+                .tag(ChainMetrics.TAG_SOURCE, "chain-recovery")
+                .counter()
+            assertEquals(1.0, counter.count())
 
-        val row = failedChainTransferJpaRepository.findAll()
-            .find { it.idempotencyKey == fakeConfig.deadLetterTransfer.idempotencyKey }
-        assertNotNull(row)
-        assertEquals("EVM_8453", row.chainKey)
-        assertEquals("chain-recovery", row.source)
-        assertTrue(row.errorMessage.startsWith("Account not found"))
+            val row = failedChainTransferJpaRepository.findAll()
+                .find { it.idempotencyKey == fakeConfig.deadLetterTransfer.idempotencyKey }
+            assertNotNull(row)
+            assertEquals("EVM_8453", row.chainKey)
+            assertEquals("chain-recovery", row.source)
+            assertTrue(row.errorMessage.startsWith("Account not found"))
+        }
     }
 
     @Test

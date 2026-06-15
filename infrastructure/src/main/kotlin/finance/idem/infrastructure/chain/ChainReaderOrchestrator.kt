@@ -5,10 +5,12 @@ import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.chain.FailedChainTransferRepository
 import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.context.event.ApplicationStartedEvent
 import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import java.util.concurrent.Executor
 
 /**
  * Central wiring point for all chain event sources.
@@ -21,6 +23,10 @@ import org.springframework.stereotype.Component
  *
  * Never propagates exceptions: a failure for one reader is logged and does not affect
  * any other reader.
+ *
+ * The startup recovery sweep is dispatched to [chainRecoveryExecutor] and runs on a
+ * background virtual thread — [onApplicationStarted] returns immediately so
+ * `ApplicationReadyEvent` / readiness probes are never delayed by RPC-heavy `poll()` calls.
  */
 @Component
 class ChainReaderOrchestrator(
@@ -29,14 +35,17 @@ class ChainReaderOrchestrator(
     private val postTransactionUseCase: PostTransactionUseCase,
     private val failedChainTransferRepository: FailedChainTransferRepository,
     private val meterRegistry: MeterRegistry,
+    @Qualifier(ChainRecoveryExecutorConfig.BEAN_NAME) private val chainRecoveryExecutor: Executor,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     @EventListener(ApplicationStartedEvent::class)
     fun onApplicationStarted() {
-        chainReaders
-            .filter { it.chainKey != TRON_CHAIN_KEY }
-            .forEach { pollAndPost(it, "chain-recovery") }
+        chainRecoveryExecutor.execute {
+            chainReaders
+                .filter { it.chainKey != TRON_CHAIN_KEY }
+                .forEach { pollAndPost(it, "chain-recovery") }
+        }
     }
 
     @Scheduled(fixedDelayString = "\${idem.chain.tron.polling-interval-ms:5000}")
