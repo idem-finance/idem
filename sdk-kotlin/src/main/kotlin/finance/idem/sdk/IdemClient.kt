@@ -24,6 +24,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
+import java.io.Closeable
 import java.time.Instant
 import java.util.UUID
 
@@ -35,10 +36,14 @@ import java.util.UUID
  * timeouts, DNS) are wrapped as [NetworkException].
  */
 class IdemClient(
-    val baseUrl: String,
+    baseUrl: String,
     val apiKey: String,
     val httpClient: HttpClient = defaultHttpClient(),
-) {
+) : Closeable {
+
+    val baseUrl: String = baseUrl.trimEnd('/')
+
+    override fun close() = httpClient.close()
 
     suspend fun postTransaction(
         request: PostTransactionRequest,
@@ -115,7 +120,11 @@ class IdemClient(
         val error = try {
             response.body<ErrorResponse>()
         } catch (e: Exception) {
-            ErrorResponse(code = "NOT_FOUND", message = "Resource not found")
+            if (response.status == HttpStatusCode.NotFound) {
+                ErrorResponse(code = "NOT_FOUND", message = "Resource not found")
+            } else {
+                ErrorResponse(code = "UNKNOWN_ERROR", message = "Unexpected error response from server")
+            }
         }
         throw ApiException(
             statusCode = response.status.value,

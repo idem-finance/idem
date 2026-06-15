@@ -1,11 +1,9 @@
 package finance.idem.sdk
 
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import finance.idem.sdk.exception.ApiException
 import finance.idem.sdk.exception.NetworkException
 import finance.idem.sdk.exception.RateLimitException
+import finance.idem.sdk.http.defaultHttpClient
 import finance.idem.sdk.model.EntryType
 import finance.idem.sdk.model.FiatCurrency
 import finance.idem.sdk.model.FiatEntryRequest
@@ -17,22 +15,20 @@ import finance.idem.sdk.model.PaymentRail
 import finance.idem.sdk.model.PostTransactionRequest
 import finance.idem.sdk.model.StablecoinToken
 import finance.idem.sdk.model.ChainId
-import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandler
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
-import io.ktor.serialization.jackson.jackson
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.core.readBytes
 import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -42,22 +38,15 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class IdemClientTest {
 
-    private fun clientWith(handler: MockRequestHandler): IdemClient {
-        val httpClient = HttpClient(MockEngine(handler)) {
-            install(ContentNegotiation) {
-                jackson {
-                    registerKotlinModule()
-                    registerModule(JavaTimeModule())
-                    disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                }
-            }
-        }
-        return IdemClient(baseUrl = "http://localhost", apiKey = "sk_live_test", httpClient = httpClient)
+    private fun clientWith(baseUrl: String = "http://localhost", handler: MockRequestHandler): IdemClient {
+        val httpClient = defaultHttpClient(MockEngine(handler))
+        return IdemClient(baseUrl = baseUrl, apiKey = "sk_live_test", httpClient = httpClient)
     }
 
     private suspend fun HttpRequestData.bodyAsString(): String {
@@ -100,6 +89,15 @@ class IdemClientTest {
             ),
         ),
     )
+
+    // ---- construction ----
+
+    @Test
+    fun `baseUrl trailing slash is trimmed`() {
+        val client = IdemClient(baseUrl = "http://host/", apiKey = "sk_live_test")
+        assertEquals("http://host", client.baseUrl)
+        client.close()
+    }
 
     // ---- postTransaction ----
 
@@ -354,6 +352,40 @@ class IdemClientTest {
         assertEquals("Resource not found", exception.message)
     }
 
+    @Test
+    fun `getBalance maps empty-body 503 to UNKNOWN_ERROR ApiException`() = runTest {
+        val client = clientWith {
+            respond(content = ByteReadChannel(""), status = HttpStatusCode.ServiceUnavailable)
+        }
+
+        val exception = assertFailsWith<ApiException> {
+            client.getBalance(UUID.randomUUID().toString())
+        }
+        assertEquals(503, exception.statusCode)
+        assertEquals("UNKNOWN_ERROR", exception.errorCode)
+        assertEquals("Unexpected error response from server", exception.message)
+    }
+
+    @Test
+    fun `getBalance request URL has no double slash when baseUrl has trailing slash`() = runTest {
+        val accountId = UUID.randomUUID()
+        var captured: HttpRequestData? = null
+        val client = clientWith(baseUrl = "http://localhost/") { request ->
+            captured = request
+            respond(
+                content = ByteReadChannel(
+                    """{"accountId":"$accountId","currency":"BRL","amount":100.00,"normalBalance":"CREDIT","computedAt":"2024-01-01T00:00:00Z"}""",
+                ),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+
+        client.getBalance(accountId.toString())
+
+        assertEquals("/api/v1/accounts/$accountId/balance", captured!!.url.encodedPath)
+    }
+
     // ---- listEntries ----
 
     @Test
@@ -541,6 +573,23 @@ class IdemClientTest {
         }
         assertEquals(404, exception.statusCode)
         assertEquals("NOT_FOUND", exception.errorCode)
+    }
+
+    // ---- close ----
+
+    @Test
+    fun `close closes the underlying httpClient`() {
+        val client = clientWith {
+            respond(
+                content = ByteReadChannel("""{"transactionId":"${UUID.randomUUID()}"}"""),
+                status = HttpStatusCode.Created,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+
+        client.close()
+
+        assertFalse(client.httpClient.coroutineContext[Job]!!.isActive)
     }
 
     private fun assertNotNullUuid(value: String?) {

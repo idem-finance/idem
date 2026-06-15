@@ -4,11 +4,12 @@ import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.jackson.jackson
 
-fun defaultHttpClient(): HttpClient = HttpClient(CIO) {
+fun defaultHttpClient(engine: HttpClientEngine = CIO.create()): HttpClient = HttpClient(engine) {
     install(ContentNegotiation) {
         jackson {
             registerKotlinModule()

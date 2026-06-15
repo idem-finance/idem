@@ -84,15 +84,20 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <configuration>
-                    <!-- Sealed request/response hierarchies — Kotlin-generated copy$default
-                         synthetic methods produce unexercisable bytecode branches. -->
                     <excludes>
+                        <!-- Sealed request/response hierarchies (MonetaryEntryRequest/Response and
+                             their FIAT/ONCHAIN subtypes) — Kotlin-generated copy$default synthetic
+                             methods produce unexercisable bytecode branches. -->
                         <exclude>finance/idem/sdk/model/MonetaryEntryRequest*</exclude>
                         <exclude>finance/idem/sdk/model/MonetaryEntryResponse*</exclude>
                         <exclude>finance/idem/sdk/model/FiatEntryRequest*</exclude>
                         <exclude>finance/idem/sdk/model/OnChainEntryRequest*</exclude>
                         <exclude>finance/idem/sdk/model/FiatEntryResponse*</exclude>
                         <exclude>finance/idem/sdk/model/OnChainEntryResponse*</exclude>
+
+                        <!-- Flat Kotlin data-class DTOs — generated copy$default/component*/equals/
+                             hashCode/toString synthetic methods produce unexercisable bytecode
+                             branches. -->
                         <exclude>finance/idem/sdk/model/BalanceResponse*</exclude>
                         <exclude>finance/idem/sdk/model/StatementMovementResponse*</exclude>
                         <exclude>finance/idem/sdk/model/EntriesPage*</exclude>
