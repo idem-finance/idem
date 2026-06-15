@@ -140,14 +140,14 @@ class PostTransactionServiceTest {
     }
 
     @Test
-    fun `saved transaction has PENDING status`() {
+    fun `saved transaction has COMMITTED status`() {
         whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         val saved = stubSave()
 
         service.execute(command())
 
-        assertEquals(TransactionStatus.PENDING, saved.first().status)
+        assertEquals(TransactionStatus.COMMITTED, saved.first().status)
     }
 
     @Test
@@ -203,7 +203,7 @@ class PostTransactionServiceTest {
                     FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
             ),
             occurredAt = Instant.now(), createdAt = Instant.now(), createdBy = "system",
-        )
+        ).copy(status = TransactionStatus.PENDING)
 
         whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(false)
         whenever(idempotencyStore.find("idem-001", tenantId)).thenReturn(existingId)
