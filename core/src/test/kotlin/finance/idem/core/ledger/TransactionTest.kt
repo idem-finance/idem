@@ -79,7 +79,7 @@ class TransactionTest {
             line(EntryType.DEBIT, brlFiat("1000")),
             line(EntryType.CREDIT, brlFiat("1000")),
         ))
-        assertEquals(TransactionStatus.PENDING, tx.status)
+        assertEquals(TransactionStatus.COMMITTED, tx.status)
         assertEquals(2, tx.lines.size)
     }
 
@@ -94,7 +94,7 @@ class TransactionTest {
             line(EntryType.CREDIT, brlFiat("1000.00")),
         ))
         assertEquals(4, tx.lines.size)
-        assertEquals(TransactionStatus.PENDING, tx.status)
+        assertEquals(TransactionStatus.COMMITTED, tx.status)
     }
 
     @Test

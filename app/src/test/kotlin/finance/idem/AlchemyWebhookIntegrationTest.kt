@@ -78,7 +78,7 @@ class AlchemyWebhookIntegrationTest {
 
         val tx = transactionRepository.findByIdempotencyKey("EVM_1:$txHash:0", f.tenantId)
         assertThat(tx).isNotNull
-        assertThat(tx!!.status).isEqualTo(TransactionStatus.PENDING)
+        assertThat(tx!!.status).isEqualTo(TransactionStatus.COMMITTED)
         assertThat(tx.lines).hasSize(2)
 
         val debitLine = tx.lines.first { it.accountId == f.debitAccountId }
