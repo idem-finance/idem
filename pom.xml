@@ -178,6 +178,9 @@
                                         <!-- Kotlin data class — generated copy$default synthetic
                                              methods contain unexercisable bytecode branches. -->
                                         <exclude>finance.idem.core.security.ValidatedApiKey</exclude>
+                                        <!-- Kotlin data class (16 fields) — generated copy$default/componentN
+                                             synthetic methods contain unexercisable bytecode branches. -->
+                                        <exclude>finance.idem.core.chain.FailedChainTransfer</exclude>
                                         <!--
                                           JPA @Entity classes — protected no-arg constructor required
                                           by JPA is called by the ORM at runtime, never in unit tests.
@@ -186,6 +189,7 @@
                                         -->
                                         <exclude>finance.idem.infrastructure.persistence.idempotency.IdempotencyKeyDataModel</exclude>
                                         <exclude>finance.idem.infrastructure.persistence.chain.ChainCheckpointDataModel</exclude>
+                                        <exclude>finance.idem.infrastructure.persistence.chain.FailedChainTransferDataModel</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>

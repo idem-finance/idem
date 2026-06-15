@@ -5,7 +5,9 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import finance.idem.application.chain.QuickNodeWebhookPort
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.chain.FailedChainTransferRepository
 import finance.idem.infrastructure.security.HmacSigner
+import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.security.MessageDigest
@@ -17,6 +19,8 @@ class QuickNodeWebhookService(
     private val postTransactionUseCase: PostTransactionUseCase,
     private val objectMapper: ObjectMapper,
     private val config: ChainConfig,
+    private val failedChainTransferRepository: FailedChainTransferRepository,
+    private val meterRegistry: MeterRegistry,
     chainReaders: List<ChainReader>,
 ) : QuickNodeWebhookPort {
 
@@ -77,6 +81,16 @@ class QuickNodeWebhookService(
                         log.error(
                             "QuickNode webhook: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
                         )
+                        meterRegistry.counter(
+                            ChainMetrics.DEAD_LETTER_COUNTER,
+                            ChainMetrics.TAG_CHAIN_KEY, chainKey,
+                            ChainMetrics.TAG_SOURCE, "quicknode-webhook",
+                        ).increment()
+                        runCatching {
+                            failedChainTransferRepository.save(transfer.toFailedChainTransfer(chainKey, "quicknode-webhook", error))
+                        }.onFailure { e ->
+                            log.error("QuickNode webhook: failed to write dead-letter row for idempotencyKey=${transfer.idempotencyKey}", e)
+                        }
                     }
                 }
             } else {

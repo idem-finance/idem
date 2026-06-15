@@ -13,6 +13,8 @@ import finance.idem.core.ledger.AccountRepository
 import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.infrastructure.persistence.chain.FailedChainTransferJpaRepository
+import io.micrometer.core.instrument.MeterRegistry
 import jakarta.annotation.PostConstruct
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Test
@@ -39,6 +41,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
@@ -73,7 +76,22 @@ class ChainReaderOrchestratorIntegrationTest {
         val evmTransfer = transfer(chainKey = "EVM_1", txHash = "0xevm1", blockNumber = 100L)
         val tronTransfer = transfer(chainKey = "TRON", txHash = "tronTx1", blockNumber = 200L)
 
-        private fun transfer(chainKey: String, txHash: String, blockNumber: Long) = DetectedTransfer(
+        // debitAccountId is never seeded, so PostTransactionUseCase.execute() fails with
+        // TransactionAccountNotFound — exercises the dead-letter path on chain-recovery.
+        val deadLetterTransfer = transfer(
+            chainKey = "EVM_8453",
+            txHash = "0xdead",
+            blockNumber = 300L,
+            debitAccountId = AccountId.generate(),
+        )
+
+        private fun transfer(
+            chainKey: String,
+            txHash: String,
+            blockNumber: Long,
+            debitAccountId: AccountId = this.debitAccountId,
+            creditAccountId: AccountId = this.creditAccountId,
+        ) = DetectedTransfer(
             idempotencyKey = "$chainKey:$txHash",
             entry = OnChainEntry(
                 amount = MonetaryAmount.of("100.000000"),
@@ -123,9 +141,18 @@ class ChainReaderOrchestratorIntegrationTest {
         }
 
         @Bean
+        fun fakeDeadLetterReader(): ChainReader = mock<ChainReader>().also {
+            whenever(it.chainKey).thenReturn("EVM_8453")
+            whenever(it.poll(any())).thenReturn(listOf(deadLetterTransfer))
+        }
+
+        @Bean
         @Primary
-        fun fakeChainReaderList(fakeEvmReader: ChainReader, fakeTronReader: ChainReader): List<ChainReader> =
-            listOf(fakeEvmReader, fakeTronReader)
+        fun fakeChainReaderList(
+            fakeEvmReader: ChainReader,
+            fakeTronReader: ChainReader,
+            fakeDeadLetterReader: ChainReader,
+        ): List<ChainReader> = listOf(fakeEvmReader, fakeTronReader, fakeDeadLetterReader)
     }
 
     @Autowired
@@ -140,6 +167,8 @@ class ChainReaderOrchestratorIntegrationTest {
     @Autowired lateinit var chainCheckpointRepository: ChainCheckpointRepository
     @Autowired lateinit var transactionRepository: TransactionRepository
     @Autowired lateinit var idempotencyStore: IdempotencyStore
+    @Autowired lateinit var meterRegistry: MeterRegistry
+    @Autowired lateinit var failedChainTransferJpaRepository: FailedChainTransferJpaRepository
 
     @Test
     fun `startup recovery polls the EVM reader once and posts the transfer`() {
@@ -155,6 +184,26 @@ class ChainReaderOrchestratorIntegrationTest {
         assertNotNull(tx)
         assertEquals(2, tx.lines.size)
         assertEquals("chain-recovery", tx.createdBy)
+    }
+
+    @Test
+    fun `startup recovery dead-letters a transfer whose account does not exist`() {
+        val checkpoint = chainCheckpointRepository.findByChainKey("EVM_8453")
+        assertNotNull(checkpoint)
+        assertEquals(fakeConfig.deadLetterTransfer.entry.blockNumber, checkpoint.lastBlock)
+
+        val counter = meterRegistry.get(ChainMetrics.DEAD_LETTER_COUNTER)
+            .tag(ChainMetrics.TAG_CHAIN_KEY, "EVM_8453")
+            .tag(ChainMetrics.TAG_SOURCE, "chain-recovery")
+            .counter()
+        assertEquals(1.0, counter.count())
+
+        val row = failedChainTransferJpaRepository.findAll()
+            .find { it.idempotencyKey == fakeConfig.deadLetterTransfer.idempotencyKey }
+        assertNotNull(row)
+        assertEquals("EVM_8453", row.chainKey)
+        assertEquals("chain-recovery", row.source)
+        assertTrue(row.errorMessage.startsWith("Account not found"))
     }
 
     @Test

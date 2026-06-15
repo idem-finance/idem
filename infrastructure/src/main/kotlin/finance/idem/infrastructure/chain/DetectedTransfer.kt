@@ -5,7 +5,10 @@ import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.TenantId
+import finance.idem.core.chain.FailedChainTransfer
 import finance.idem.core.monetary.OnChainEntry
+import java.time.Instant
+import java.util.UUID
 
 data class DetectedTransfer(
     val idempotencyKey: String,
@@ -22,4 +25,23 @@ fun DetectedTransfer.toCommand(createdBy: String): PostTransactionCommand =
             JournalLineRequest(AccountId.of(watchedAddress.creditAccountId), EntryType.CREDIT, entry),
         ),
         createdBy = createdBy,
+    )
+
+fun DetectedTransfer.toFailedChainTransfer(chainKey: String, source: String, error: Throwable): FailedChainTransfer =
+    FailedChainTransfer(
+        id = UUID.randomUUID(),
+        chainKey = chainKey,
+        source = source,
+        idempotencyKey = idempotencyKey,
+        txHash = entry.txHash,
+        blockNumber = entry.blockNumber,
+        tenantId = TenantId.of(watchedAddress.tenantId),
+        walletAddress = entry.walletAddress,
+        tokenContract = entry.tokenContract,
+        debitAccountId = UUID.fromString(watchedAddress.debitAccountId),
+        creditAccountId = UUID.fromString(watchedAddress.creditAccountId),
+        token = entry.token,
+        amount = entry.amount,
+        errorMessage = error.message ?: error.toString(),
+        createdAt = Instant.now(),
     )

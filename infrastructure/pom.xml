@@ -36,6 +36,12 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Metrics — MeterRegistry for chain dead-letter alerting (idem.chain.dead_letter) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Redis — API key cache (5-min TTL, prefix lookup) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -117,6 +123,7 @@
                         <exclude>finance/idem/infrastructure/persistence/idempotency/IdempotencyKeyDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/chain/ChainCheckpointDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/chain/WatchedAddressDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/persistence/chain/FailedChainTransferDataModel*</exclude>
                         <!-- Kotlin data classes — generated copy$default synthetic branches -->
                         <exclude>finance/idem/infrastructure/chain/EvmChainConfig*</exclude>
                         <exclude>finance/idem/infrastructure/chain/EvmNetworkConfig*</exclude>

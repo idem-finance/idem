@@ -8,6 +8,9 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.chain.FailedChainTransfer
+import finance.idem.core.chain.FailedChainTransferRepository
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -28,6 +31,8 @@ class AlchemyWebhookServiceHandleTest {
     private lateinit var watchedAddressRepository: WatchedAddressRepository
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
+    private lateinit var failedChainTransferRepository: FailedChainTransferRepository
+    private lateinit var meterRegistry: SimpleMeterRegistry
     private lateinit var service: AlchemyWebhookService
 
     private val signingKey = "test-webhook-signing-key"
@@ -55,12 +60,16 @@ class AlchemyWebhookServiceHandleTest {
         watchedAddressRepository = mock()
         checkpointRepository = mock()
         postTransactionUseCase = mock()
+        failedChainTransferRepository = mock()
+        meterRegistry = SimpleMeterRegistry()
         service = AlchemyWebhookService(
             watchedAddressRepository = watchedAddressRepository,
             chainCheckpointRepository = checkpointRepository,
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(alchemyWebhookSigningKey = signingKey),
+            failedChainTransferRepository = failedChainTransferRepository,
+            meterRegistry = meterRegistry,
         )
     }
 
@@ -88,6 +97,8 @@ class AlchemyWebhookServiceHandleTest {
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(alchemyWebhookSigningKey = ""),
+            failedChainTransferRepository = failedChainTransferRepository,
+            meterRegistry = meterRegistry,
         )
         whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(emptyList())
 
@@ -142,6 +153,34 @@ class AlchemyWebhookServiceHandleTest {
         assertEquals(2, cmd.lines.size)
 
         verify(checkpointRepository).save("EVM_1", 19_531_250L) // 0x12a05f2
+    }
+
+    @Test
+    fun `dead-letter counter and repository are recorded when postTransactionUseCase fails`() {
+        val body = buildPayload(txHash, watchedWallet, usdcContract, rawValue = "0x000f4240")
+        val error = RuntimeException("conflict")
+
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(
+            ChainCheckpoint("EVM_1", 19_000_000L, Instant.now())
+        )
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.failure(error))
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+
+        val counter = meterRegistry.get(ChainMetrics.DEAD_LETTER_COUNTER)
+            .tag(ChainMetrics.TAG_CHAIN_KEY, "EVM_1")
+            .tag(ChainMetrics.TAG_SOURCE, "alchemy-webhook")
+            .counter()
+        assertEquals(1.0, counter.count())
+
+        val captor = argumentCaptor<FailedChainTransfer>()
+        verify(failedChainTransferRepository).save(captor.capture())
+        assertEquals("EVM_1:$txHash:0", captor.firstValue.idempotencyKey)
+        assertEquals("alchemy-webhook", captor.firstValue.source)
+        assertEquals(error.message, captor.firstValue.errorMessage)
     }
 
     @Test

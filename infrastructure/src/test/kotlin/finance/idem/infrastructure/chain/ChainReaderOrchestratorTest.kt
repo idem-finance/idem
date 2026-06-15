@@ -8,7 +8,10 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.chain.FailedChainTransfer
+import finance.idem.core.chain.FailedChainTransferRepository
 import finance.idem.core.monetary.OnChainEntry
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -25,6 +28,8 @@ class ChainReaderOrchestratorTest {
 
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
+    private lateinit var failedChainTransferRepository: FailedChainTransferRepository
+    private lateinit var meterRegistry: SimpleMeterRegistry
 
     private val tenantId = "00000000-0000-0000-0000-000000000001"
     private val debitAccountId = "00000000-0000-0000-0000-000000000002"
@@ -34,8 +39,15 @@ class ChainReaderOrchestratorTest {
     fun setUp() {
         checkpointRepository = mock()
         postTransactionUseCase = mock()
+        failedChainTransferRepository = mock()
+        meterRegistry = SimpleMeterRegistry()
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId(UUID.randomUUID())))
     }
+
+    private fun orchestrator(readers: List<ChainReader>): ChainReaderOrchestrator =
+        ChainReaderOrchestrator(
+            readers, checkpointRepository, postTransactionUseCase, failedChainTransferRepository, meterRegistry,
+        )
 
     private fun fakeReader(chainKey: String, vararg transfers: DetectedTransfer): ChainReader {
         val reader = mock<ChainReader>()
@@ -75,9 +87,7 @@ class ChainReaderOrchestratorTest {
         val solanaReader = fakeReader("SOLANA")
         val tronReader = fakeReader("TRON")
 
-        val orchestrator = ChainReaderOrchestrator(
-            listOf(evmReader, solanaReader, tronReader), checkpointRepository, postTransactionUseCase,
-        )
+        val orchestrator = orchestrator(listOf(evmReader, solanaReader, tronReader))
         orchestrator.onApplicationStarted()
 
         verify(evmReader).poll(0L)
@@ -90,9 +100,7 @@ class ChainReaderOrchestratorTest {
         val evmReader = fakeReader("EVM_1")
         val tronReader = fakeReader("TRON")
 
-        val orchestrator = ChainReaderOrchestrator(
-            listOf(evmReader, tronReader), checkpointRepository, postTransactionUseCase,
-        )
+        val orchestrator = orchestrator(listOf(evmReader, tronReader))
         orchestrator.pollTron()
 
         verify(tronReader).poll(0L)
@@ -104,7 +112,7 @@ class ChainReaderOrchestratorTest {
         val xfer = transfer("EVM_1", blockNumber = 100L)
         val evmReader = fakeReader("EVM_1", xfer)
 
-        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = orchestrator(listOf(evmReader))
         orchestrator.onApplicationStarted()
 
         val captor = argumentCaptor<PostTransactionCommand>()
@@ -118,7 +126,7 @@ class ChainReaderOrchestratorTest {
         val xfer = transfer("TRON", blockNumber = 200L)
         val tronReader = fakeReader("TRON", xfer)
 
-        val orchestrator = ChainReaderOrchestrator(listOf(tronReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = orchestrator(listOf(tronReader))
         orchestrator.pollTron()
 
         val captor = argumentCaptor<PostTransactionCommand>()
@@ -133,7 +141,7 @@ class ChainReaderOrchestratorTest {
         val evmReader = fakeReader("EVM_1", xfer1, xfer2)
         whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(ChainCheckpoint("EVM_1", 50L, Instant.now()))
 
-        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = orchestrator(listOf(evmReader))
         orchestrator.onApplicationStarted()
 
         verify(checkpointRepository).save("EVM_1", 150L)
@@ -144,7 +152,7 @@ class ChainReaderOrchestratorTest {
         val evmReader = fakeReader("EVM_1")
         whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(ChainCheckpoint("EVM_1", 50L, Instant.now()))
 
-        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = orchestrator(listOf(evmReader))
         orchestrator.onApplicationStarted()
 
         verify(checkpointRepository, never()).save(any(), any())
@@ -159,9 +167,7 @@ class ChainReaderOrchestratorTest {
 
         val workingReader = fakeReader("SOLANA")
 
-        val orchestrator = ChainReaderOrchestrator(
-            listOf(failingReader, workingReader), checkpointRepository, postTransactionUseCase,
-        )
+        val orchestrator = orchestrator(listOf(failingReader, workingReader))
         orchestrator.onApplicationStarted()
 
         verify(workingReader).poll(0L)
@@ -173,7 +179,44 @@ class ChainReaderOrchestratorTest {
         val evmReader = fakeReader("EVM_1", xfer)
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.failure(RuntimeException("conflict")))
 
-        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = orchestrator(listOf(evmReader))
+        orchestrator.onApplicationStarted()
+
+        verify(checkpointRepository).save("EVM_1", 100L)
+    }
+
+    @Test
+    fun `a failed postTransactionUseCase execute increments dead-letter counter and writes FailedChainTransfer`() {
+        val xfer = transfer("EVM_1", blockNumber = 100L)
+        val evmReader = fakeReader("EVM_1", xfer)
+        val error = RuntimeException("conflict")
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.failure(error))
+
+        val orchestrator = orchestrator(listOf(evmReader))
+        orchestrator.onApplicationStarted()
+
+        val counter = meterRegistry.get(ChainMetrics.DEAD_LETTER_COUNTER)
+            .tag(ChainMetrics.TAG_CHAIN_KEY, "EVM_1")
+            .tag(ChainMetrics.TAG_SOURCE, "chain-recovery")
+            .counter()
+        assertEquals(1.0, counter.count())
+
+        val captor = argumentCaptor<FailedChainTransfer>()
+        verify(failedChainTransferRepository).save(captor.capture())
+        assertEquals(xfer.idempotencyKey, captor.firstValue.idempotencyKey)
+        assertEquals("EVM_1", captor.firstValue.chainKey)
+        assertEquals("chain-recovery", captor.firstValue.source)
+        assertEquals(error.message, captor.firstValue.errorMessage)
+    }
+
+    @Test
+    fun `a failing FailedChainTransferRepository save does not prevent checkpoint advance`() {
+        val xfer = transfer("EVM_1", blockNumber = 100L)
+        val evmReader = fakeReader("EVM_1", xfer)
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.failure(RuntimeException("conflict")))
+        whenever(failedChainTransferRepository.save(any())).thenThrow(RuntimeException("db down"))
+
+        val orchestrator = orchestrator(listOf(evmReader))
         orchestrator.onApplicationStarted()
 
         verify(checkpointRepository).save("EVM_1", 100L)

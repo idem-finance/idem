@@ -17,7 +17,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,modulith
+        include: health,info,modulith,metrics
 
 logging:
   pattern:
