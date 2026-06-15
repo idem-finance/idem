@@ -20,11 +20,14 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.Executor
 
 class ChainReaderOrchestratorTest {
 
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
+
+    private val recoveryExecutor: Executor = Executor { it.run() }
 
     private val tenantId = "00000000-0000-0000-0000-000000000001"
     private val debitAccountId = "00000000-0000-0000-0000-000000000002"
@@ -76,7 +79,7 @@ class ChainReaderOrchestratorTest {
         val tronReader = fakeReader("TRON")
 
         val orchestrator = ChainReaderOrchestrator(
-            listOf(evmReader, solanaReader, tronReader), checkpointRepository, postTransactionUseCase,
+            listOf(evmReader, solanaReader, tronReader), checkpointRepository, postTransactionUseCase, recoveryExecutor,
         )
         orchestrator.onApplicationStarted()
 
@@ -91,7 +94,7 @@ class ChainReaderOrchestratorTest {
         val tronReader = fakeReader("TRON")
 
         val orchestrator = ChainReaderOrchestrator(
-            listOf(evmReader, tronReader), checkpointRepository, postTransactionUseCase,
+            listOf(evmReader, tronReader), checkpointRepository, postTransactionUseCase, recoveryExecutor,
         )
         orchestrator.pollTron()
 
@@ -104,7 +107,7 @@ class ChainReaderOrchestratorTest {
         val xfer = transfer("EVM_1", blockNumber = 100L)
         val evmReader = fakeReader("EVM_1", xfer)
 
-        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase, recoveryExecutor)
         orchestrator.onApplicationStarted()
 
         val captor = argumentCaptor<PostTransactionCommand>()
@@ -118,7 +121,7 @@ class ChainReaderOrchestratorTest {
         val xfer = transfer("TRON", blockNumber = 200L)
         val tronReader = fakeReader("TRON", xfer)
 
-        val orchestrator = ChainReaderOrchestrator(listOf(tronReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = ChainReaderOrchestrator(listOf(tronReader), checkpointRepository, postTransactionUseCase, recoveryExecutor)
         orchestrator.pollTron()
 
         val captor = argumentCaptor<PostTransactionCommand>()
@@ -133,7 +136,7 @@ class ChainReaderOrchestratorTest {
         val evmReader = fakeReader("EVM_1", xfer1, xfer2)
         whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(ChainCheckpoint("EVM_1", 50L, Instant.now()))
 
-        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase, recoveryExecutor)
         orchestrator.onApplicationStarted()
 
         verify(checkpointRepository).save("EVM_1", 150L)
@@ -144,7 +147,7 @@ class ChainReaderOrchestratorTest {
         val evmReader = fakeReader("EVM_1")
         whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(ChainCheckpoint("EVM_1", 50L, Instant.now()))
 
-        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase, recoveryExecutor)
         orchestrator.onApplicationStarted()
 
         verify(checkpointRepository, never()).save(any(), any())
@@ -160,7 +163,7 @@ class ChainReaderOrchestratorTest {
         val workingReader = fakeReader("SOLANA")
 
         val orchestrator = ChainReaderOrchestrator(
-            listOf(failingReader, workingReader), checkpointRepository, postTransactionUseCase,
+            listOf(failingReader, workingReader), checkpointRepository, postTransactionUseCase, recoveryExecutor,
         )
         orchestrator.onApplicationStarted()
 
@@ -173,9 +176,26 @@ class ChainReaderOrchestratorTest {
         val evmReader = fakeReader("EVM_1", xfer)
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.failure(RuntimeException("conflict")))
 
-        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase)
+        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase, recoveryExecutor)
         orchestrator.onApplicationStarted()
 
         verify(checkpointRepository).save("EVM_1", 100L)
+    }
+
+    @Test
+    fun `onApplicationStarted submits the recovery sweep to chainRecoveryExecutor instead of running inline`() {
+        val evmReader = fakeReader("EVM_1")
+        val executor = mock<Executor>()
+
+        val orchestrator = ChainReaderOrchestrator(listOf(evmReader), checkpointRepository, postTransactionUseCase, executor)
+        orchestrator.onApplicationStarted()
+
+        val taskCaptor = argumentCaptor<Runnable>()
+        verify(executor).execute(taskCaptor.capture())
+        verify(evmReader, never()).poll(any())
+
+        taskCaptor.firstValue.run()
+
+        verify(evmReader).poll(0L)
     }
 }

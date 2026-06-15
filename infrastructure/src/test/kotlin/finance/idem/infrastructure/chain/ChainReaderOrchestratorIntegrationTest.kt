@@ -143,18 +143,22 @@ class ChainReaderOrchestratorIntegrationTest {
 
     @Test
     fun `startup recovery polls the EVM reader once and posts the transfer`() {
-        verify(fakeEvmReader, times(1)).poll(0L)
+        // onApplicationStarted() dispatches to chainRecoveryExecutor and returns immediately,
+        // so the sweep may still be running on its background virtual thread here.
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            verify(fakeEvmReader, times(1)).poll(0L)
 
-        val checkpoint = chainCheckpointRepository.findByChainKey("EVM_1")
-        assertNotNull(checkpoint)
-        assertEquals(100L, checkpoint.lastBlock)
+            val checkpoint = chainCheckpointRepository.findByChainKey("EVM_1")
+            assertNotNull(checkpoint)
+            assertEquals(100L, checkpoint.lastBlock)
 
-        val txId = idempotencyStore.find(fakeConfig.evmTransfer.idempotencyKey, fakeConfig.tenantId)
-        assertNotNull(txId)
-        val tx = transactionRepository.findById(txId, fakeConfig.tenantId)
-        assertNotNull(tx)
-        assertEquals(2, tx.lines.size)
-        assertEquals("chain-recovery", tx.createdBy)
+            val txId = idempotencyStore.find(fakeConfig.evmTransfer.idempotencyKey, fakeConfig.tenantId)
+            assertNotNull(txId)
+            val tx = transactionRepository.findById(txId, fakeConfig.tenantId)
+            assertNotNull(tx)
+            assertEquals(2, tx.lines.size)
+            assertEquals("chain-recovery", tx.createdBy)
+        }
     }
 
     @Test
