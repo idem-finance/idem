@@ -8,10 +8,7 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
-import finance.idem.core.chain.FailedChainTransfer
-import finance.idem.core.chain.FailedChainTransferRepository
 import finance.idem.core.monetary.OnChainEntry
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -29,8 +26,7 @@ class ChainReaderOrchestratorTest {
 
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
-    private lateinit var failedChainTransferRepository: FailedChainTransferRepository
-    private lateinit var meterRegistry: SimpleMeterRegistry
+    private lateinit var deadLetterRecorder: DeadLetterRecorder
 
     private val recoveryExecutor: Executor = Executor { it.run() }
 
@@ -42,14 +38,13 @@ class ChainReaderOrchestratorTest {
     fun setUp() {
         checkpointRepository = mock()
         postTransactionUseCase = mock()
-        failedChainTransferRepository = mock()
-        meterRegistry = SimpleMeterRegistry()
+        deadLetterRecorder = mock()
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId(UUID.randomUUID())))
     }
 
     private fun orchestrator(readers: List<ChainReader>): ChainReaderOrchestrator =
         ChainReaderOrchestrator(
-            readers, checkpointRepository, postTransactionUseCase, failedChainTransferRepository, meterRegistry, recoveryExecutor,
+            readers, checkpointRepository, postTransactionUseCase, deadLetterRecorder, recoveryExecutor,
         )
 
     private fun fakeReader(chainKey: String, vararg transfers: DetectedTransfer): ChainReader {
@@ -189,7 +184,7 @@ class ChainReaderOrchestratorTest {
     }
 
     @Test
-    fun `a failed postTransactionUseCase execute increments dead-letter counter and writes FailedChainTransfer`() {
+    fun `a failed postTransactionUseCase execute delegates to DeadLetterRecorder`() {
         val xfer = transfer("EVM_1", blockNumber = 100L)
         val evmReader = fakeReader("EVM_1", xfer)
         val error = RuntimeException("conflict")
@@ -198,31 +193,7 @@ class ChainReaderOrchestratorTest {
         val orchestrator = orchestrator(listOf(evmReader))
         orchestrator.onApplicationStarted()
 
-        val counter = meterRegistry.get(ChainMetrics.DEAD_LETTER_COUNTER)
-            .tag(ChainMetrics.TAG_CHAIN_KEY, "EVM_1")
-            .tag(ChainMetrics.TAG_SOURCE, "chain-recovery")
-            .counter()
-        assertEquals(1.0, counter.count())
-
-        val captor = argumentCaptor<FailedChainTransfer>()
-        verify(failedChainTransferRepository).save(captor.capture())
-        assertEquals(xfer.idempotencyKey, captor.firstValue.idempotencyKey)
-        assertEquals("EVM_1", captor.firstValue.chainKey)
-        assertEquals("chain-recovery", captor.firstValue.source)
-        assertEquals(error.message, captor.firstValue.errorMessage)
-    }
-
-    @Test
-    fun `a failing FailedChainTransferRepository save does not prevent checkpoint advance`() {
-        val xfer = transfer("EVM_1", blockNumber = 100L)
-        val evmReader = fakeReader("EVM_1", xfer)
-        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.failure(RuntimeException("conflict")))
-        whenever(failedChainTransferRepository.save(any())).thenThrow(RuntimeException("db down"))
-
-        val orchestrator = orchestrator(listOf(evmReader))
-        orchestrator.onApplicationStarted()
-
-        verify(checkpointRepository).save("EVM_1", 100L)
+        verify(deadLetterRecorder).record(xfer, "EVM_1", "chain-recovery", error, "EVM_1")
     }
 
     @Test
@@ -231,7 +202,7 @@ class ChainReaderOrchestratorTest {
         val executor = mock<Executor>()
 
         val orchestrator = ChainReaderOrchestrator(
-            listOf(evmReader), checkpointRepository, postTransactionUseCase, failedChainTransferRepository, meterRegistry, executor,
+            listOf(evmReader), checkpointRepository, postTransactionUseCase, deadLetterRecorder, executor,
         )
         orchestrator.onApplicationStarted()
 

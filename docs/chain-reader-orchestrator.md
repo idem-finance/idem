@@ -52,7 +52,8 @@ graph TD
         CR["ChainReader «interface»\n(EVM_1, EVM_8453, EVM_137, SOLANA, TRON)"]
         ORCH["ChainReaderOrchestrator"]
         EXEC["chainRecoveryExecutor\n(virtual-thread-per-task)"]
-        DT["DetectedTransfer.toCommand(createdBy)\nDetectedTransfer.toFailedChainTransfer(chainKey, source, error)"]
+        DT["DetectedTransfer.toCommand(createdBy)"]
+        DLR["DeadLetterRecorder\n.record(transfer, chainKey, source, error, logPrefix)"]
         MR["MeterRegistry\nidem.chain.dead_letter{chain_key,source}"]
     end
 
@@ -71,8 +72,9 @@ graph TD
     ORCH -->|"toCommand(createdBy)"| DT
     DT -->|"execute(PostTransactionCommand)"| PTU
     PTU -->|"Result.failure"| ORCH
-    ORCH -->|"toFailedChainTransfer(...).save()"| FailedTransfer
-    ORCH -->|"counter(...).increment()"| MR
+    ORCH -->|"record(...)"| DLR
+    DLR -->|"toFailedChainTransfer(...).save()"| FailedTransfer
+    DLR -->|"counter(...).increment()"| MR
 ```
 
 ---
@@ -246,8 +248,10 @@ detect and manually correct the dropped entry. See
 
 Added in #87. Whenever `postTransactionUseCase.execute()` returns `Result.failure`
 — in `ChainReaderOrchestrator.pollAndPost`, `AlchemyWebhookService.handle`, or
-`QuickNodeWebhookService.handle` — the `onFailure` branch does two things, in
-addition to the existing `log.error(...)` call:
+`QuickNodeWebhookService.processPayload` — the `onFailure` branch delegates to
+the shared `DeadLetterRecorder.record(transfer, chainKey, source, error, logPrefix)`
+(`infrastructure/chain/DeadLetterRecorder.kt`), in addition to the existing
+`log.error(...)` call at the originating site. `record()` does two things:
 
 1. **Increments a Micrometer counter** `idem.chain.dead_letter`, tagged:
    - `chain_key` — e.g. `EVM_1`, `EVM_8453`, `SOLANA`, `TRON`
@@ -270,12 +274,13 @@ addition to the existing `log.error(...)` call:
    `DetectedTransfer.toFailedChainTransfer(chainKey, source, error)` →
    `FailedChainTransferRepository.save(...)` (port in `core/chain`, JPA adapter
    in `infrastructure/persistence/chain`, migration `V15`). The insert is
-   `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING` — defensive idempotency,
-   since under normal checkpoint-advance semantics a given transfer is evaluated
-   at most once. This write is wrapped in
-   `runCatching { ... }.onFailure { log.error(...) }`: a DB outage here is logged
-   but does **not** prevent checkpoint advancement or processing of the remaining
-   transfers — same exception-isolation philosophy as the rest of the orchestrator.
+   `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING` — first write wins:
+   if the same `idempotency_key` is recorded again (e.g. a retried recovery
+   sweep), the row from the original failure is left unchanged. This write is
+   wrapped in `runCatching { ... }.onFailure { log.error(...) }`: a DB outage
+   here is logged but does **not** prevent checkpoint advancement or processing
+   of the remaining transfers — same exception-isolation philosophy as the rest
+   of the orchestrator.
 
 ### Schema (`V15__create_failed_chain_transfers.sql`)
 
@@ -375,10 +380,11 @@ tables).
 
 | Test class | Type |
 |---|---|
-| `ChainReaderOrchestratorTest` | Unit (Mockito-Kotlin) — dispatch by `chainKey`, `createdBy` wiring, checkpoint advancement, exception isolation, dead-letter counter + `FailedChainTransferRepository.save()` on `Result.failure` (#87) including that a failing dead-letter write doesn't block checkpoint advancement, and (#88) that `onApplicationStarted()` submits the recovery sweep to `chainRecoveryExecutor` rather than running it inline |
-| `ChainReaderOrchestratorIntegrationTest` | Integration (Testcontainers Postgres) — end-to-end startup recovery and scheduled Tron poll against real `ChainCheckpointRepository`/`TransactionRepository`; both startup-recovery assertions (#88) use `Awaitility` since the sweep now runs asynchronously on `chainRecoveryExecutor`, including a `Result.failure` (missing account) producing a real `failed_chain_transfers` row and `idem.chain.dead_letter` counter increment (#87) |
-| `FailedChainTransferRepositoryAdapterTest` | Integration (Testcontainers Postgres, `@DataJpaTest`) — `save()` persists all fields with `resolved = false`, and `ON CONFLICT (idempotency_key) DO NOTHING` keeps `save()` idempotent (#87) |
-| `AlchemyWebhookServiceHandleTest` / `QuickNodeWebhookServiceTest` | Unit — dead-letter counter + `FailedChainTransferRepository.save()` on `Result.failure` at the webhook receivers (#87) |
+| `ChainReaderOrchestratorTest` | Unit (Mockito-Kotlin) — dispatch by `chainKey`, `createdBy` wiring, checkpoint advancement, exception isolation, delegation to `DeadLetterRecorder.record(...)` on `Result.failure` (#87), and (#88) that `onApplicationStarted()` submits the recovery sweep to `chainRecoveryExecutor` rather than running it inline |
+| `ChainReaderOrchestratorIntegrationTest` | Integration (Testcontainers Postgres) — end-to-end startup recovery and scheduled Tron poll against real `ChainCheckpointRepository`/`TransactionRepository`; both startup-recovery assertions (#88) use `Awaitility` since the sweep now runs asynchronously on `chainRecoveryExecutor`, including a `Result.failure` (missing account) producing a real `failed_chain_transfers` row and `idem.chain.dead_letter` counter increment via `DeadLetterRecorder` (#87) |
+| `FailedChainTransferRepositoryAdapterTest` | Integration (Testcontainers Postgres, `@DataJpaTest`) — `save()` persists all fields with `resolved = false`, and `ON CONFLICT (idempotency_key) DO NOTHING` keeps `save()` idempotent — first write wins (#87) |
+| `DeadLetterRecorderTest` | Unit (Mockito-Kotlin + `SimpleMeterRegistry`) — `record()` increments `idem.chain.dead_letter{chain_key,source}` and calls `FailedChainTransferRepository.save()`, and a `save()` failure is logged and swallowed rather than propagated (#87) |
+| `AlchemyWebhookServiceHandleTest` / `QuickNodeWebhookServiceTest` | Unit — `Result.failure` from `postTransactionUseCase.execute()` at the webhook receivers delegates to `DeadLetterRecorder.record(...)` (#87) |
 
 ```bash
 rtk test mvn test -pl infrastructure
@@ -394,6 +400,7 @@ rtk test mvn test -pl infrastructure
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
 - `infrastructure/chain/EvmChainReaderFactory.kt` — factory that wires the `List<ChainReader>` bean
 - `infrastructure/chain/ChainMetrics.kt` — `idem.chain.dead_letter` counter name/tag constants
+- `infrastructure/chain/DeadLetterRecorder.kt` — shared `record(...)` collaborator called from `ChainReaderOrchestrator`, `AlchemyWebhookService`, and `QuickNodeWebhookService` (#87)
 - `core/chain/FailedChainTransfer.kt`, `FailedChainTransferRepository.kt` — dead-letter domain model and port (#87)
 - Issue [#76](https://github.com/idem-finance/idem/issues/76)
 - Issue [#87](https://github.com/idem-finance/idem/issues/87) — dead-letter / alerting for failed chain entry posts

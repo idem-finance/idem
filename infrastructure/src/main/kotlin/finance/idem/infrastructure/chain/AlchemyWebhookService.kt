@@ -8,10 +8,8 @@ import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.chain.ChainCheckpointRepository
-import finance.idem.core.chain.FailedChainTransferRepository
 import finance.idem.core.monetary.OnChainEntry
 import finance.idem.infrastructure.security.HmacSigner
-import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
@@ -24,8 +22,7 @@ class AlchemyWebhookService(
     private val postTransactionUseCase: PostTransactionUseCase,
     private val objectMapper: ObjectMapper,
     private val config: ChainConfig,
-    private val failedChainTransferRepository: FailedChainTransferRepository,
-    private val meterRegistry: MeterRegistry,
+    private val deadLetterRecorder: DeadLetterRecorder,
 ) : AlchemyWebhookPort {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -64,19 +61,7 @@ class AlchemyWebhookService(
         for (activity in payload.event.activity) {
             val transfer = decodeActivity(activity, chainKey, watched) ?: continue
             postTransactionUseCase.execute(transfer.toCommand("alchemy-webhook")).onFailure { error ->
-                log.error(
-                    "Alchemy webhook: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
-                )
-                meterRegistry.counter(
-                    ChainMetrics.DEAD_LETTER_COUNTER,
-                    ChainMetrics.TAG_CHAIN_KEY, chainKey,
-                    ChainMetrics.TAG_SOURCE, "alchemy-webhook",
-                ).increment()
-                runCatching {
-                    failedChainTransferRepository.save(transfer.toFailedChainTransfer(chainKey, "alchemy-webhook", error))
-                }.onFailure { e ->
-                    log.error("Alchemy webhook: failed to write dead-letter row for idempotencyKey=${transfer.idempotencyKey}", e)
-                }
+                deadLetterRecorder.record(transfer, chainKey, "alchemy-webhook", error, logPrefix = "Alchemy webhook")
             }
         }
 

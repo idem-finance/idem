@@ -7,9 +7,9 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Dead-letter record for an on-chain transfer whose [finance.idem.application.ledger.PostTransactionUseCase]
- * call returned `Result.failure`. The chain checkpoint advances past these regardless, so this
- * record is the only durable trace an operator has to detect and manually correct the dropped entry.
+ * Dead-letter record for an on-chain transfer whose transaction-posting use case returned
+ * `Result.failure`. The chain checkpoint advances past these regardless, so this record is
+ * the only durable trace an operator has to detect and manually correct the dropped entry.
  */
 data class FailedChainTransfer(
     val id: UUID,

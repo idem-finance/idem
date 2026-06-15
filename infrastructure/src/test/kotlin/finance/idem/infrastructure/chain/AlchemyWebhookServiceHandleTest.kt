@@ -8,15 +8,13 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
-import finance.idem.core.chain.FailedChainTransfer
-import finance.idem.core.chain.FailedChainTransferRepository
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -31,8 +29,7 @@ class AlchemyWebhookServiceHandleTest {
     private lateinit var watchedAddressRepository: WatchedAddressRepository
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
-    private lateinit var failedChainTransferRepository: FailedChainTransferRepository
-    private lateinit var meterRegistry: SimpleMeterRegistry
+    private lateinit var deadLetterRecorder: DeadLetterRecorder
     private lateinit var service: AlchemyWebhookService
 
     private val signingKey = "test-webhook-signing-key"
@@ -60,16 +57,14 @@ class AlchemyWebhookServiceHandleTest {
         watchedAddressRepository = mock()
         checkpointRepository = mock()
         postTransactionUseCase = mock()
-        failedChainTransferRepository = mock()
-        meterRegistry = SimpleMeterRegistry()
+        deadLetterRecorder = mock()
         service = AlchemyWebhookService(
             watchedAddressRepository = watchedAddressRepository,
             chainCheckpointRepository = checkpointRepository,
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(alchemyWebhookSigningKey = signingKey),
-            failedChainTransferRepository = failedChainTransferRepository,
-            meterRegistry = meterRegistry,
+            deadLetterRecorder = deadLetterRecorder,
         )
     }
 
@@ -97,8 +92,7 @@ class AlchemyWebhookServiceHandleTest {
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(alchemyWebhookSigningKey = ""),
-            failedChainTransferRepository = failedChainTransferRepository,
-            meterRegistry = meterRegistry,
+            deadLetterRecorder = deadLetterRecorder,
         )
         whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(emptyList())
 
@@ -156,7 +150,7 @@ class AlchemyWebhookServiceHandleTest {
     }
 
     @Test
-    fun `dead-letter counter and repository are recorded when postTransactionUseCase fails`() {
+    fun `delegates to DeadLetterRecorder when postTransactionUseCase fails`() {
         val body = buildPayload(txHash, watchedWallet, usdcContract, rawValue = "0x000f4240")
         val error = RuntimeException("conflict")
 
@@ -170,17 +164,9 @@ class AlchemyWebhookServiceHandleTest {
 
         assertTrue(result.isSuccess)
 
-        val counter = meterRegistry.get(ChainMetrics.DEAD_LETTER_COUNTER)
-            .tag(ChainMetrics.TAG_CHAIN_KEY, "EVM_1")
-            .tag(ChainMetrics.TAG_SOURCE, "alchemy-webhook")
-            .counter()
-        assertEquals(1.0, counter.count())
-
-        val captor = argumentCaptor<FailedChainTransfer>()
-        verify(failedChainTransferRepository).save(captor.capture())
-        assertEquals("EVM_1:$txHash:0", captor.firstValue.idempotencyKey)
-        assertEquals("alchemy-webhook", captor.firstValue.source)
-        assertEquals(error.message, captor.firstValue.errorMessage)
+        val transferCaptor = argumentCaptor<DetectedTransfer>()
+        verify(deadLetterRecorder).record(transferCaptor.capture(), eq("EVM_1"), eq("alchemy-webhook"), eq(error), eq("Alchemy webhook"))
+        assertEquals("EVM_1:$txHash:0", transferCaptor.firstValue.idempotencyKey)
     }
 
     @Test

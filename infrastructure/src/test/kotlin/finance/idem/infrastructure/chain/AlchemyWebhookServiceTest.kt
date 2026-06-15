@@ -7,8 +7,6 @@ import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.chain.ChainCheckpointRepository
-import finance.idem.core.chain.FailedChainTransferRepository
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -33,8 +31,7 @@ class AlchemyWebhookServiceTest {
         postTransactionUseCase = mockUseCase,
         objectMapper = objectMapper,
         config = ChainConfig(),
-        failedChainTransferRepository = mock<FailedChainTransferRepository>(),
-        meterRegistry = SimpleMeterRegistry(),
+        deadLetterRecorder = mock<DeadLetterRecorder>(),
     )
 
     private val usdcContract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"

@@ -10,10 +10,7 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
-import finance.idem.core.chain.FailedChainTransfer
-import finance.idem.core.chain.FailedChainTransferRepository
 import finance.idem.core.monetary.OnChainEntry
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -22,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -37,8 +35,7 @@ class QuickNodeWebhookServiceTest {
     private lateinit var watchedAddressRepository: WatchedAddressRepository
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
-    private lateinit var failedChainTransferRepository: FailedChainTransferRepository
-    private lateinit var meterRegistry: SimpleMeterRegistry
+    private lateinit var deadLetterRecorder: DeadLetterRecorder
     private lateinit var solanaReader: SolanaChainReader
     private lateinit var service: QuickNodeWebhookService
 
@@ -70,8 +67,7 @@ class QuickNodeWebhookServiceTest {
         watchedAddressRepository = mock()
         checkpointRepository = mock()
         postTransactionUseCase = mock()
-        failedChainTransferRepository = mock()
-        meterRegistry = SimpleMeterRegistry()
+        deadLetterRecorder = mock()
         solanaReader = mock()
         service = QuickNodeWebhookService(
             watchedAddressRepository = watchedAddressRepository,
@@ -79,8 +75,7 @@ class QuickNodeWebhookServiceTest {
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(quicknodeWebhookSecret = signingKey),
-            failedChainTransferRepository = failedChainTransferRepository,
-            meterRegistry = meterRegistry,
+            deadLetterRecorder = deadLetterRecorder,
             chainReaders = listOf(solanaReader),
         )
     }
@@ -140,8 +135,7 @@ class QuickNodeWebhookServiceTest {
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(quicknodeWebhookSecret = ""),
-            failedChainTransferRepository = failedChainTransferRepository,
-            meterRegistry = meterRegistry,
+            deadLetterRecorder = deadLetterRecorder,
             chainReaders = listOf(solanaReader),
         )
         whenever(watchedAddressRepository.findByChainKey("SOLANA")).thenReturn(emptyList())
@@ -208,8 +202,7 @@ class QuickNodeWebhookServiceTest {
             postTransactionUseCase = postTransactionUseCase,
             objectMapper = objectMapper,
             config = ChainConfig(quicknodeWebhookSecret = signingKey),
-            failedChainTransferRepository = failedChainTransferRepository,
-            meterRegistry = meterRegistry,
+            deadLetterRecorder = deadLetterRecorder,
             chainReaders = emptyList(),
         )
         val body = buildBody(testSignature, testSlot)
@@ -251,7 +244,7 @@ class QuickNodeWebhookServiceTest {
     }
 
     @Test
-    fun `dead-letter counter and repository are recorded when postTransactionUseCase fails`() {
+    fun `delegates to DeadLetterRecorder when postTransactionUseCase fails`() {
         val body = buildBody(testSignature, testSlot)
         val tx = SolanaChainReader.SolanaTransactionResult()
         val transfer = buildTransfer()
@@ -267,17 +260,7 @@ class QuickNodeWebhookServiceTest {
 
         assertTrue(result.isSuccess)
 
-        val counter = meterRegistry.get(ChainMetrics.DEAD_LETTER_COUNTER)
-            .tag(ChainMetrics.TAG_CHAIN_KEY, "SOLANA")
-            .tag(ChainMetrics.TAG_SOURCE, "quicknode-webhook")
-            .counter()
-        assertEquals(1.0, counter.count())
-
-        val captor = argumentCaptor<FailedChainTransfer>()
-        verify(failedChainTransferRepository).save(captor.capture())
-        assertEquals(transfer.idempotencyKey, captor.firstValue.idempotencyKey)
-        assertEquals("quicknode-webhook", captor.firstValue.source)
-        assertEquals(error.message, captor.firstValue.errorMessage)
+        verify(deadLetterRecorder).record(eq(transfer), eq("SOLANA"), eq("quicknode-webhook"), eq(error), eq("QuickNode webhook"))
     }
 
     @Test

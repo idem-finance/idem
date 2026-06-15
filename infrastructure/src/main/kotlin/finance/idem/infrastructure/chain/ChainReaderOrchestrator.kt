@@ -2,8 +2,6 @@ package finance.idem.infrastructure.chain
 
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.chain.ChainCheckpointRepository
-import finance.idem.core.chain.FailedChainTransferRepository
-import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.context.event.ApplicationStartedEvent
@@ -33,8 +31,7 @@ class ChainReaderOrchestrator(
     private val chainReaders: List<ChainReader>,
     private val chainCheckpointRepository: ChainCheckpointRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
-    private val failedChainTransferRepository: FailedChainTransferRepository,
-    private val meterRegistry: MeterRegistry,
+    private val deadLetterRecorder: DeadLetterRecorder,
     @Qualifier(ChainRecoveryExecutorConfig.BEAN_NAME) private val chainRecoveryExecutor: Executor,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -62,19 +59,7 @@ class ChainReaderOrchestrator(
 
             transfers.forEach { transfer ->
                 postTransactionUseCase.execute(transfer.toCommand(createdBy)).onFailure { error ->
-                    log.error(
-                        "${reader.chainKey}: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}"
-                    )
-                    meterRegistry.counter(
-                        ChainMetrics.DEAD_LETTER_COUNTER,
-                        ChainMetrics.TAG_CHAIN_KEY, reader.chainKey,
-                        ChainMetrics.TAG_SOURCE, createdBy,
-                    ).increment()
-                    runCatching {
-                        failedChainTransferRepository.save(transfer.toFailedChainTransfer(reader.chainKey, createdBy, error))
-                    }.onFailure { e ->
-                        log.error("${reader.chainKey}: failed to write dead-letter row for idempotencyKey=${transfer.idempotencyKey}", e)
-                    }
+                    deadLetterRecorder.record(transfer, reader.chainKey, createdBy, error, logPrefix = reader.chainKey)
                 }
             }
 
