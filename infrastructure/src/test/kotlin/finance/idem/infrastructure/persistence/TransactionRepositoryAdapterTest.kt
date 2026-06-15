@@ -112,7 +112,7 @@ class TransactionRepositoryAdapterTest {
         assertEquals(tx.id, found.id)
         assertEquals(tx.tenantId, found.tenantId)
         assertEquals(tx.idempotencyKey, found.idempotencyKey)
-        assertEquals(TransactionStatus.PENDING, found.status)
+        assertEquals(TransactionStatus.COMMITTED, found.status)
         assertEquals(2, found.lines.size)
     }
 

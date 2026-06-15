@@ -19,6 +19,10 @@ management:
       exposure:
         include: health,info,modulith
 
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%15.15t] traceId=%X{traceId} %-40.40logger{39} : %m%n%wEx"
+
 idem:
   audit:
     # Must be set to a strong secret in production — rotate via secret manager

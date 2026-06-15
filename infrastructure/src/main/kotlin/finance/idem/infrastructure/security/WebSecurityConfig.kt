@@ -1,5 +1,6 @@
 package finance.idem.infrastructure.security
 
+import finance.idem.infrastructure.observability.TraceIdFilter
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -18,7 +19,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 class WebSecurityConfig {
 
     @Bean
-    fun securityFilterChain(http: HttpSecurity, apiKeyAuthFilter: ApiKeyAuthFilter): SecurityFilterChain {
+    fun securityFilterChain(
+        http: HttpSecurity,
+        apiKeyAuthFilter: ApiKeyAuthFilter,
+        traceIdFilter: TraceIdFilter,
+    ): SecurityFilterChain {
         return http
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
@@ -30,6 +35,7 @@ class WebSecurityConfig {
                 auth.anyRequest().authenticated()
             }
             .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterBefore(traceIdFilter, ApiKeyAuthFilter::class.java)
             .exceptionHandling { ex ->
                 ex.authenticationEntryPoint { _, response, _ ->
                     response.contentType = MediaType.APPLICATION_JSON_VALUE
