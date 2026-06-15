@@ -1,6 +1,7 @@
 package finance.idem.infrastructure.chain
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
@@ -21,6 +22,7 @@ class SolanaChainReader(
     private val watchedAddressRepository: WatchedAddressRepository,
     private val httpClient: HttpClient = HttpClient.newHttpClient(),
     private val signaturePageSize: Int = 1000,
+    private val transactionBatchSize: Int = 100,
 ) : ChainReader, Closeable {
 
     override val chainKey = "SOLANA"
@@ -32,13 +34,18 @@ class SolanaChainReader(
         val watched = watchedAddressRepository.findByChainKey(chainKey)
         if (watched.isEmpty()) return emptyList()
 
-        return watched.flatMap { watchedAddress ->
+        val signaturesByAddress = watched.associateWith { watchedAddress ->
             getSignaturesForAddress(watchedAddress.walletAddress, checkpoint)
                 .filter { it.err == null }
-                .mapNotNull { sigInfo ->
-                    val tx = getTransaction(sigInfo.signature) ?: return@mapNotNull null
-                    decodeTransfer(tx, sigInfo.signature, sigInfo.slot, watchedAddress)
-                }
+        }
+
+        val transactions = getTransactionBatch(signaturesByAddress.values.flatten().map { it.signature })
+
+        return signaturesByAddress.flatMap { (watchedAddress, sigInfos) ->
+            sigInfos.mapNotNull { sigInfo ->
+                val tx = transactions[sigInfo.signature] ?: return@mapNotNull null
+                decodeTransfer(tx, sigInfo.signature, sigInfo.slot, watchedAddress)
+            }
         }
     }
 
@@ -167,6 +174,44 @@ class SolanaChainReader(
         }
     }
 
+    // Fetches transactions for multiple signatures via JSON-RPC batch requests (one HTTP POST
+    // per chunk of up to transactionBatchSize signatures), keyed back by signature. Responses
+    // are matched by "id" rather than array position — providers don't guarantee response order.
+    internal fun getTransactionBatch(signatures: List<String>): Map<String, SolanaTransactionResult?> {
+        val distinct = signatures.distinct()
+        if (distinct.isEmpty()) return emptyMap()
+        return distinct.chunked(transactionBatchSize)
+            .fold(emptyMap()) { acc, chunk -> acc + fetchTransactionBatch(chunk) }
+    }
+
+    private fun fetchTransactionBatch(signatures: List<String>): Map<String, SolanaTransactionResult?> {
+        val body = MAPPER.writeValueAsString(
+            signatures.mapIndexed { i, sig ->
+                mapOf(
+                    "jsonrpc" to "2.0", "id" to i, "method" to "getTransaction",
+                    "params" to listOf(
+                        sig,
+                        mapOf(
+                            "encoding" to "json",
+                            "commitment" to "confirmed",
+                            "maxSupportedTransactionVersion" to 0,
+                        ),
+                    ),
+                )
+            }
+        )
+        val response = rpcPost(body) ?: return signatures.associateWith { null }
+        return runCatching {
+            val items: List<SolanaBatchTransactionResponseItem> =
+                MAPPER.readValue(response, object : TypeReference<List<SolanaBatchTransactionResponseItem>>() {})
+            val byId = items.associateBy { it.id }
+            signatures.indices.associate { i -> signatures[i] to byId[i]?.result }
+        }.getOrElse {
+            log.warn("Failed to parse getTransaction batch response: ${it.message}")
+            signatures.associateWith { null }
+        }
+    }
+
     private fun rpcPost(jsonBody: String): String? {
         return try {
             val request = HttpRequest.newBuilder()
@@ -199,6 +244,12 @@ class SolanaChainReader(
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     internal data class SolanaTransactionResponse(val result: SolanaTransactionResult? = null)
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    internal data class SolanaBatchTransactionResponseItem(
+        val id: Int = 0,
+        val result: SolanaTransactionResult? = null,
+    )
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     internal data class SolanaTransactionResult(
