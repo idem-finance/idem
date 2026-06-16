@@ -31,7 +31,7 @@ class EvmChainReaderFactory(
                 add(EvmChainReader("EVM_137", buildWeb3j(config.evmPolygon.rpcUrl), watchedAddressRepository))
             }
             if (config.solana.rpcUrl.isNotBlank()) {
-                add(SolanaChainReader(config.solana.rpcUrl, watchedAddressRepository))
+                add(SolanaChainReader(config.solana.rpcUrl, watchedAddressRepository, transactionBatchSize = config.solana.batchSize))
             }
             if (config.tron.apiUrl.isNotBlank()) {
                 add(TronChainReader(config.tron.apiUrl, watchedAddressRepository, apiKey = config.tron.apiKey))

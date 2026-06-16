@@ -41,6 +41,7 @@ idem:
       rpc-url: "https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY:}"
     solana:
       rpc-url: "${QUICKNODE_SOLANA_URL:}"
+      batch-size: 100
     quicknode-webhook-secret: "${QUICKNODE_WEBHOOK_SECRET:}"
     tron:
       api-url: https://apilist.tronscan.org

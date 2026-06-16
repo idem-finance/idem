@@ -276,10 +276,10 @@ class SolanaChainReaderIntegrationTest {
                         .withBody(signaturesResponseFor(sig1 to 100L, sig2 to 200L, sig3 to 300L))
                 )
         )
-        // generic stub returns a 2-element array; the second chunk (1 sig) uses id=0 from this same response
+        // Match each chunk by its distinct signature so each gets the correct response data.
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
-                .withRequestBody(containing("getTransaction"))
+                .withRequestBody(containing(sig1))
                 .willReturn(
                     aResponse()
                         .withStatus(200)
@@ -287,7 +287,21 @@ class SolanaChainReaderIntegrationTest {
                         .withBody(
                             transactionBatchResponse(
                                 transactionResultJson(sig1, 100L, usdcMint, watchedWallet, 0, 1_000_000, 6),
-                                transactionResultJson(sig2, 200L, usdcMint, watchedWallet, 0, 1_000_000, 6),
+                                transactionResultJson(sig2, 200L, usdcMint, watchedWallet, 0, 2_000_000, 6),
+                            )
+                        )
+                )
+        )
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing(sig3))
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(
+                            transactionBatchResponse(
+                                transactionResultJson(sig3, 300L, usdcMint, watchedWallet, 0, 3_000_000, 6),
                             )
                         )
                 )
@@ -296,6 +310,9 @@ class SolanaChainReaderIntegrationTest {
         val result = batchReader.poll(0L)
 
         assertEquals(3, result.size)
+        assertEquals(100L, result[0].entry.blockNumber)
+        assertEquals(200L, result[1].entry.blockNumber)
+        assertEquals(300L, result[2].entry.blockNumber)
 
         val txRequests = wireMock.findAll(
             postRequestedFor(urlPathEqualTo("/")).withRequestBody(containing("getTransaction"))
@@ -338,6 +355,47 @@ class SolanaChainReaderIntegrationTest {
 
         val transfer2 = reader.decodeTransfer(results[sig2]!!, sig2, 200L, watched)
         assertEquals(MonetaryAmount.of(BigDecimal("2.000000")), transfer2?.entry?.amount)
+    }
+
+    @Test
+    fun `getTransactionBatch returns all-null map when RPC returns non-200 for batch request`() {
+        val sig1 = "SigHttpErrAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        val sig2 = "SigHttpErrBbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing("getTransaction"))
+                .willReturn(aResponse().withStatus(500))
+        )
+
+        val results = reader.getTransactionBatch(listOf(sig1, sig2))
+
+        assertEquals(2, results.size)
+        assertNull(results[sig1])
+        assertNull(results[sig2])
+    }
+
+    @Test
+    fun `getTransactionBatch returns all-null map when RPC response body is not a JSON array`() {
+        val sig1 = "SigBadJsonAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        val sig2 = "SigBadJsonBbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing("getTransaction"))
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Internal error"}}""")
+                )
+        )
+
+        val results = reader.getTransactionBatch(listOf(sig1, sig2))
+
+        assertEquals(2, results.size)
+        assertNull(results[sig1])
+        assertNull(results[sig2])
     }
 
     private fun stubSignatures(sig: String, slot: Long) {
