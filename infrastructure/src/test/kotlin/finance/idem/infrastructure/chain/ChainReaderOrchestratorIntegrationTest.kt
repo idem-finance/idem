@@ -69,6 +69,7 @@ class ChainReaderOrchestratorIntegrationTest {
             registry.add("spring.datasource.username", postgres::getUsername)
             registry.add("spring.datasource.password", postgres::getPassword)
             registry.add("idem.chain.tron.polling-interval-ms") { "200" }
+            registry.add("idem.scheduling.distributed-lock.enabled") { "true" }
         }
     }
 

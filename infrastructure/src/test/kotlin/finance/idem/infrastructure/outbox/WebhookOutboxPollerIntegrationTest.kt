@@ -62,6 +62,7 @@ class WebhookOutboxPollerIntegrationTest {
             registry.add("spring.datasource.username", postgres::getUsername)
             registry.add("spring.datasource.password", postgres::getPassword)
             registry.add("idem.webhook.poll-interval-ms") { "200" }
+            registry.add("idem.scheduling.distributed-lock.enabled") { "true" }
         }
 
         @JvmStatic

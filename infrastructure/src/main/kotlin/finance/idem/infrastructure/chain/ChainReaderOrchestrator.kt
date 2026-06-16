@@ -6,6 +6,7 @@ import net.javacrumbs.shedlock.core.LockConfiguration
 import net.javacrumbs.shedlock.core.LockingTaskExecutor
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.context.event.ApplicationStartedEvent
 import org.springframework.context.event.EventListener
@@ -31,11 +32,15 @@ import java.util.concurrent.Executor
  * background virtual thread — [onApplicationStarted] returns immediately so
  * `ApplicationReadyEvent` / readiness probes are never delayed by RPC-heavy `poll()` calls.
  *
- * In multi-replica deployments, only one replica performs the recovery sweep and only one
- * replica runs [pollTron] at a time: [pollTron] is guarded by `@SchedulerLock`, and the
- * recovery sweep is wrapped in [lockingTaskExecutor]`.executeWithLock` *inside* the
- * [chainRecoveryExecutor] task — the lock must be acquired on the background thread that
- * does the actual work, not on the startup thread that merely dispatches it (#89).
+ * In multi-replica deployments ([lockingTaskExecutor] present), only one replica performs
+ * the recovery sweep and only one replica runs [pollTron] at a time: [pollTron] is guarded
+ * by `@SchedulerLock` (no-op in standalone), and the recovery sweep is wrapped in
+ * [lockingTaskExecutor]`.executeWithLock` *inside* the [chainRecoveryExecutor] task — the
+ * lock must be acquired on the background thread that does the actual work, not on the
+ * startup thread that merely dispatches it (#89).
+ *
+ * In standalone mode ([lockingTaskExecutor] is null), the sweep runs directly without any
+ * distributed lock — correct, since there is only one replica.
  */
 @Component
 class ChainReaderOrchestrator(
@@ -44,21 +49,30 @@ class ChainReaderOrchestrator(
     private val postTransactionUseCase: PostTransactionUseCase,
     private val deadLetterRecorder: DeadLetterRecorder,
     @Qualifier(ChainRecoveryExecutorConfig.BEAN_NAME) private val chainRecoveryExecutor: Executor,
-    private val lockingTaskExecutor: LockingTaskExecutor,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    /** Null in standalone mode; injected by [SchedulerLockConfig] in multi-replica deployments. */
+    @Autowired(required = false)
+    internal var lockingTaskExecutor: LockingTaskExecutor? = null
+
     @EventListener(ApplicationStartedEvent::class)
     fun onApplicationStarted() {
+        val sweep = Runnable {
+            chainReaders
+                .filter { it.chainKey != TRON_CHAIN_KEY }
+                .forEach { pollAndPost(it, "chain-recovery") }
+        }
         chainRecoveryExecutor.execute {
-            lockingTaskExecutor.executeWithLock(
-                Runnable {
-                    chainReaders
-                        .filter { it.chainKey != TRON_CHAIN_KEY }
-                        .forEach { pollAndPost(it, "chain-recovery") }
-                },
-                LockConfiguration(Instant.now(), RECOVERY_SWEEP_LOCK_NAME, Duration.ofMinutes(10), Duration.ofSeconds(30)),
-            )
+            val executor = lockingTaskExecutor
+            if (executor != null) {
+                executor.executeWithLock(
+                    sweep,
+                    LockConfiguration(Instant.now(), RECOVERY_SWEEP_LOCK_NAME, Duration.ofMinutes(10), Duration.ofSeconds(30)),
+                )
+            } else {
+                sweep.run()
+            }
         }
     }
 

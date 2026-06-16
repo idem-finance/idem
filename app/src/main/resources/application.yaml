@@ -24,6 +24,11 @@ logging:
     console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%15.15t] traceId=%X{traceId} %-40.40logger{39} : %m%n%wEx"
 
 idem:
+  scheduling:
+    distributed-lock:
+      # Off by default for standalone single-instance deployments.
+      # Set IDEM_SCHEDULING_DISTRIBUTED_LOCK_ENABLED=true in cloud/GKE multi-replica environments.
+      enabled: false
   audit:
     # Must be set to a strong secret in production — rotate via secret manager
     hmac-secret: "${IDEM_AUDIT_HMAC_SECRET:}"

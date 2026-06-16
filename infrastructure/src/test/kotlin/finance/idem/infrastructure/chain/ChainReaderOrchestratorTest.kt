@@ -52,8 +52,8 @@ class ChainReaderOrchestratorTest {
 
     private fun orchestrator(readers: List<ChainReader>): ChainReaderOrchestrator =
         ChainReaderOrchestrator(
-            readers, checkpointRepository, postTransactionUseCase, deadLetterRecorder, recoveryExecutor, lockingTaskExecutor,
-        )
+            readers, checkpointRepository, postTransactionUseCase, deadLetterRecorder, recoveryExecutor,
+        ).also { it.lockingTaskExecutor = lockingTaskExecutor }
 
     private fun fakeReader(chainKey: String, vararg transfers: DetectedTransfer): ChainReader {
         val reader = mock<ChainReader>()
@@ -210,8 +210,8 @@ class ChainReaderOrchestratorTest {
         val executor = mock<Executor>()
 
         val orchestrator = ChainReaderOrchestrator(
-            listOf(evmReader), checkpointRepository, postTransactionUseCase, deadLetterRecorder, executor, lockingTaskExecutor,
-        )
+            listOf(evmReader), checkpointRepository, postTransactionUseCase, deadLetterRecorder, executor,
+        ).also { it.lockingTaskExecutor = lockingTaskExecutor }
         orchestrator.onApplicationStarted()
 
         val taskCaptor = argumentCaptor<Runnable>()
