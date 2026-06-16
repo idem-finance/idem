@@ -4,6 +4,7 @@ import finance.idem.application.outbox.WebhookOutboxDispatch
 import finance.idem.application.port.TenantRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.infrastructure.security.HmacSigner
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
@@ -34,6 +35,7 @@ class WebhookOutboxPoller(
     private val log = LoggerFactory.getLogger(javaClass)
 
     @Scheduled(fixedDelayString = "\${idem.webhook.poll-interval-ms:5000}")
+    @SchedulerLock(name = "webhookOutboxPoll", lockAtMostFor = "5m", lockAtLeastFor = "4s")
     fun poll() {
         val rows = runCatching { webhookOutboxRepository.findDispatchable(batchSize) }
             .onFailure { log.error("WebhookOutboxPoller: failed to fetch dispatchable rows", it) }
