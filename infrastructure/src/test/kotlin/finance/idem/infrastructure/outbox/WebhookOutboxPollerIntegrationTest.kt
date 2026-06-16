@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Import
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -138,6 +139,12 @@ class WebhookOutboxPollerIntegrationTest {
     @Autowired
     lateinit var webhookOutboxJpaRepository: WebhookOutboxJpaRepository
 
+    @Autowired
+    lateinit var tenantJpaRepository: TenantJpaRepository
+
+    @Autowired
+    lateinit var jdbcTemplate: JdbcTemplate
+
     @Test
     fun `scenario A - delivers successfully and signs with the tenant's secret`() {
         await().atMost(Duration.ofSeconds(5)).untilAsserted {
@@ -196,5 +203,70 @@ class WebhookOutboxPollerIntegrationTest {
         }
 
         assertEquals(0, wireMock.findAll(postRequestedFor(urlPathEqualTo("/webhook/d"))).size)
+    }
+
+    @Test
+    fun `webhookOutboxPoll acquires a distributed lock recorded in shedlock`() {
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            val lockRow = jdbcTemplate.queryForMap("SELECT locked_at, lock_until FROM shedlock WHERE name = ?", "webhookOutboxPoll")
+            assertNotNull(lockRow["locked_at"])
+            assertNotNull(lockRow["lock_until"])
+        }
+    }
+
+    @Test
+    fun `webhookOutboxPoll is skipped while another replica holds the webhookOutboxPoll lock`() {
+        // Seize the lock first so no in-flight tick can process the row we're about to insert.
+        jdbcTemplate.update(
+            "INSERT INTO shedlock (name, lock_until, locked_at, locked_by) VALUES (?, now() + interval '1 hour', now(), 'other-replica') " +
+                "ON CONFLICT (name) DO UPDATE SET lock_until = now() + interval '1 hour', locked_by = 'other-replica'",
+            "webhookOutboxPoll",
+        )
+
+        // Wait for any tick that was already in flight at seize-time to finish before
+        // inserting the row — a concurrent in-flight tick could otherwise pick it up.
+        Thread.sleep(300)
+
+        val tenantId = TenantId.generate()
+        val rowId = UUID.randomUUID()
+        val now = Instant.now()
+        wireMock.stubFor(post(urlPathEqualTo("/webhook/lock")).willReturn(aResponse().withStatus(200)))
+        tenantJpaRepository.save(
+            TenantDataModel(
+                id = tenantId.value,
+                webhookUrl = "http://localhost:${wireMock.port()}/webhook/lock",
+                webhookSecret = "secret-lock",
+                createdAt = now,
+                updatedAt = now,
+            )
+        )
+        webhookOutboxJpaRepository.save(
+            WebhookOutboxDataModel(
+                id = rowId,
+                tenantId = tenantId.value,
+                transactionId = UUID.randomUUID(),
+                eventType = "transaction.committed",
+                payload = """{"eventType":"transaction.committed","scenario":"lock"}""",
+                status = OutboxStatus.PENDING,
+                attempts = 0,
+                nextRetryAt = now,
+                lastError = null,
+                createdAt = now,
+                deliveredAt = null,
+            )
+        )
+
+        Thread.sleep(500)
+        val row = webhookOutboxJpaRepository.findById(rowId).orElseThrow()
+        assertEquals(OutboxStatus.PENDING, row.status)
+        assertEquals(0, row.attempts)
+
+        // Release the lock so this replica's poller can resume.
+        jdbcTemplate.update("UPDATE shedlock SET lock_until = now() WHERE name = ?", "webhookOutboxPoll")
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            val row = webhookOutboxJpaRepository.findById(rowId).orElseThrow()
+            assertEquals(OutboxStatus.DELIVERED, row.status)
+        }
     }
 }

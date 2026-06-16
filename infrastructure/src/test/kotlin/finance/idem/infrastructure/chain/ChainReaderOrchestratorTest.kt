@@ -9,11 +9,14 @@ import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
+import net.javacrumbs.shedlock.core.LockConfiguration
+import net.javacrumbs.shedlock.core.LockingTaskExecutor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -27,6 +30,7 @@ class ChainReaderOrchestratorTest {
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var deadLetterRecorder: DeadLetterRecorder
+    private lateinit var lockingTaskExecutor: LockingTaskExecutor
 
     private val recoveryExecutor: Executor = Executor { it.run() }
 
@@ -39,12 +43,16 @@ class ChainReaderOrchestratorTest {
         checkpointRepository = mock()
         postTransactionUseCase = mock()
         deadLetterRecorder = mock()
+        lockingTaskExecutor = mock()
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId(UUID.randomUUID())))
+        // Simulate the lock being acquired: run the recovery task synchronously.
+        doAnswer { invocation -> invocation.getArgument<Runnable>(0).run() }
+            .whenever(lockingTaskExecutor).executeWithLock(any<Runnable>(), any())
     }
 
     private fun orchestrator(readers: List<ChainReader>): ChainReaderOrchestrator =
         ChainReaderOrchestrator(
-            readers, checkpointRepository, postTransactionUseCase, deadLetterRecorder, recoveryExecutor,
+            readers, checkpointRepository, postTransactionUseCase, deadLetterRecorder, recoveryExecutor, lockingTaskExecutor,
         )
 
     private fun fakeReader(chainKey: String, vararg transfers: DetectedTransfer): ChainReader {
@@ -202,7 +210,7 @@ class ChainReaderOrchestratorTest {
         val executor = mock<Executor>()
 
         val orchestrator = ChainReaderOrchestrator(
-            listOf(evmReader), checkpointRepository, postTransactionUseCase, deadLetterRecorder, executor,
+            listOf(evmReader), checkpointRepository, postTransactionUseCase, deadLetterRecorder, executor, lockingTaskExecutor,
         )
         orchestrator.onApplicationStarted()
 
@@ -213,5 +221,30 @@ class ChainReaderOrchestratorTest {
         taskCaptor.firstValue.run()
 
         verify(evmReader).poll(0L)
+    }
+
+    @Test
+    fun `onApplicationStarted runs the recovery sweep under a chainRecoverySweep lock`() {
+        val evmReader = fakeReader("EVM_1")
+
+        val orchestrator = orchestrator(listOf(evmReader))
+        orchestrator.onApplicationStarted()
+
+        val lockConfigCaptor = argumentCaptor<LockConfiguration>()
+        verify(lockingTaskExecutor).executeWithLock(any<Runnable>(), lockConfigCaptor.capture())
+        assertEquals(ChainReaderOrchestrator.RECOVERY_SWEEP_LOCK_NAME, lockConfigCaptor.firstValue.name)
+    }
+
+    @Test
+    fun `recovery sweep does not poll when the chainRecoverySweep lock is held by another replica`() {
+        val evmReader = fakeReader("EVM_1")
+        doAnswer { /* lock not acquired: task is never run */ }
+            .whenever(lockingTaskExecutor).executeWithLock(any<Runnable>(), any())
+
+        val orchestrator = orchestrator(listOf(evmReader))
+        orchestrator.onApplicationStarted()
+
+        verify(evmReader, never()).poll(any())
+        verify(postTransactionUseCase, never()).execute(any())
     }
 }

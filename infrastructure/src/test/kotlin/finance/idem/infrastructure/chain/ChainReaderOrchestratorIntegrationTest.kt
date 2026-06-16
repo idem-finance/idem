@@ -16,8 +16,12 @@ import finance.idem.core.monetary.OnChainEntry
 import finance.idem.infrastructure.persistence.chain.FailedChainTransferJpaRepository
 import io.micrometer.core.instrument.MeterRegistry
 import jakarta.annotation.PostConstruct
+import net.javacrumbs.shedlock.core.LockConfiguration
+import net.javacrumbs.shedlock.core.SimpleLock
+import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.mockingDetails
 import org.mockito.kotlin.any
 import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.mock
@@ -31,6 +35,7 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -39,6 +44,8 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Duration
 import java.time.Instant
+import java.util.Optional
+import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -169,6 +176,8 @@ class ChainReaderOrchestratorIntegrationTest {
     @Autowired lateinit var idempotencyStore: IdempotencyStore
     @Autowired lateinit var meterRegistry: MeterRegistry
     @Autowired lateinit var failedChainTransferJpaRepository: FailedChainTransferJpaRepository
+    @Autowired lateinit var jdbcTemplate: JdbcTemplate
+    @Autowired lateinit var dataSource: DataSource
 
     @Test
     fun `startup recovery polls the EVM reader once and posts the transfer`() {
@@ -187,6 +196,13 @@ class ChainReaderOrchestratorIntegrationTest {
             assertNotNull(tx)
             assertEquals(2, tx.lines.size)
             assertEquals("chain-recovery", tx.createdBy)
+
+            val lockRow = jdbcTemplate.queryForMap(
+                "SELECT locked_at, lock_until FROM shedlock WHERE name = ?",
+                ChainReaderOrchestrator.RECOVERY_SWEEP_LOCK_NAME,
+            )
+            assertNotNull(lockRow["locked_at"])
+            assertNotNull(lockRow["lock_until"])
         }
     }
 
@@ -230,5 +246,55 @@ class ChainReaderOrchestratorIntegrationTest {
         assertNotNull(tx)
         assertEquals(2, tx.lines.size)
         assertEquals("tron-poller", tx.createdBy)
+
+        val lockRow = jdbcTemplate.queryForMap("SELECT locked_at, lock_until FROM shedlock WHERE name = ?", "pollTron")
+        assertNotNull(lockRow["locked_at"])
+        assertNotNull(lockRow["lock_until"])
+    }
+
+    @Test
+    fun `pollTron is skipped while another replica holds the pollTron lock`() {
+        // Build a second LockProvider that identifies as "other-replica".
+        // ShedLock's unlock() uses AND locked_by = :lockedBy, so only the holder can release.
+        // This prevents the production scheduler (locked_by = hostname) from releasing our hold.
+        val otherReplicaLock = JdbcTemplateLockProvider(
+            JdbcTemplateLockProvider.Configuration.builder()
+                .withJdbcTemplate(JdbcTemplate(dataSource))
+                .usingDbTime()
+                .withLockedByValue("other-replica")
+                .build(),
+        )
+
+        // Wait until we can acquire the pollTron lock as "other-replica".
+        // If the scheduler currently holds it, lock() returns empty and Awaitility retries.
+        var heldLock: Optional<SimpleLock> = Optional.empty()
+        await().atMost(Duration.ofSeconds(10)).until {
+            heldLock = otherReplicaLock.lock(
+                LockConfiguration(Instant.now(), "pollTron", Duration.ofSeconds(30), Duration.ZERO),
+            )
+            heldLock.isPresent
+        }
+
+        try {
+            // DB row must show other-replica as the lock holder.
+            val lockRow = jdbcTemplate.queryForMap("SELECT locked_by FROM shedlock WHERE name = ?", "pollTron")
+            assertEquals("other-replica", lockRow["locked_by"])
+
+            // All scheduler ticks during this hold will see lock_until > now() and skip.
+            val countWhenLocked = mockingDetails(fakeTronReader).invocations.count { it.method.name == "poll" }
+            Thread.sleep(600) // 3× the 200ms fixedDelay — any un-locked tick would fire here
+            val countAfterHold = mockingDetails(fakeTronReader).invocations.count { it.method.name == "poll" }
+            assertEquals(countWhenLocked, countAfterHold, "poll() must not be called while lock is held by another replica")
+        } finally {
+            heldLock.ifPresent { it.unlock() }
+        }
+
+        // After release, the scheduler must resume polling.
+        val countBeforeResume = mockingDetails(fakeTronReader).invocations.count { it.method.name == "poll" }
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertTrue(
+                mockingDetails(fakeTronReader).invocations.count { it.method.name == "poll" } > countBeforeResume,
+            )
+        }
     }
 }

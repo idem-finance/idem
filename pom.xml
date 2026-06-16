@@ -50,6 +50,7 @@
         <jacoco.minimum.coverage>0.80</jacoco.minimum.coverage>
         <web3j.version>4.12.0</web3j.version>
         <wiremock.version>2.35.1</wiremock.version>
+        <shedlock.version>6.6.0</shedlock.version>
     </properties>
 
     <dependencyManagement>

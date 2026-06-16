@@ -2,12 +2,17 @@ package finance.idem.infrastructure.chain
 
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.chain.ChainCheckpointRepository
+import net.javacrumbs.shedlock.core.LockConfiguration
+import net.javacrumbs.shedlock.core.LockingTaskExecutor
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.context.event.ApplicationStartedEvent
 import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.Executor
 
 /**
@@ -25,6 +30,12 @@ import java.util.concurrent.Executor
  * The startup recovery sweep is dispatched to [chainRecoveryExecutor] and runs on a
  * background virtual thread — [onApplicationStarted] returns immediately so
  * `ApplicationReadyEvent` / readiness probes are never delayed by RPC-heavy `poll()` calls.
+ *
+ * In multi-replica deployments, only one replica performs the recovery sweep and only one
+ * replica runs [pollTron] at a time: [pollTron] is guarded by `@SchedulerLock`, and the
+ * recovery sweep is wrapped in [lockingTaskExecutor]`.executeWithLock` *inside* the
+ * [chainRecoveryExecutor] task — the lock must be acquired on the background thread that
+ * does the actual work, not on the startup thread that merely dispatches it (#89).
  */
 @Component
 class ChainReaderOrchestrator(
@@ -33,19 +44,26 @@ class ChainReaderOrchestrator(
     private val postTransactionUseCase: PostTransactionUseCase,
     private val deadLetterRecorder: DeadLetterRecorder,
     @Qualifier(ChainRecoveryExecutorConfig.BEAN_NAME) private val chainRecoveryExecutor: Executor,
+    private val lockingTaskExecutor: LockingTaskExecutor,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     @EventListener(ApplicationStartedEvent::class)
     fun onApplicationStarted() {
         chainRecoveryExecutor.execute {
-            chainReaders
-                .filter { it.chainKey != TRON_CHAIN_KEY }
-                .forEach { pollAndPost(it, "chain-recovery") }
+            lockingTaskExecutor.executeWithLock(
+                Runnable {
+                    chainReaders
+                        .filter { it.chainKey != TRON_CHAIN_KEY }
+                        .forEach { pollAndPost(it, "chain-recovery") }
+                },
+                LockConfiguration(Instant.now(), RECOVERY_SWEEP_LOCK_NAME, Duration.ofMinutes(10), Duration.ZERO),
+            )
         }
     }
 
     @Scheduled(fixedDelayString = "\${idem.chain.tron.polling-interval-ms:5000}")
+    @SchedulerLock(name = "pollTron", lockAtMostFor = "1m", lockAtLeastFor = "4s")
     fun pollTron() {
         chainReaders
             .filter { it.chainKey == TRON_CHAIN_KEY }
@@ -74,5 +92,6 @@ class ChainReaderOrchestrator(
 
     companion object {
         private const val TRON_CHAIN_KEY = "TRON"
+        const val RECOVERY_SWEEP_LOCK_NAME = "chainRecoverySweep"
     }
 }
