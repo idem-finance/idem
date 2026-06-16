@@ -57,6 +57,12 @@ idem:
     max-attempts: 5
     batch-size: 50
     poll-interval-ms: 5000
+  telemetry:
+    # Set to false to opt out entirely — no network calls are made when disabled.
+    enabled: true
+    endpoint: https://telemetry.idem.finance/ping
+    # Cron: 1st of each month at 01:00 UTC. Override for testing (e.g. "0 * * * * *").
+    cron: "0 0 1 1 * *"
 
 ---
 spring:
