@@ -19,6 +19,7 @@ data class EvmNetworkConfig(
 
 data class SolanaNetworkConfig(
     val rpcUrl: String = "",
+    val batchSize: Int = 100,
 )
 
 data class TronNetworkConfig(
