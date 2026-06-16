@@ -61,8 +61,8 @@ idem:
     # Set to false to opt out entirely — no network calls are made when disabled.
     enabled: true
     endpoint: https://telemetry.idem.finance/ping
-    # Cron: 1st of each month at 01:00 UTC. Override for testing (e.g. "0 * * * * *").
-    cron: "0 0 1 1 * *"
+    # Cron: every Monday at 01:00 UTC. Override for testing (e.g. "0 * * * * *").
+    cron: "0 0 1 * * MON"
 
 ---
 spring:

@@ -29,7 +29,7 @@ class TelemetryPingService(
     private val httpClient: HttpClient = HttpClient.newHttpClient()
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Scheduled(cron = "\${idem.telemetry.cron:0 0 1 1 * *}")
+    @Scheduled(cron = "\${idem.telemetry.cron:0 0 1 * * MON}")
     @SchedulerLock(name = "telemetryPing", lockAtMostFor = "1m", lockAtLeastFor = "10s")
     fun ping() {
         runCatching {
