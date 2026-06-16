@@ -161,6 +161,8 @@
                         <!-- WebSecurityConfig — pure Spring Security wiring, no business logic;
                              @ConditionalOnWebApplication(SERVLET) means it never loads in infra tests -->
                         <exclude>finance/idem/infrastructure/security/WebSecurityConfig*</exclude>
+                        <!-- InstallationMetadataDataModel — JPA no-arg constructor synthetic branches -->
+                        <exclude>finance/idem/infrastructure/persistence/telemetry/InstallationMetadataDataModel*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
