@@ -20,5 +20,5 @@ class InstallationMetadataDataModel(
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant,
 ) {
-    protected constructor() : this(1, UUID.randomUUID(), Instant.now())
+    protected constructor() : this(0, UUID(0L, 0L), Instant.EPOCH)
 }

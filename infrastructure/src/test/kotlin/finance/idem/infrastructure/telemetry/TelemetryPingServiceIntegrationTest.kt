@@ -9,6 +9,7 @@ import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
 import finance.idem.infrastructure.persistence.telemetry.InstallationMetadataJpaRepository
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -52,6 +53,11 @@ class TelemetryPingServiceIntegrationTest {
         fun tearDown() {
             wireMock.stop()
         }
+    }
+
+    @BeforeEach
+    fun resetWireMock() {
+        wireMock.resetRequests()
     }
 
     @Autowired

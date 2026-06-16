@@ -2,11 +2,9 @@ package finance.idem.infrastructure.telemetry
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import finance.idem.application.telemetry.InstallationMetadataPort
-import finance.idem.infrastructure.persistence.JournalLineJpaRepository
-import finance.idem.infrastructure.persistence.tenant.TenantJpaRepository
+import finance.idem.application.telemetry.TelemetryStatsPort
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.info.BuildProperties
@@ -22,15 +20,12 @@ import java.time.Duration
 @ConditionalOnProperty(name = ["idem.telemetry.enabled"], matchIfMissing = true)
 class TelemetryPingService(
     private val installationMetadataPort: InstallationMetadataPort,
-    private val tenantJpaRepository: TenantJpaRepository,
-    private val journalLineJpaRepository: JournalLineJpaRepository,
+    private val telemetryStatsPort: TelemetryStatsPort,
     private val objectMapper: ObjectMapper,
     @Value("\${idem.telemetry.endpoint:https://telemetry.idem.finance/ping}")
     private val endpoint: String,
+    private val buildProperties: BuildProperties? = null,
 ) {
-    @Autowired(required = false)
-    private var buildProperties: BuildProperties? = null
-
     private val httpClient: HttpClient = HttpClient.newHttpClient()
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -43,8 +38,8 @@ class TelemetryPingService(
                     "installationId" to installationMetadataPort.getOrCreateId().toString(),
                     "idemVersion"    to (buildProperties?.version ?: "unknown"),
                     "javaVersion"    to (System.getProperty("java.version") ?: "unknown"),
-                    "tenantBucket"   to bucket(tenantJpaRepository.count()),
-                    "entryBucket"    to bucket(journalLineJpaRepository.count()),
+                    "tenantBucket"   to bucket(telemetryStatsPort.tenantCount()),
+                    "entryBucket"    to bucket(telemetryStatsPort.journalLineCount()),
                 )
             )
             val request = HttpRequest.newBuilder()
