@@ -63,6 +63,9 @@ idem:
     endpoint: https://telemetry.idem.finance/ping
     # Cron: every Monday at 01:00 UTC. Override for testing (e.g. "0 * * * * *").
     cron: "0 0 1 * * MON"
+  limits:
+    # Log an INFO nudge when self-hosted tenant count exceeds this value. Set to -1 to disable.
+    soft-warn-threshold: 10
 
 ---
 spring:
