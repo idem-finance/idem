@@ -282,9 +282,11 @@ class ChainReaderOrchestratorIntegrationTest {
 
             // All scheduler ticks during this hold will see lock_until > now() and skip.
             val countWhenLocked = mockingDetails(fakeTronReader).invocations.count { it.method.name == "poll" }
-            Thread.sleep(600) // 3× the 200ms fixedDelay — any un-locked tick would fire here
-            val countAfterHold = mockingDetails(fakeTronReader).invocations.count { it.method.name == "poll" }
-            assertEquals(countWhenLocked, countAfterHold, "poll() must not be called while lock is held by another replica")
+            // Wait 3× the 200ms fixedDelay — any unlocked tick would have fired by now.
+            await().pollDelay(Duration.ofMillis(600)).atMost(Duration.ofMillis(700)).untilAsserted {
+                val countAfterHold = mockingDetails(fakeTronReader).invocations.count { it.method.name == "poll" }
+                assertEquals(countWhenLocked, countAfterHold, "poll() must not be called while lock is held by another replica")
+            }
         } finally {
             heldLock.ifPresent { it.unlock() }
         }

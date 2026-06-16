@@ -57,7 +57,7 @@ class ChainReaderOrchestrator(
                         .filter { it.chainKey != TRON_CHAIN_KEY }
                         .forEach { pollAndPost(it, "chain-recovery") }
                 },
-                LockConfiguration(Instant.now(), RECOVERY_SWEEP_LOCK_NAME, Duration.ofMinutes(10), Duration.ZERO),
+                LockConfiguration(Instant.now(), RECOVERY_SWEEP_LOCK_NAME, Duration.ofMinutes(10), Duration.ofSeconds(30)),
             )
         }
     }
