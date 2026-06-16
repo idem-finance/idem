@@ -176,8 +176,6 @@ class WebhookOutboxPollerIntegrationTest {
 
     @Test
     fun `scenario B - non-2xx response schedules a retry with backoff`() {
-        val before = Instant.now()
-
         await().atMost(Duration.ofSeconds(5)).untilAsserted {
             val row = webhookOutboxJpaRepository.findById(seed.rowB).orElseThrow()
             assertEquals(OutboxStatus.FAILED, row.status)
@@ -186,8 +184,11 @@ class WebhookOutboxPollerIntegrationTest {
 
         val row = webhookOutboxJpaRepository.findById(seed.rowB).orElseThrow()
         assertEquals("HTTP 500", row.lastError)
-        assertTrue(row.nextRetryAt.isAfter(before.plusSeconds(3)), "next_retry_at should be ~5s out")
-        assertTrue(row.nextRetryAt.isBefore(before.plusSeconds(8)), "next_retry_at should be ~5s out")
+        // Anchor the backoff window to createdAt, not Instant.now() — the poller processes the row
+        // at Spring context startup regardless of when this test method runs, so Instant.now()
+        // drifts and causes flaky failures. nextRetryAt ≈ createdAt + ~5s.
+        assertTrue(row.nextRetryAt.isAfter(row.createdAt.plusSeconds(3)), "next_retry_at should be ~5s out")
+        assertTrue(row.nextRetryAt.isBefore(row.createdAt.plusSeconds(10)), "next_retry_at should be ~5s out")
     }
 
     @Test
