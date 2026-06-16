@@ -57,7 +57,7 @@ Idem collects **anonymous, non-identifying** usage data to help prioritise devel
 | `tenantBucket` | A bucketed tenant count: `1`, `2-10`, `11-50`, or `50+`. Never the exact count. |
 | `entryBucket` | A bucketed journal-line count using the same buckets. Never the exact count. |
 
-A single HTTP POST is sent to `https://telemetry.idem.finance/ping` once per month.
+A single HTTP POST is sent to `https://telemetry.idem.finance/ping` once per week (every Monday at 01:00 UTC).
 
 ### What is NOT collected
 
@@ -90,3 +90,13 @@ When disabled, no network connection is attempted and no data is collected.
 Idem is open-source and self-hosted. Without any signal, it is impossible to know how many installations are running, which versions are in production, or whether deployments skew toward small teams or larger organisations. This shapes every prioritisation decision — from which Java versions to support to how aggressively to deprecate old APIs.
 
 The data collected has zero privacy cost: a random UUID and two bucketed counters reveal nothing about your business. If you still prefer to opt out, the single property above is all you need.
+
+---
+
+## Attribution
+
+If you build a product or service on top of Idem and make it available to others, include a visible acknowledgement in your documentation, "about" screen, or equivalent location — for example:
+
+> Powered by [Idem](https://github.com/idem-finance/idem)
+
+This requirement is part of the FSL-1.1-Apache-2.0 license and applies during the FSL window (the first two years after each release). It does not apply to purely internal deployments.
