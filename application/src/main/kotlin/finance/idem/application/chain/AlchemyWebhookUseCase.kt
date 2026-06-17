@@ -1,6 +1,6 @@
 package finance.idem.application.chain
 
-fun interface AlchemyWebhookPort {
+fun interface AlchemyWebhookUseCase {
     /**
      * Handle an inbound Alchemy webhook request.
      * Returns [Result.failure] only on authentication rejection — the caller maps this to 401.

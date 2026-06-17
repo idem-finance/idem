@@ -2,7 +2,7 @@ package finance.idem.infrastructure.chain
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import finance.idem.application.chain.QuickNodeWebhookPort
+import finance.idem.application.chain.QuickNodeWebhookUseCase
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.infrastructure.security.HmacSigner
@@ -19,7 +19,7 @@ class QuickNodeWebhookService(
     private val config: ChainConfig,
     private val deadLetterRecorder: DeadLetterRecorder,
     chainReaders: List<ChainReader>,
-) : QuickNodeWebhookPort {
+) : QuickNodeWebhookUseCase {
 
     private val log = LoggerFactory.getLogger(javaClass)
 

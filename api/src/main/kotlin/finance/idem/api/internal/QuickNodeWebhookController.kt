@@ -1,6 +1,6 @@
 package finance.idem.api.internal
 
-import finance.idem.application.chain.QuickNodeWebhookPort
+import finance.idem.application.chain.QuickNodeWebhookUseCase
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/internal/webhooks")
-class QuickNodeWebhookController(private val port: QuickNodeWebhookPort) {
+class QuickNodeWebhookController(private val quickNodeWebhookUseCase: QuickNodeWebhookUseCase) {
 
     @PostMapping("/quicknode")
     fun receive(
@@ -19,7 +19,7 @@ class QuickNodeWebhookController(private val port: QuickNodeWebhookPort) {
         @RequestHeader(value = "X-QN-Nonce", required = false) nonce: String?,
         @RequestHeader(value = "X-QN-Timestamp", required = false) timestamp: String?,
         @RequestBody rawBody: String,
-    ): ResponseEntity<Void> = port.handle(signature, nonce, timestamp, rawBody).fold(
+    ): ResponseEntity<Void> = quickNodeWebhookUseCase.handle(signature, nonce, timestamp, rawBody).fold(
         onSuccess = { ResponseEntity.ok().build() },
         onFailure = { ResponseEntity.status(HttpStatus.UNAUTHORIZED).build() },
     )

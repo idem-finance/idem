@@ -14,7 +14,7 @@ Alchemy sends a `POST /internal/webhooks/alchemy` request every time a watched a
 ```
 Alchemy cloud ──POST /internal/webhooks/alchemy──► AlchemyWebhookController
                                                         │
-                                                  AlchemyWebhookPort
+                                                  AlchemyWebhookUseCase
                                                         │
                                                   AlchemyWebhookService
                                                    ├── HMAC validation
@@ -34,7 +34,7 @@ graph TD
     end
 
     subgraph application
-        PORT["AlchemyWebhookPort\n«fun interface»"]
+        PORT["AlchemyWebhookUseCase\n«fun interface»"]
     end
 
     subgraph infrastructure.chain
@@ -273,7 +273,7 @@ rtk test mvn test -pl app
 - `docs/evm-chain-reader.md` — `EvmChainReader` fallback/recovery (Web3j `ethGetLogs`)
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
 - `docs/webhook-outbox-poller.md` — WebhookOutboxPoller (#55): delivers transaction.committed/settled/reconciliation.unmatched events to per-tenant webhooks
-- `application/chain/AlchemyWebhookPort.kt` — port interface
+- `application/chain/AlchemyWebhookUseCase.kt` — use case interface
 - `infrastructure/chain/AlchemyWebhookService.kt` — implementation
 - `api/internal/AlchemyWebhookController.kt` — HTTP entry point
 - Issues [#47](https://github.com/idem-finance/idem/issues/47), [#73](https://github.com/idem-finance/idem/issues/73)
