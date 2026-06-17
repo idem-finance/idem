@@ -10,6 +10,7 @@ COPY infrastructure/pom.xml infrastructure/pom.xml
 COPY api/pom.xml api/pom.xml
 COPY mcp/pom.xml mcp/pom.xml
 COPY app/pom.xml app/pom.xml
+COPY sdk-kotlin/pom.xml sdk-kotlin/pom.xml
 # Resolve dependencies in a cacheable layer before copying source
 RUN ./mvnw dependency:go-offline --no-transfer-progress -q
 COPY core/src core/src
@@ -18,6 +19,7 @@ COPY infrastructure/src infrastructure/src
 COPY api/src api/src
 COPY mcp/src mcp/src
 COPY app/src app/src
+COPY sdk-kotlin/src sdk-kotlin/src
 RUN ./mvnw package -DskipTests --no-transfer-progress
 
 # Stage 2 — minimal JRE image
