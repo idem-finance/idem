@@ -260,4 +260,41 @@
         </pluginRepository>
     </pluginRepositories>
 
+    <profiles>
+        <!--
+          Activated explicitly with -P release. Signs all module artifacts
+          with GPG before publishing to Maven Central.
+          Requires GPG key in keyring and MAVEN_GPG_PASSPHRASE env var set.
+        -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.7</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <!-- Required in CI: reads passphrase from MAVEN_GPG_PASSPHRASE
+                                 env var without opening a pinentry dialog. -->
+                            <gpgArguments>
+                                <arg>--pinentry-mode</arg>
+                                <arg>loopback</arg>
+                            </gpgArguments>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 </project>

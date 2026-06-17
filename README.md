@@ -93,6 +93,42 @@ The data collected has zero privacy cost: a random UUID and two bucketed counter
 
 ---
 
+## Artifact Signing
+
+All release artifacts published under `finance.idem` are signed with GPG.
+
+**Signing key**
+
+| Field       | Value                                              |
+|-------------|-----------------------------------------------------|
+| Owner       | Idem Finance \<flaubert165@gmail.com\>             |
+| Key ID      | `0ABC39374C2B51EC`                                 |
+| Fingerprint | `3E33 3148 F633 F474 9F6A 4DF3 0ABC 3939 4C2B 51EC` |
+| Key server  | `keys.openpgp.org`                                 |
+| Expiry      | 2 years from generation date; rotate before expiry |
+
+**Verify a downloaded artifact**
+
+```bash
+# Import the public key (once)
+gpg --keyserver keys.openpgp.org --recv-keys 3E333148F633F4749F6A4DF30ABC39374C2B51EC
+
+# Verify the .asc signature against the JAR
+gpg --verify finance.idem.core-0.1.0.jar.asc finance.idem.core-0.1.0.jar
+# Expected: "Good signature from Idem Finance <flaubert165@gmail.com>"
+```
+
+**Key rotation**
+
+The signing key carries a 2-year expiry. Rotation process:
+1. Generate a new RSA-4096 key with the same owner identity
+2. Cross-certify the new key with the old key before the old key expires
+3. Publish both keys to `keys.openpgp.org` and `keyserver.ubuntu.com`
+4. Replace `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` in GitHub Actions secrets
+5. Update this README with the new Key ID and fingerprint
+
+---
+
 ## Attribution
 
 If you build a product or service on top of Idem and make it available to others, include a visible acknowledgement in your documentation, "about" screen, or equivalent location — for example:
