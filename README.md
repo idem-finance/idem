@@ -93,9 +93,11 @@ The data collected has zero privacy cost: a random UUID and two bucketed counter
 
 ---
 
-## Artifact Signing
+## Verifying Releases
 
-All release artifacts published under `finance.idem` are signed with GPG.
+### Maven artifacts (GPG)
+
+All release JARs published under `finance.idem` on Maven Central are GPG-signed.
 
 **Signing key**
 
@@ -126,6 +128,26 @@ The signing key carries a 2-year expiry. Rotation process:
 3. Publish both keys to `keys.openpgp.org` and `keyserver.ubuntu.com`
 4. Replace `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` in GitHub Actions secrets
 5. Update this README with the new Key ID and fingerprint
+
+### Container images (Cosign)
+
+Docker images published to `ghcr.io/idem-finance/idem` are signed with
+[Sigstore Cosign](https://docs.sigstore.dev/cosign/overview/) using keyless signing
+via GitHub Actions OIDC. No key pair is required — provenance is verified against
+the Rekor transparency log.
+
+**Verify a released image**
+
+```bash
+# Install Cosign: https://docs.sigstore.dev/cosign/system_config/installation/
+cosign verify \
+  --certificate-identity-regexp="https://github.com/idem-finance/idem/.github/workflows/release.yml@refs/tags/" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  ghcr.io/idem-finance/idem:v0.1.0
+```
+
+A successful verification prints the signing certificate and confirms the image was
+built by this repository's release workflow.
 
 ---
 
