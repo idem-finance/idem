@@ -33,6 +33,15 @@ jobs:
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
+      - name: Upload signed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-jars
+          path: |
+            **/target/*.jar
+            **/target/*.jar.asc
+          if-no-files-found: error
+
   publish-and-sign-image:
     runs-on: ubuntu-latest
     permissions:
