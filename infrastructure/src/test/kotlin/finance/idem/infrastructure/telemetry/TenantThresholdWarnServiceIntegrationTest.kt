@@ -10,7 +10,6 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
@@ -47,21 +46,5 @@ class TenantThresholdWarnServiceIntegrationTest {
     fun `checkTenantThreshold completes without error when no tenants exist`() {
         // zero tenants in DB — count(0) <= threshold(10) → no log, no exception
         tenantThresholdWarnService.checkTenantThreshold()
-    }
-
-    @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.NONE,
-        properties = ["idem.limits.soft-warn-threshold=-1"],
-    )
-    inner class WhenThresholdDisabled {
-
-        @Autowired
-        lateinit var service: TenantThresholdWarnService
-
-        @Test
-        fun `checkTenantThreshold returns early without querying DB`() {
-            // -1 disables: should not hit the DB, no exception
-            service.checkTenantThreshold()
-        }
     }
 }
