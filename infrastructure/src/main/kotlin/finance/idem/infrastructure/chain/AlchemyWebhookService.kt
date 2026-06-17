@@ -2,7 +2,7 @@ package finance.idem.infrastructure.chain
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import finance.idem.application.chain.AlchemyWebhookPort
+import finance.idem.application.chain.AlchemyWebhookUseCase
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
@@ -23,7 +23,7 @@ class AlchemyWebhookService(
     private val objectMapper: ObjectMapper,
     private val config: ChainConfig,
     private val deadLetterRecorder: DeadLetterRecorder,
-) : AlchemyWebhookPort {
+) : AlchemyWebhookUseCase {
 
     private val log = LoggerFactory.getLogger(javaClass)
 

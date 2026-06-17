@@ -1,6 +1,6 @@
 package finance.idem.application.chain
 
-fun interface QuickNodeWebhookPort {
+fun interface QuickNodeWebhookUseCase {
     /**
      * Handle an inbound QuickNode Streams webhook.
      *

@@ -1,6 +1,6 @@
 package finance.idem.api.internal
 
-import finance.idem.application.chain.QuickNodeWebhookPort
+import finance.idem.application.chain.QuickNodeWebhookUseCase
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.isNull
@@ -21,11 +21,11 @@ class QuickNodeWebhookControllerTest {
     lateinit var mockMvc: MockMvc
 
     @MockitoBean
-    lateinit var port: QuickNodeWebhookPort
+    lateinit var quickNodeWebhookUseCase: QuickNodeWebhookUseCase
 
     @Test
-    fun `returns 401 when port signals authentication failure`() {
-        whenever(port.handle(any(), any(), any(), any()))
+    fun `returns 401 when use case signals authentication failure`() {
+        whenever(quickNodeWebhookUseCase.handle(any(), any(), any(), any()))
             .thenReturn(Result.failure(IllegalArgumentException("bad sig")))
 
         mockMvc.post("/internal/webhooks/quicknode") {
@@ -40,8 +40,8 @@ class QuickNodeWebhookControllerTest {
     }
 
     @Test
-    fun `returns 200 when port processes successfully`() {
-        whenever(port.handle(any(), any(), any(), any()))
+    fun `returns 200 when use case processes successfully`() {
+        whenever(quickNodeWebhookUseCase.handle(any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
 
         mockMvc.post("/internal/webhooks/quicknode") {
@@ -56,8 +56,8 @@ class QuickNodeWebhookControllerTest {
     }
 
     @Test
-    fun `returns 200 when signature, nonce and timestamp headers are absent and port succeeds (dev mode)`() {
-        whenever(port.handle(isNull(), isNull(), isNull(), any()))
+    fun `returns 200 when signature, nonce and timestamp headers are absent and use case succeeds (dev mode)`() {
+        whenever(quickNodeWebhookUseCase.handle(isNull(), isNull(), isNull(), any()))
             .thenReturn(Result.success(Unit))
 
         mockMvc.post("/internal/webhooks/quicknode") {

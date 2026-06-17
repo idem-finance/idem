@@ -14,7 +14,7 @@ QuickNode sends a `POST /internal/webhooks/quicknode` request every time a trans
 ```
 QuickNode cloud ──POST /internal/webhooks/quicknode──► QuickNodeWebhookController
                                                               │
-                                                    QuickNodeWebhookPort
+                                                    QuickNodeWebhookUseCase
                                                               │
                                                     QuickNodeWebhookService
                                                      ├── HMAC validation
@@ -35,7 +35,7 @@ graph TD
     end
 
     subgraph application
-        PORT["QuickNodeWebhookPort\n«fun interface»"]
+        PORT["QuickNodeWebhookUseCase\n«fun interface»"]
     end
 
     subgraph infrastructure.chain
@@ -257,7 +257,7 @@ rtk test mvn test -pl infrastructure,api
 - `docs/solana-chain-reader.md` — `SolanaChainReader` fallback/recovery (startup gap replay)
 - `docs/evm-webhook-receiver.md` — EVM counterpart (Alchemy Address Activity webhook)
 - `docs/domain-model.md` — `ChainCheckpoint`, `OnChainEntry`, `MonetaryEntry` sealed class
-- `application/chain/QuickNodeWebhookPort.kt` — port interface
+- `application/chain/QuickNodeWebhookUseCase.kt` — use case interface
 - `infrastructure/chain/QuickNodeWebhookService.kt` — implementation
 - `api/internal/QuickNodeWebhookController.kt` — HTTP entry point
 - Issues [#74](https://github.com/idem-finance/idem/issues/74), [#99](https://github.com/idem-finance/idem/issues/99)

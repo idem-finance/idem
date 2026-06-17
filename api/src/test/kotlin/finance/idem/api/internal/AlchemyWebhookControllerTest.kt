@@ -1,6 +1,6 @@
 package finance.idem.api.internal
 
-import finance.idem.application.chain.AlchemyWebhookPort
+import finance.idem.application.chain.AlchemyWebhookUseCase
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.isNull
@@ -21,11 +21,11 @@ class AlchemyWebhookControllerTest {
     lateinit var mockMvc: MockMvc
 
     @MockitoBean
-    lateinit var alchemyWebhookPort: AlchemyWebhookPort
+    lateinit var alchemyWebhookUseCase: AlchemyWebhookUseCase
 
     @Test
-    fun `returns 401 when port signals authentication failure`() {
-        whenever(alchemyWebhookPort.handle(any(), any()))
+    fun `returns 401 when use case signals authentication failure`() {
+        whenever(alchemyWebhookUseCase.handle(any(), any()))
             .thenReturn(Result.failure(IllegalArgumentException("bad sig")))
 
         mockMvc.post("/internal/webhooks/alchemy") {
@@ -38,8 +38,8 @@ class AlchemyWebhookControllerTest {
     }
 
     @Test
-    fun `returns 200 when port processes successfully`() {
-        whenever(alchemyWebhookPort.handle(any(), any()))
+    fun `returns 200 when use case processes successfully`() {
+        whenever(alchemyWebhookUseCase.handle(any(), any()))
             .thenReturn(Result.success(Unit))
 
         mockMvc.post("/internal/webhooks/alchemy") {
@@ -52,8 +52,8 @@ class AlchemyWebhookControllerTest {
     }
 
     @Test
-    fun `returns 200 when signature header is absent and port succeeds (dev mode)`() {
-        whenever(alchemyWebhookPort.handle(isNull(), any()))
+    fun `returns 200 when signature header is absent and use case succeeds (dev mode)`() {
+        whenever(alchemyWebhookUseCase.handle(isNull(), any()))
             .thenReturn(Result.success(Unit))
 
         mockMvc.post("/internal/webhooks/alchemy") {
