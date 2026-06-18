@@ -76,3 +76,8 @@ spring:
     url: jdbc:postgresql://localhost:5432/idem_dev
     username: idem
     password: idem
+
+idem:
+  audit:
+    # Dev-only fallback — never use in production; set IDEM_AUDIT_HMAC_SECRET instead
+    hmac-secret: "dev-only-insecure-hmac-secret"

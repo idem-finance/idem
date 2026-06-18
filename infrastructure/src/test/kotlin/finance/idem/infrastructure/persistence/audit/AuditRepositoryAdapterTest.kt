@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers
-@Import(AuditRepositoryAdapter::class, PersistenceTestConfig::class)
+@Import(AuditRepositoryAdapter::class, AuditConfig::class, PersistenceTestConfig::class)
 class AuditRepositoryAdapterTest {
 
     companion object {
