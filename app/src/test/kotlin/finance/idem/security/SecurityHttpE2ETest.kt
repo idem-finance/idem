@@ -127,6 +127,38 @@ class SecurityHttpE2ETest {
         assertTrue(body.contains("\"nextCursor\":null"))
     }
 
+    @Test
+    fun `actuator metrics returns 401 without API key`() {
+        val response = restTemplate.getForEntity(
+            "http://localhost:$port/actuator/metrics",
+            String::class.java,
+        )
+        assertEquals(HttpStatus.UNAUTHORIZED, response.statusCode)
+    }
+
+    @Test
+    fun `actuator metrics returns 403 with non-ADMIN key`() {
+        val (rawKey, _) = apiKeyService.generate(TenantId.generate(), setOf(ApiScope.TRANSACTIONS_READ))
+        val response = apiGet("/actuator/metrics", rawKey)
+        assertEquals(HttpStatus.FORBIDDEN, response.statusCode)
+    }
+
+    @Test
+    fun `actuator metrics returns 200 with ADMIN scope`() {
+        val (rawKey, _) = apiKeyService.generate(TenantId.generate(), setOf(ApiScope.ADMIN))
+        val response = apiGet("/actuator/metrics", rawKey)
+        assertEquals(HttpStatus.OK, response.statusCode)
+    }
+
+    @Test
+    fun `actuator health remains accessible without auth`() {
+        val response = restTemplate.getForEntity(
+            "http://localhost:$port/actuator/health",
+            String::class.java,
+        )
+        assertEquals(HttpStatus.OK, response.statusCode)
+    }
+
     private fun apiGet(path: String, apiKey: String) = restTemplate.exchange(
         "http://localhost:$port$path",
         HttpMethod.GET,
