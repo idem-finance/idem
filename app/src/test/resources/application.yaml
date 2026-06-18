@@ -9,7 +9,11 @@ spring:
     open-in-view: false
 
 idem:
+  # Non-blank test-only values so @NotBlank constraints (AuditProperties,
+  # ChainWebhookSecurityValidator) don't fail context startup in @SpringBootTest suites.
+  # AlchemyWebhookIntegrationTest overrides alchemy-webhook-signing-key via @TestPropertySource.
   audit:
-    # Non-blank test-only value so @NotBlank on AuditProperties doesn't fail @SpringBootTest startup.
-    # Production must set IDEM_AUDIT_HMAC_SECRET via secret manager.
     hmac-secret: "test-only-insecure-hmac-secret"
+  chain:
+    alchemy-webhook-signing-key: "test-only-insecure-alchemy-key"
+    quicknode-webhook-secret: "test-only-insecure-quicknode-secret"

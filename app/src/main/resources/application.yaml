@@ -42,6 +42,7 @@ idem:
     solana:
       rpc-url: "${QUICKNODE_SOLANA_URL:}"
       batch-size: 100
+    alchemy-webhook-signing-key: "${ALCHEMY_WEBHOOK_SIGNING_KEY:}"
     quicknode-webhook-secret: "${QUICKNODE_WEBHOOK_SECRET:}"
     tron:
       api-url: https://apilist.tronscan.org
