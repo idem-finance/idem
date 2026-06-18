@@ -13,6 +13,9 @@ spring:
 server:
   port: 8081
 
+springdoc:
+  paths-to-exclude: /internal/**
+
 management:
   endpoints:
     web:
