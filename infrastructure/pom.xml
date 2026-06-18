@@ -36,6 +36,12 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Bean Validation — @NotBlank on @ConfigurationProperties (e.g. AuditProperties) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
         <!-- Metrics — MeterRegistry for chain dead-letter alerting (idem.chain.dead_letter) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -158,6 +164,8 @@
                         <exclude>finance/idem/infrastructure/chain/TronChainReader$*</exclude>
                         <!-- TronNetworkConfig — Kotlin data class synthetic branches -->
                         <exclude>finance/idem/infrastructure/chain/TronNetworkConfig*</exclude>
+                        <!-- AuditProperties — Kotlin data class synthetic branches -->
+                        <exclude>finance/idem/infrastructure/persistence/audit/AuditProperties*</exclude>
                         <!-- WebSecurityConfig — pure Spring Security wiring, no business logic;
                              @ConditionalOnWebApplication(SERVLET) means it never loads in infra tests -->
                         <exclude>finance/idem/infrastructure/security/WebSecurityConfig*</exclude>
