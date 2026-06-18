@@ -10,3 +10,6 @@ spring:
 idem:
   audit:
     hmac-secret: test-only-insecure-hmac-secret
+  chain:
+    alchemy-webhook-signing-key: "test-only-insecure-alchemy-key"
+    quicknode-webhook-secret: "test-only-insecure-quicknode-secret"
