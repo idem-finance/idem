@@ -158,7 +158,7 @@ class AccountControllerTest {
     }
 
     @Test
-    fun `getBalance unexpected use case error returns 500`() {
+    fun `getBalance unexpected use case error returns 500 with generic message`() {
         whenever(getBalanceUseCase.execute(any()))
             .thenReturn(Result.failure(RuntimeException("boom")))
 
@@ -167,6 +167,7 @@ class AccountControllerTest {
         }.andExpect {
             status { isInternalServerError() }
             jsonPath("$.code") { value("INTERNAL_ERROR") }
+            jsonPath("$.message") { value("An unexpected error occurred") }
         }
     }
 
@@ -267,7 +268,7 @@ class AccountControllerTest {
     }
 
     @Test
-    fun `listEntries unexpected use case error returns 500`() {
+    fun `listEntries unexpected use case error returns 500 with generic message`() {
         whenever(getEntriesUseCase.execute(any()))
             .thenReturn(Result.failure(RuntimeException("boom")))
 
@@ -276,6 +277,7 @@ class AccountControllerTest {
         }.andExpect {
             status { isInternalServerError() }
             jsonPath("$.code") { value("INTERNAL_ERROR") }
+            jsonPath("$.message") { value("An unexpected error occurred") }
         }
     }
 
@@ -344,7 +346,7 @@ class AccountControllerTest {
     }
 
     @Test
-    fun `statement unexpected use case error returns 500`() {
+    fun `statement unexpected use case error returns 500 with generic message`() {
         whenever(generateStatementUseCase.execute(any()))
             .thenReturn(Result.failure(RuntimeException("boom")))
 
@@ -353,6 +355,7 @@ class AccountControllerTest {
         }.andExpect {
             status { isInternalServerError() }
             jsonPath("$.code") { value("INTERNAL_ERROR") }
+            jsonPath("$.message") { value("An unexpected error occurred") }
         }
     }
 }

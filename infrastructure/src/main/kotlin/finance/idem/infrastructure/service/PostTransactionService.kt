@@ -95,8 +95,8 @@ class PostTransactionService(
             return Result.failure(InvariantViolation(e.message ?: "Ledger invariant violated"))
         }
 
-        transactionRepository.save(transaction)
         auditRepository.save(AuditEntry.from(transaction, cmd.agentContext, cmd.createdBy))
+        transactionRepository.save(transaction)
         webhookOutboxRepository.save(WebhookOutboxEntry.transactionCommitted(transaction))
         reconciliationService.reconcile(transaction)
 

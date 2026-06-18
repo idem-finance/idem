@@ -12,6 +12,8 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.Valid
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -29,6 +31,8 @@ class TransactionController(
     private val postTransactionUseCase: PostTransactionUseCase,
 ) {
 
+    private val log = LoggerFactory.getLogger(javaClass)
+
     @PostMapping
     @PreAuthorize("hasAuthority('TRANSACTIONS_WRITE')")
     @Operation(summary = "Post a balanced transaction")
@@ -43,7 +47,7 @@ class TransactionController(
     fun postTransaction(
         @Parameter(description = "Client-generated idempotency key, max 255 chars", required = true)
         @RequestHeader("Idempotency-Key") idempotencyKey: String,
-        @RequestBody request: PostTransactionRequest,
+        @Valid @RequestBody request: PostTransactionRequest,
     ): ResponseEntity<Any> {
         val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
@@ -79,9 +83,11 @@ class TransactionController(
                     is InvariantViolation ->
                         ResponseEntity.unprocessableEntity()
                             .body(ErrorResponse("INVARIANT_VIOLATION", error.message ?: ""))
-                    else ->
+                    else -> {
+                        log.error("Unexpected error posting transaction", error)
                         ResponseEntity.internalServerError()
-                            .body(ErrorResponse("INTERNAL_ERROR", error.message ?: "Unexpected error"))
+                            .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
+                    }
                 }
             },
         )

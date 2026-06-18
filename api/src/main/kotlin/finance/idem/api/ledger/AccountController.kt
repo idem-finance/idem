@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -37,6 +38,8 @@ class AccountController(
     private val getEntriesUseCase: GetEntriesUseCase,
     private val generateStatementUseCase: GenerateStatementUseCase,
 ) {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     @GetMapping("/{accountId}/balance")
     @PreAuthorize("hasAuthority('ACCOUNTS_READ')")
@@ -70,9 +73,11 @@ class AccountController(
                 when (error) {
                     is BalanceAccountNotFound ->
                         ResponseEntity.notFound().build()
-                    else ->
+                    else -> {
+                        log.error("Unexpected error fetching balance for account $accountId", error)
                         ResponseEntity.internalServerError()
-                            .body(ErrorResponse("INTERNAL_ERROR", error.message ?: "Unexpected error"))
+                            .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
+                    }
                 }
             },
         )
@@ -133,9 +138,11 @@ class AccountController(
                     is InvalidCursor ->
                         ResponseEntity.badRequest()
                             .body(ErrorResponse("INVALID_CURSOR", error.message ?: "Invalid cursor"))
-                    else ->
+                    else -> {
+                        log.error("Unexpected error fetching entries for account $accountId", error)
                         ResponseEntity.internalServerError()
-                            .body(ErrorResponse("INTERNAL_ERROR", error.message ?: "Unexpected error"))
+                            .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
+                    }
                 }
             },
         )
@@ -187,9 +194,11 @@ class AccountController(
                 when (error) {
                     is StatementAccountNotFound ->
                         ResponseEntity.notFound().build()
-                    else ->
+                    else -> {
+                        log.error("Unexpected error generating statement for account $accountId", error)
                         ResponseEntity.internalServerError()
-                            .body(ErrorResponse("INTERNAL_ERROR", error.message ?: "Unexpected error"))
+                            .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
+                    }
                 }
             },
         )
