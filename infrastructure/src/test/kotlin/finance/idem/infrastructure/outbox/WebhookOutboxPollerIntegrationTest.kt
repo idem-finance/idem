@@ -25,6 +25,9 @@ import net.javacrumbs.shedlock.core.LockConfiguration
 import net.javacrumbs.shedlock.core.SimpleLock
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider
 import org.springframework.jdbc.core.JdbcTemplate
+import finance.idem.infrastructure.outbox.WebhookUrlValidator
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Primary
 import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -84,6 +87,12 @@ class WebhookOutboxPollerIntegrationTest {
         private val tenantJpaRepository: TenantJpaRepository,
         private val webhookOutboxJpaRepository: WebhookOutboxJpaRepository,
     ) {
+        // WireMock runs on localhost (http) — bypass SSRF protection in this integration suite.
+        // SSRF validation is covered by SsrfWebhookUrlValidatorTest.
+        @Bean
+        @Primary
+        fun webhookUrlValidator(): WebhookUrlValidator = WebhookUrlValidator { Result.success(Unit) }
+
         val tenantA: TenantId = TenantId.generate() // delivered on first attempt
         val tenantB: TenantId = TenantId.generate() // HTTP 500 -> retry with backoff
         val tenantC: TenantId = TenantId.generate() // already at attempts=4 -> DEAD on next failure
