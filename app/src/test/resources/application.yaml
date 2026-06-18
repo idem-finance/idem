@@ -1,3 +1,13 @@
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,modulith,metrics
+
+spring:
+  jpa:
+    open-in-view: false
+
 idem:
   audit:
     # Non-blank test-only value so @NotBlank on AuditProperties doesn't fail @SpringBootTest startup.
