@@ -263,12 +263,17 @@ the shared `DeadLetterRecorder.record(transfer, chainKey, source, error, logPref
    `TAG_SOURCE`). Query it via:
 
    ```
+   # Requires an API key with ADMIN scope (see issue #123)
    GET /actuator/metrics/idem.chain.dead_letter
+   X-API-Key: <sk_live_...>
+
    GET /actuator/metrics/idem.chain.dead_letter?tag=chain_key:EVM_1&tag=source:chain-recovery
+   X-API-Key: <sk_live_...>
    ```
 
    (`spring-boot-starter-actuator` is a compile dependency of `infrastructure`;
-   `management.endpoints.web.exposure.include` includes `metrics`.)
+   `management.endpoints.web.exposure.include` includes `metrics`.
+   Access to `/actuator/metrics` requires an API key with `ADMIN` scope — see issue #123.)
 
 2. **Writes a row to `failed_chain_transfers`** via
    `DetectedTransfer.toFailedChainTransfer(chainKey, source, error)` →

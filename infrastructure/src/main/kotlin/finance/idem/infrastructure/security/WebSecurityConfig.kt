@@ -30,7 +30,8 @@ class WebSecurityConfig {
             .authorizeHttpRequests { auth ->
                 // Internal webhook endpoints are authenticated by HMAC signature, not API keys.
                 auth.requestMatchers("/internal/**").permitAll()
-                auth.requestMatchers("/actuator/**").permitAll()
+                auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                auth.requestMatchers("/actuator/**").hasAuthority("ADMIN")
                 auth.requestMatchers("/error").permitAll()
                 auth.anyRequest().authenticated()
             }
