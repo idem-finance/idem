@@ -362,16 +362,16 @@ class PostTransactionServiceTest {
     }
 
     @Test
-    fun `reconcile is called last, after the other three writes`() {
+    fun `audit is written before transaction, webhook last before reconcile`() {
         whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         stubSave()
 
         service.execute(command())
 
-        val order = inOrder(transactionRepository, auditRepository, webhookOutboxRepository, reconciliationService)
-        order.verify(transactionRepository).save(any())
+        val order = inOrder(auditRepository, transactionRepository, webhookOutboxRepository, reconciliationService)
         order.verify(auditRepository).save(any())
+        order.verify(transactionRepository).save(any())
         order.verify(webhookOutboxRepository).save(any())
         order.verify(reconciliationService).reconcile(any())
     }

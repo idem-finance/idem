@@ -270,7 +270,7 @@ class TransactionControllerTest {
     }
 
     @Test
-    fun `unexpected use case error returns 500`() {
+    fun `unexpected use case error returns 500 with generic message`() {
         whenever(postTransactionUseCase.execute(any()))
             .thenReturn(Result.failure(RuntimeException("boom")))
 
@@ -282,6 +282,39 @@ class TransactionControllerTest {
         }.andExpect {
             status { isInternalServerError() }
             jsonPath("$.code") { value("INTERNAL_ERROR") }
+            jsonPath("$.message") { value("An unexpected error occurred") }
+        }
+    }
+
+    @Test
+    fun `oversized metadata returns 400`() {
+        val oversizedMetadata = (1..51).associate { "key$it" to "value" }
+        val body = objectMapper.writeValueAsString(
+            mapOf(
+                "lines" to listOf(
+                    mapOf(
+                        "accountId" to UUID.randomUUID().toString(),
+                        "entryType" to "DEBIT",
+                        "monetaryEntry" to mapOf("type" to "FIAT", "amount" to "100.00", "currency" to "BRL", "rail" to "PIX"),
+                    ),
+                    mapOf(
+                        "accountId" to UUID.randomUUID().toString(),
+                        "entryType" to "CREDIT",
+                        "monetaryEntry" to mapOf("type" to "FIAT", "amount" to "100.00", "currency" to "BRL", "rail" to "PIX"),
+                    ),
+                ),
+                "metadata" to oversizedMetadata,
+            )
+        )
+
+        mockMvc.post("/api/v1/transactions") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_WRITE")))
+            header("Idempotency-Key", idempotencyKey)
+            contentType = MediaType.APPLICATION_JSON
+            content = body
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("VALIDATION_ERROR") }
         }
     }
 }
