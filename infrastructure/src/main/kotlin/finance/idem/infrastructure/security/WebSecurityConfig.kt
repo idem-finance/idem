@@ -33,6 +33,8 @@ class WebSecurityConfig {
                 auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                 auth.requestMatchers("/actuator/**").hasAuthority("ADMIN")
                 auth.requestMatchers("/error").permitAll()
+                auth.requestMatchers("/swagger-ui/**").permitAll()
+                auth.requestMatchers("/v3/api-docs/**").permitAll()
                 auth.anyRequest().authenticated()
             }
             .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
