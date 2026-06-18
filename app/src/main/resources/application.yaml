@@ -82,3 +82,6 @@ idem:
   audit:
     # Dev-only fallback — never use in production; set IDEM_AUDIT_HMAC_SECRET instead
     hmac-secret: "dev-only-insecure-hmac-secret"
+  webhook:
+    # Allow http:// in local dev so tenant webhook receivers can run on plain localhost
+    require-https: false

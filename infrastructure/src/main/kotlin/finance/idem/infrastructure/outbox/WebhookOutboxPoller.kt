@@ -21,6 +21,7 @@ class WebhookOutboxPoller(
     private val webhookOutboxRepository: WebhookOutboxRepository,
     private val tenantRepository: TenantRepository,
     private val httpClient: HttpClient,
+    private val urlValidator: WebhookUrlValidator,
     @Value("\${idem.webhook.timeout-ms:5000}") private val timeoutMs: Long,
     @Value("\${idem.webhook.max-attempts:5}") private val maxAttempts: Int,
     @Value("\${idem.webhook.batch-size:50}") private val batchSize: Int,
@@ -51,6 +52,14 @@ class WebhookOutboxPoller(
 
         if (config == null) {
             log.debug("WebhookOutboxPoller: no webhook configured for tenant={} -- leaving id={} PENDING", entry.tenantId.value, entry.id)
+            return
+        }
+
+        // SSRF guard — mark dead immediately, never retry a malicious URL
+        urlValidator.validate(config.webhookUrl).onFailure { e ->
+            log.warn("WebhookOutboxPoller: SSRF-blocked delivery id={} tenant={}: {}", entry.id, entry.tenantId.value, e.message)
+            runCatching { webhookOutboxRepository.markDead(entry.id, entry.tenantId, "SSRF_BLOCKED: ${e.message}") }
+                .onFailure { ex -> log.error("WebhookOutboxPoller: failed to mark SSRF-blocked row id=${entry.id} as DEAD", ex) }
             return
         }
 

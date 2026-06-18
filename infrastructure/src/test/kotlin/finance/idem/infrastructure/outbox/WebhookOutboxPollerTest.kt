@@ -31,6 +31,7 @@ class WebhookOutboxPollerTest {
     private lateinit var webhookOutboxRepository: WebhookOutboxRepository
     private lateinit var tenantRepository: TenantRepository
     private lateinit var httpClient: HttpClient
+    private lateinit var urlValidator: WebhookUrlValidator
 
     private val tenantId = TenantId.generate()
     private val webhookConfig = TenantWebhookConfig(webhookUrl = "https://example.com/webhook", webhookSecret = "test-secret")
@@ -40,12 +41,14 @@ class WebhookOutboxPollerTest {
         webhookOutboxRepository = mock()
         tenantRepository = mock()
         httpClient = mock()
+        urlValidator = WebhookUrlValidator { Result.success(Unit) }
     }
 
     private fun poller(maxAttempts: Int = 5) = WebhookOutboxPoller(
         webhookOutboxRepository = webhookOutboxRepository,
         tenantRepository = tenantRepository,
         httpClient = httpClient,
+        urlValidator = urlValidator,
         timeoutMs = 5000,
         maxAttempts = maxAttempts,
         batchSize = 50,
@@ -192,6 +195,26 @@ class WebhookOutboxPollerTest {
     @Test
     fun `constructor accepts maxAttempts at the lower boundary`() {
         poller(maxAttempts = 1)
+    }
+
+    @Test
+    fun `SSRF-blocked URL marks the row DEAD immediately and skips httpClient`() {
+        val entry = dispatch()
+        val ssrfConfig = TenantWebhookConfig(webhookUrl = "http://169.254.169.254/latest/meta-data/", webhookSecret = "secret")
+        whenever(webhookOutboxRepository.findDispatchable(50)).thenReturn(listOf(entry))
+        whenever(tenantRepository.findWebhookConfig(tenantId)).thenReturn(ssrfConfig)
+        urlValidator = WebhookUrlValidator { Result.failure(IllegalArgumentException("link-local address")) }
+
+        poller().poll()
+
+        verifyNoInteractions(httpClient)
+        verify(webhookOutboxRepository).markDead(
+            eq(entry.id),
+            any(),
+            org.mockito.kotlin.argThat { contains("SSRF_BLOCKED") },
+        )
+        verify(webhookOutboxRepository, never()).markDelivered(any(), any())
+        verify(webhookOutboxRepository, never()).markFailedForRetry(any(), any(), any(), any(), any())
     }
 
     @Test
