@@ -1,75 +1,258 @@
-# Idem
+# idem
 
-Open-source, event-sourced double-entry ledger for institutions settling cross-border payments on stablecoin rails. Handles fiat and on-chain entries natively in one unified model, with a first-class agentic execution layer.
+Double-entry ledger for institutions settling cross-border payments on stablecoin rails.
 
-Licensed under [FSL-1.1-Apache-2.0](LICENSE.md). Converts to Apache 2.0 after two years.
+[![CI](https://github.com/idem-finance/idem/actions/workflows/ci.yml/badge.svg)](https://github.com/idem-finance/idem/actions/workflows/ci.yml)
+[![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue)](LICENSE.md)
+[![GitHub Stars](https://img.shields.io/github/stars/idem-finance/idem?style=social)](https://github.com/idem-finance/idem)
 
 ---
 
-## Requirements
+Idem is an API-first, event-sourced double-entry ledger built for fintechs and PSPs that move money across fiat and stablecoin rails simultaneously. It models both `FiatEntry` and `OnChainEntry` (EVM, Solana, Tron) in a single unified transaction, enforces debits-equal-credits at the domain layer, and reads on-chain transfers automatically via Alchemy and QuickNode webhooks. It is not a payment processor — it records and reconciles money movement, it does not initiate it.
 
-- Java 21+
-- Docker (for local PostgreSQL and Redis)
-- Maven 3.9+
+---
+
+## Why Idem
+
+- **Fiat and on-chain in one double-entry model.** A single transaction can contain a PIX debit and a USDC credit on Base. No separate reconciliation step between your fiat ledger and a blockchain indexer.
+- **On-chain entries auto-post.** Alchemy (EVM) and QuickNode (Solana) webhooks drive chain event ingestion. Tron is polled via Tronscan REST. Transfers to watched addresses create ledger entries automatically, idempotently keyed by `chainId:txHash`.
+- **Scope-based API key auth with PostgreSQL RLS as the backstop.** Every request is validated against bcrypt-hashed keys cached in Redis. Even if auth is bypassed, PostgreSQL row-level security prevents cross-tenant data access.
+- **Multi-replica safe out of the box.** Outbox polling and Tron chain polling are guarded by ShedLock-backed distributed locks. Single-instance deployments run without any coordination overhead.
+
+---
 
 ## Quick start
 
+**Prerequisites:** JDK 21, Maven 3.9+, Docker
+
 ```bash
-# Start backing services
+# Start PostgreSQL 16 and Redis 7
 docker compose up -d
 
-# Build all modules
+# Build all modules (skips tests for speed)
 ./mvnw install -DskipTests
 
-# Run with seed data
-mvn spring-boot:run -pl app -Dspring-boot.run.profiles=dev,seed
-
-# The API is available at http://localhost:8081
+# Run the application
+./mvnw spring-boot:run -pl app -Dspring-boot.run.profiles=dev
 ```
 
-## Running tests
+The API is available at `http://localhost:8081`. Interactive OpenAPI docs: `http://localhost:8081/swagger-ui.html`.
+
+### Create an API key
+
+Idem requires an API key for all ledger endpoints. In dev, insert one directly:
+
+```sql
+-- Connect to idem_dev; the hash below is BCrypt(12) of "sk_test_devkey00000000000000000000"
+INSERT INTO api_keys (id, tenant_id, key_hash, key_prefix, scopes, name, created_at)
+VALUES (
+  gen_random_uuid(),
+  'your-tenant-id',
+  '$2a$12$7QZmPpYaKvH9A3l4Sz1uPe1C6zZ0yFIlMkU4Hx4OhI8mX8T7GH3Ky',
+  'sk_test_devk',
+  ARRAY['TRANSACTIONS_WRITE','ACCOUNTS_READ'],
+  'local dev key',
+  now()
+);
+```
+
+> In production, keys are generated via the API and the raw value is shown exactly once.
+
+### Post a transaction
 
 ```bash
-mvn test                       # all modules
-mvn test -pl core              # single module
-mvn verify                     # full build + tests + coverage checks
+curl -X POST http://localhost:8081/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: sk_test_devkey00000000000000000000" \
+  -H "Idempotency-Key: tx-$(uuidgen)" \
+  -d '{
+    "lines": [
+      {
+        "accountId": "<debit-account-uuid>",
+        "entryType": "DEBIT",
+        "monetaryEntry": {
+          "type": "FIAT",
+          "amount": 1000.00,
+          "currency": "USD",
+          "rail": "WIRE"
+        }
+      },
+      {
+        "accountId": "<credit-account-uuid>",
+        "entryType": "CREDIT",
+        "monetaryEntry": {
+          "type": "FIAT",
+          "amount": 1000.00,
+          "currency": "USD",
+          "rail": "WIRE"
+        }
+      }
+    ]
+  }'
 ```
 
-## Documentation
+```json
+{ "transactionId": "3fa85f64-5717-4562-b3fc-2c963f66afa6" }
+```
 
-- [`STRATEGY.md`](STRATEGY.md) — full product context and roadmap
-- [`CONTEXT.md`](CONTEXT.md) — quick context card for new sessions
-- [`docs/`](docs/) — component-level technical docs
+An on-chain entry looks like:
+
+```json
+{
+  "accountId": "<account-uuid>",
+  "entryType": "CREDIT",
+  "monetaryEntry": {
+    "type": "ONCHAIN",
+    "amount": 1000.00,
+    "token": "USDC",
+    "chainId": "EVM",
+    "txHash": "0xabc...",
+    "blockNumber": 19500000,
+    "walletAddress": "0xabc...",
+    "tokenContract": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+  }
+}
+```
+
+### Query balance
+
+```bash
+curl http://localhost:8081/api/v1/accounts/<account-uuid>/balance \
+  -H "X-API-Key: sk_test_devkey00000000000000000000"
+```
+
+Point-in-time balance: append `?asOf=2025-01-01T00:00:00Z`.
+
+### Kotlin SDK
+
+```kotlin
+val client = IdemClient(
+    baseUrl = "http://localhost:8081",
+    apiKey  = "sk_test_devkey00000000000000000000",
+)
+
+val tx = client.postTransaction(
+    PostTransactionRequest(
+        lines = listOf(
+            JournalLineRequest(
+                accountId = debitAccountId,
+                entryType = EntryType.DEBIT,
+                monetaryEntry = FiatEntryRequest(
+                    amount     = BigDecimal("1000.00"),
+                    currency   = FiatCurrency.USD,
+                    rail       = PaymentRail.WIRE,
+                ),
+            ),
+            JournalLineRequest(
+                accountId = creditAccountId,
+                entryType = EntryType.CREDIT,
+                monetaryEntry = FiatEntryRequest(
+                    amount     = BigDecimal("1000.00"),
+                    currency   = FiatCurrency.USD,
+                    rail       = PaymentRail.WIRE,
+                ),
+            ),
+        ),
+    ),
+    idempotencyKey = UUID.randomUUID().toString(),
+)
+```
+
+---
+
+## API reference
+
+| Method | Path | Scope required | Description |
+|--------|------|---------------|-------------|
+| `POST` | `/api/v1/transactions` | `TRANSACTIONS_WRITE` | Post a balanced double-entry transaction |
+| `GET` | `/api/v1/accounts/{id}/balance` | `ACCOUNTS_READ` | Current or point-in-time balance |
+| `GET` | `/api/v1/accounts/{id}/entries` | `ACCOUNTS_READ` | Paginated reverse-chronological entry timeline |
+| `GET` | `/api/v1/accounts/{id}/statement` | `ACCOUNTS_READ` | Statement with opening/closing balances |
+| `POST` | `/internal/webhooks/alchemy` | — | Alchemy Notify inbound (HMAC-validated) |
+| `POST` | `/internal/webhooks/quicknode` | — | QuickNode Streams inbound (HMAC-validated) |
+
+Full OpenAPI spec available at `/v3/api-docs` when the app is running.
+
+**Available scopes:** `TRANSACTIONS_READ`, `TRANSACTIONS_WRITE`, `ACCOUNTS_READ`, `ACCOUNTS_WRITE`, `AGENTS_EXECUTE`, `AGENTS_AUDIT_READ`, `RECONCILIATION_READ`, `RECONCILIATION_WRITE`, `COMPLIANCE_EXPORT`, `WEBHOOK_MANAGE`, `ADMIN`
+
+---
+
+## Architecture
+
+Idem is a modular monolith (Spring Modulith). Module boundaries are enforced at compile time — violations fail the build.
+
+```
+app ──┬── api ──────────────┬── application ── core
+      ├── infrastructure ───┘
+      └── mcp (planned)
+
+sdk-kotlin  (standalone HTTP client, no internal module deps)
+```
+
+**Dependency rule:** `app → {api, infrastructure, mcp} → application → core`. The `core` module has zero framework dependencies — pure Kotlin, compiles without Spring on the classpath.
+
+**`MonetaryEntry` sealed class** is the central design decision: a single journal line carries either a `FiatEntry` (amount, currency, rail, bankReference) or an `OnChainEntry` (amount, token, chainId, txHash, blockNumber, walletAddress, tokenContract). The double-entry invariant — debits == credits per currency per transaction — is enforced in `Transaction.validate()` and never bypassed.
+
+All side effects (audit log, webhook outbox) are written in the **same `@Transactional`** as the primary operation. No event bus. Webhook delivery runs via a `@Scheduled` outbox poller with exponential backoff (5s → 30s → 2m → 10m → 1h, max 5 attempts).
+
+Technical documentation for individual components lives in [`docs/`](docs/).
+
+---
+
+## Tech stack
+
+| Component | Version |
+|-----------|---------|
+| Kotlin | 1.9.25 |
+| JVM | 21 |
+| Spring Boot | 3.5.15 |
+| Spring Modulith | 1.4.11 |
+| PostgreSQL | 16 |
+| Redis | 7 |
+| Web3j (EVM chain reader) | 4.12.0 |
+| ShedLock (distributed scheduling) | 6.6.0 |
+| Flyway | managed by Spring Boot parent |
+| springdoc-openapi | 2.8.9 |
+
+---
+
+## Project status
+
+Idem is under active development. The core ledger engine, API key authentication, chain readers (EVM, Solana, Tron), webhook outbox, reconciliation, and Kotlin SDK are complete. **Not yet implemented:** MCP server, agentic workflow engine (PolicyGuard, rollback service), Travel Rule (IVMS 101), LGPD export, and Keycloak dashboard login.
+
+Not yet recommended for production use without independent review.
+
+Live roadmap: [GitHub Milestones](https://github.com/idem-finance/idem/milestones) · [Open Issues](https://github.com/idem-finance/idem/issues)
+
+---
+
+## Contributing
+
+No CONTRIBUTING.md yet — open an issue to discuss before submitting large PRs.
+
+All commits require a Developer Certificate of Origin sign-off:
+
+```bash
+git commit -s -m "feat: describe the change"
+```
+
+Run tests locally:
+
+```bash
+./mvnw test                    # all modules
+./mvnw test -pl core           # single module
+./mvnw verify                  # full build + tests + JaCoCo coverage (80% minimum)
+```
+
+Tests that touch PostgreSQL or Redis use Testcontainers — Docker must be running.
 
 ---
 
 ## Telemetry
 
-Idem collects **anonymous, non-identifying** usage data to help prioritise development. No personal data, business data, or identifying information is ever collected.
+Idem collects anonymous, non-identifying usage data (a random installation UUID, bucketed tenant/entry counts, JVM version) sent once per week to `telemetry.idem.finance`. No transaction data, wallet addresses, amounts, or PII are ever collected.
 
-### What is collected
-
-| Field | Description |
-|---|---|
-| `installationId` | A random UUID generated on first startup and stored locally in your database. It is never tied to any person, organisation, or account. |
-| `idemVersion` | The idem version string (e.g. `0.1.0`). |
-| `javaVersion` | The JVM version string (e.g. `21.0.3`). |
-| `tenantBucket` | A bucketed tenant count: `1`, `2-10`, `11-50`, or `50+`. Never the exact count. |
-| `entryBucket` | A bucketed journal-line count using the same buckets. Never the exact count. |
-
-A single HTTP POST is sent to `https://telemetry.idem.finance/ping` once per week (every Monday at 01:00 UTC).
-
-### What is NOT collected
-
-- Tenant IDs, names, or any identifying tenant metadata
-- Account IDs, wallet addresses, or transaction data
-- Entry amounts or currency information
-- IP addresses or network information
-- Any user identities or PII of any kind
-
-### How to disable
-
-Set the following property in your `application.yaml`:
+Opt out via `application.yaml` or environment variable:
 
 ```yaml
 idem:
@@ -77,84 +260,59 @@ idem:
     enabled: false
 ```
 
-Or via environment variable:
-
 ```bash
 IDEM_TELEMETRY_ENABLED=false
 ```
 
-When disabled, no network connection is attempted and no data is collected.
-
-### Why opt-out by default?
-
-Idem is open-source and self-hosted. Without any signal, it is impossible to know how many installations are running, which versions are in production, or whether deployments skew toward small teams or larger organisations. This shapes every prioritisation decision — from which Java versions to support to how aggressively to deprecate old APIs.
-
-The data collected has zero privacy cost: a random UUID and two bucketed counters reveal nothing about your business. If you still prefer to opt out, the single property above is all you need.
-
 ---
 
-## Verifying Releases
+## Release verification
 
-### Maven artifacts (GPG)
+<details>
+<summary>GPG signature (Maven artifacts)</summary>
 
 All release JARs published under `finance.idem` on Maven Central are GPG-signed.
 
-**Signing key**
-
-| Field       | Value                                              |
-|-------------|-----------------------------------------------------|
-| Owner       | Idem Finance \<flaubert165@gmail.com\>             |
-| Key ID      | `0ABC39374C2B51EC`                                 |
+| Field | Value |
+|-------|-------|
+| Owner | Idem Finance \<flaubert165@gmail.com\> |
+| Key ID | `0ABC39374C2B51EC` |
 | Fingerprint | `3E33 3148 F633 F474 9F6A 4DF3 0ABC 3939 4C2B 51EC` |
-| Key server  | `keys.openpgp.org`                                 |
-| Expiry      | 2 years from generation date; rotate before expiry |
-
-**Verify a downloaded artifact**
+| Key server | `keys.openpgp.org` |
 
 ```bash
-# Import the public key (once)
 gpg --keyserver keys.openpgp.org --recv-keys 3E333148F633F4749F6A4DF30ABC39374C2B51EC
-
-# Verify the .asc signature against the JAR
 gpg --verify finance.idem.core-0.1.0.jar.asc finance.idem.core-0.1.0.jar
-# Expected: "Good signature from Idem Finance <flaubert165@gmail.com>"
 ```
 
-**Key rotation**
+</details>
 
-The signing key carries a 2-year expiry. Rotation process:
-1. Generate a new RSA-4096 key with the same owner identity
-2. Cross-certify the new key with the old key before the old key expires
-3. Publish both keys to `keys.openpgp.org` and `keyserver.ubuntu.com`
-4. Replace `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` in GitHub Actions secrets
-5. Update this README with the new Key ID and fingerprint
+<details>
+<summary>Cosign signature (container images)</summary>
 
-### Container images (Cosign)
-
-Docker images published to `ghcr.io/idem-finance/idem` are signed with
-[Sigstore Cosign](https://docs.sigstore.dev/cosign/overview/) using keyless signing
-via GitHub Actions OIDC. No key pair is required — provenance is verified against
-the Rekor transparency log.
-
-**Verify a released image**
+Docker images at `ghcr.io/idem-finance/idem` are signed with [Sigstore Cosign](https://docs.sigstore.dev/cosign/overview/) via keyless signing (GitHub Actions OIDC).
 
 ```bash
-# Install Cosign: https://docs.sigstore.dev/cosign/system_config/installation/
 cosign verify \
   --certificate-identity-regexp="https://github.com/idem-finance/idem/.github/workflows/release.yml@refs/tags/" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   ghcr.io/idem-finance/idem:v0.1.0
 ```
 
-A successful verification prints the signing certificate and confirms the image was
-built by this repository's release workflow.
+</details>
 
 ---
 
-## Attribution
+## License
 
-If you build a product or service on top of Idem and make it available to others, include a visible acknowledgement in your documentation, "about" screen, or equivalent location — for example:
+[FSL-1.1-Apache-2.0](LICENSE.md) — free to use, modify, and self-host for any purpose that does not compete with Idem as a managed service. Converts to Apache 2.0 automatically two years after each release. Full license text: [fsl.software](https://fsl.software/FSL-1.1-Apache-2.0).
 
-> Powered by [Idem](https://github.com/idem-finance/idem)
+If you build a product on Idem and make it available to others, include an acknowledgement in your documentation: "Powered by [Idem](https://github.com/idem-finance/idem)".
 
-This requirement is part of the FSL-1.1-Apache-2.0 license and applies during the FSL window (the first two years after each release). It does not apply to purely internal deployments.
+---
+
+## Links
+
+- Website: [idem.finance](https://idem.finance)
+- X: [@idem_finance](https://x.com/idem_finance)
+- Documentation: coming soon
