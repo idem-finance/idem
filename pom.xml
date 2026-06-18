@@ -156,6 +156,8 @@
                                         <exclude>finance.idem.IdemApplicationKt</exclude>
                                         <exclude>finance.idem.TestIdemApplication</exclude>
                                         <exclude>finance.idem.TestcontainersConfiguration</exclude>
+                                        <!-- Dev-only seed runner — calls exitProcess, not unit-testable by design. -->
+                                        <exclude>finance.idem.DevDataSeeder</exclude>
                                         <exclude>finance.idem.core.AccountId</exclude>
                                         <exclude>finance.idem.core.TransactionId</exclude>
                                         <exclude>finance.idem.core.TenantId</exclude>
