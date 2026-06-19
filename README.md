@@ -27,10 +27,13 @@ Idem is an API-first, event-sourced double-entry ledger built for fintechs and P
 
 ```bash
 # Start PostgreSQL 16 and Redis 7
-docker compose up -d
+make up          # or: docker compose up -d
 
 # Build all modules (skips tests for speed)
-./mvnw install -DskipTests
+make build       # or: ./mvnw install -DskipTests
+
+# Seed the dev tenant and print your ADMIN API key
+make seed
 
 # Run the application
 ./mvnw spring-boot:run -pl app -Dspring-boot.run.profiles=dev
@@ -38,32 +41,16 @@ docker compose up -d
 
 The API is available at `http://localhost:8081`. Interactive OpenAPI docs: `http://localhost:8081/swagger-ui.html`.
 
-### Create an API key
+`make seed` creates a dev tenant (idempotent) and generates a fresh ADMIN-scoped API key printed to stdout. Copy the `IDEM_API_KEY=sk_live_...` value — it is shown exactly once.
 
-Idem requires an API key for all ledger endpoints. In dev, insert one directly:
-
-```sql
--- Connect to idem_dev; the hash below is BCrypt(12) of "sk_test_devkey00000000000000000000"
-INSERT INTO api_keys (id, tenant_id, key_hash, key_prefix, scopes, name, created_at)
-VALUES (
-  gen_random_uuid(),
-  'your-tenant-id',
-  '$2a$12$7QZmPpYaKvH9A3l4Sz1uPe1C6zZ0yFIlMkU4Hx4OhI8mX8T7GH3Ky',
-  'sk_test_devk',
-  ARRAY['TRANSACTIONS_WRITE','ACCOUNTS_READ'],
-  'local dev key',
-  now()
-);
-```
-
-> In production, keys are generated via the API and the raw value is shown exactly once.
+> **Production:** API keys are created via `POST /api/v1/api-keys` using your ADMIN key. The raw value is returned once at creation and never stored.
 
 ### Post a transaction
 
 ```bash
 curl -X POST http://localhost:8081/api/v1/transactions \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: sk_test_devkey00000000000000000000" \
+  -H "X-API-Key: $IDEM_API_KEY" \
   -H "Idempotency-Key: tx-$(uuidgen)" \
   -d '{
     "lines": [
