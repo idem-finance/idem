@@ -178,6 +178,9 @@
                                         <exclude>finance.idem.api.ledger.FiatEntryDto</exclude>
                                         <exclude>finance.idem.api.ledger.OnChainEntryDto</exclude>
                                         <exclude>finance.idem.api.ledger.JournalLineRequestDto</exclude>
+                                        <!-- Kotlin data class DTOs in api.security -->
+                                        <exclude>finance.idem.api.security.CreateApiKeyRequest</exclude>
+                                        <exclude>finance.idem.api.security.CreateApiKeyResponse</exclude>
                                         <!-- Kotlin data class — generated copy$default synthetic
                                              methods contain unexercisable bytecode branches. -->
                                         <exclude>finance.idem.core.security.ValidatedApiKey</exclude>
