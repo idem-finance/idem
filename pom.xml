@@ -199,6 +199,11 @@
                                         <!-- Kotlin data class request/response DTOs in api.reconciliation -->
                                         <exclude>finance.idem.api.reconciliation.ReconcileBatchRequest</exclude>
                                         <exclude>finance.idem.api.reconciliation.ReconcileBatchItemResponse</exclude>
+                                        <!-- Kotlin data class request/response DTOs — copy$default synthetic
+                                             methods generate unexercisable bytecode branches. -->
+                                        <exclude>finance.idem.api.tenant.UpdateWebhookConfigRequest</exclude>
+                                        <exclude>finance.idem.api.tenant.WebhookConfigCreatedResponse</exclude>
+                                        <exclude>finance.idem.api.tenant.WebhookConfigResponse</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>
