@@ -5,6 +5,7 @@ import finance.idem.application.tenant.TenantWebhookConfig
 import finance.idem.core.TenantId
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 
 @Component
 class TenantRepositoryAdapter(
@@ -27,5 +28,19 @@ class TenantRepositoryAdapter(
         } else {
             null
         }
+    }
+
+    @Transactional
+    override fun upsertWebhookConfig(tenantId: TenantId, config: TenantWebhookConfig) {
+        val now = Instant.now()
+        val existing = jpaRepository.findById(tenantId.value).orElse(null)
+        val updated = TenantDataModel(
+            id = tenantId.value,
+            webhookUrl = config.webhookUrl,
+            webhookSecret = config.webhookSecret,
+            createdAt = existing?.createdAt ?: now,
+            updatedAt = now,
+        )
+        jpaRepository.save(updated)
     }
 }
