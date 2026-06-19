@@ -26,6 +26,10 @@ class ApiKeyRepositoryAdapter(
     @Transactional(readOnly = true)
     override fun findById(id: ApiKeyId, tenantId: TenantId): ApiKey? =
         jpaRepository.findByIdAndTenantId(id.value, tenantId.value)?.toDomain()
+
+    @Transactional(readOnly = true)
+    override fun findAllByTenantId(tenantId: TenantId): List<ApiKey> =
+        jpaRepository.findAllByTenantId(tenantId.value).map { it.toDomain() }
 }
 
 private fun ApiKeyDataModel.toDomain(): ApiKey = ApiKey(

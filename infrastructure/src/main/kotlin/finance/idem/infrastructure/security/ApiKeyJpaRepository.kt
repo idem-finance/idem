@@ -6,4 +6,5 @@ import java.util.UUID
 interface ApiKeyJpaRepository : JpaRepository<ApiKeyDataModel, UUID> {
     fun findByPrefix(prefix: String): ApiKeyDataModel?
     fun findByIdAndTenantId(id: UUID, tenantId: UUID): ApiKeyDataModel?
+    fun findAllByTenantId(tenantId: UUID): List<ApiKeyDataModel>
 }

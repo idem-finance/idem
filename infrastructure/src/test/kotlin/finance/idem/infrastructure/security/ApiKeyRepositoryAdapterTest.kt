@@ -125,6 +125,44 @@ class ApiKeyRepositoryAdapterTest {
         assertTrue(found.scopes.isEmpty())
     }
 
+    @Test
+    fun `findAllByTenantId returns all keys for tenant including revoked`() {
+        val active = apiKey()
+        val revoked = apiKey().copy(revokedAt = Instant.now())
+        adapter.save(active)
+        adapter.save(revoked)
+
+        val results = adapter.findAllByTenantId(tenantId)
+
+        val ids = results.map { it.id }.toSet()
+        assertTrue(ids.contains(active.id))
+        assertTrue(ids.contains(revoked.id))
+    }
+
+    @Test
+    fun `findAllByTenantId excludes keys of other tenants`() {
+        val myKey = apiKey()
+        adapter.save(myKey)
+
+        val otherTenantKey = apiKey().copy(
+            id = ApiKeyId.generate(),
+            tenantId = TenantId.generate(),
+        )
+        adapter.save(
+            ApiKey(
+                id = ApiKeyId.generate(),
+                tenantId = TenantId.generate(),
+                keyHash = "\$2a\$12\$other",
+                prefix = "sk_test_othr",
+                scopes = setOf(ApiScope.TRANSACTIONS_READ),
+                createdAt = Instant.now(),
+            )
+        )
+
+        val results = adapter.findAllByTenantId(tenantId)
+        assertTrue(results.none { it.tenantId != tenantId })
+    }
+
     private fun apiKey(
         prefix: String = "sk_test_%04d".format(prefixSeq.incrementAndGet()),
         scopes: Set<ApiScope> = setOf(ApiScope.TRANSACTIONS_READ),
