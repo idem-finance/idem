@@ -196,6 +196,9 @@
                                         <exclude>finance.idem.infrastructure.persistence.idempotency.IdempotencyKeyDataModel</exclude>
                                         <exclude>finance.idem.infrastructure.persistence.chain.ChainCheckpointDataModel</exclude>
                                         <exclude>finance.idem.infrastructure.persistence.chain.FailedChainTransferDataModel</exclude>
+                                        <!-- Kotlin data class request/response DTOs in api.reconciliation -->
+                                        <exclude>finance.idem.api.reconciliation.ReconcileBatchRequest</exclude>
+                                        <exclude>finance.idem.api.reconciliation.ReconcileBatchItemResponse</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>
