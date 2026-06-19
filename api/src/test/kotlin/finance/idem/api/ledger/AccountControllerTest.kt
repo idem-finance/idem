@@ -4,6 +4,7 @@ import finance.idem.api.security.TestSecurityConfig
 import finance.idem.application.ledger.AccountStatement
 import finance.idem.application.ledger.Balance
 import finance.idem.application.ledger.BalanceAccountNotFound
+import finance.idem.application.ledger.CreateAccountUseCase
 import finance.idem.application.ledger.EntriesAccountNotFound
 import finance.idem.application.ledger.EntryPage
 import finance.idem.application.ledger.GenerateStatementUseCase
@@ -11,6 +12,7 @@ import finance.idem.application.ledger.InvalidCursor
 import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.application.ledger.GetBalanceUseCase
+import finance.idem.application.ledger.ListAccountsUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.StatementMovement
 import finance.idem.core.AccountId
@@ -20,6 +22,8 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
+import finance.idem.core.ledger.Account
+import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.Test
@@ -30,11 +34,13 @@ import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
+import org.springframework.http.MediaType
 import org.springframework.security.authentication.TestingAuthenticationToken
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 import java.time.Instant
 import java.util.UUID
 
@@ -44,6 +50,12 @@ class AccountControllerTest {
 
     @Autowired
     lateinit var mockMvc: MockMvc
+
+    @MockitoBean
+    lateinit var createAccountUseCase: CreateAccountUseCase
+
+    @MockitoBean
+    lateinit var listAccountsUseCase: ListAccountsUseCase
 
     @MockitoBean
     lateinit var getBalanceUseCase: GetBalanceUseCase
@@ -59,6 +71,17 @@ class AccountControllerTest {
 
     private fun mockAuth(vararg scopes: String): TestingAuthenticationToken =
         TestingAuthenticationToken(tenantId, null, *scopes)
+
+    private fun accountFor(id: UUID = accountId) = Account.create(
+        id = AccountId(id),
+        tenantId = tenantId,
+        name = "USDC Wallet",
+        description = null,
+        currency = FiatCurrency.USD,
+        type = AccountType.ASSET,
+        createdAt = Instant.parse("2026-06-19T10:00:00Z"),
+        createdBy = "test-key",
+    )
 
     private fun balanceFor(accountId: UUID) = Balance(
         accountId = AccountId(accountId),
@@ -356,6 +379,98 @@ class AccountControllerTest {
             status { isInternalServerError() }
             jsonPath("$.code") { value("INTERNAL_ERROR") }
             jsonPath("$.message") { value("An unexpected error occurred") }
+        }
+    }
+
+    // ── createAccount ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `createAccount happy path returns 201 with account fields`() {
+        whenever(createAccountUseCase.execute(any())).thenReturn(Result.success(accountFor()))
+
+        mockMvc.post("/api/v1/accounts") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_WRITE")))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name":"USDC Wallet","currency":"USD","type":"ASSET"}"""
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.id") { value(accountId.toString()) }
+            jsonPath("$.name") { value("USDC Wallet") }
+            jsonPath("$.currency") { value("USD") }
+            jsonPath("$.type") { value("ASSET") }
+            jsonPath("$.normalBalance") { value("DEBIT") }
+        }
+    }
+
+    @Test
+    fun `createAccount invalid currency returns 400 INVALID_CURRENCY`() {
+        mockMvc.post("/api/v1/accounts") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_WRITE")))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name":"Test","currency":"XYZ","type":"ASSET"}"""
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_CURRENCY") }
+        }
+    }
+
+    @Test
+    fun `createAccount invalid account type returns 400 INVALID_ACCOUNT_TYPE`() {
+        mockMvc.post("/api/v1/accounts") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_WRITE")))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name":"Test","currency":"USD","type":"SAVINGS"}"""
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_ACCOUNT_TYPE") }
+        }
+    }
+
+    @Test
+    fun `createAccount blank name returns 400`() {
+        mockMvc.post("/api/v1/accounts") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_WRITE")))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name":"","currency":"USD","type":"ASSET"}"""
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
+    fun `createAccount wrong scope returns 403`() {
+        mockMvc.post("/api/v1/accounts") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name":"Test","currency":"USD","type":"ASSET"}"""
+        }.andExpect {
+            status { isForbidden() }
+        }
+    }
+
+    // ── listAccounts ───────────────────────────────────────────────────────────
+
+    @Test
+    fun `listAccounts returns 200 with account list`() {
+        whenever(listAccountsUseCase.execute(any())).thenReturn(Result.success(listOf(accountFor())))
+
+        mockMvc.get("/api/v1/accounts") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$[0].id") { value(accountId.toString()) }
+            jsonPath("$[0].name") { value("USDC Wallet") }
+            jsonPath("$[0].currency") { value("USD") }
+            jsonPath("$[0].type") { value("ASSET") }
+        }
+    }
+
+    @Test
+    fun `listAccounts wrong scope returns 403`() {
+        mockMvc.get("/api/v1/accounts") {
+            with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("TRANSACTIONS_READ")))
+        }.andExpect {
+            status { isForbidden() }
         }
     }
 }

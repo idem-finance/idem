@@ -1,6 +1,8 @@
 package finance.idem.api.ledger
 
 import finance.idem.application.ledger.BalanceAccountNotFound
+import finance.idem.application.ledger.CreateAccountCommand
+import finance.idem.application.ledger.CreateAccountUseCase
 import finance.idem.application.ledger.EntriesAccountNotFound
 import finance.idem.application.ledger.GenerateStatementQuery
 import finance.idem.application.ledger.GenerateStatementUseCase
@@ -9,14 +11,19 @@ import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.application.ledger.GetBalanceUseCase
+import finance.idem.application.ledger.ListAccountsQuery
+import finance.idem.application.ledger.ListAccountsUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.core.AccountId
+import finance.idem.core.FiatCurrency
 import finance.idem.core.TenantId
+import finance.idem.core.ledger.AccountType
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -24,6 +31,8 @@ import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -32,14 +41,90 @@ import java.util.UUID
 
 @RestController
 @RequestMapping("/api/v1/accounts")
-@Tag(name = "Accounts", description = "Account balance queries")
+@Tag(name = "Accounts", description = "Account management and balance queries")
 class AccountController(
+    private val createAccountUseCase: CreateAccountUseCase,
+    private val listAccountsUseCase: ListAccountsUseCase,
     private val getBalanceUseCase: GetBalanceUseCase,
     private val getEntriesUseCase: GetEntriesUseCase,
     private val generateStatementUseCase: GenerateStatementUseCase,
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('ACCOUNTS_WRITE')")
+    @Operation(summary = "Create a new account")
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "Account created"),
+        ApiResponse(responseCode = "400", description = "Blank name, invalid currency, or invalid account type"),
+        ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
+        ApiResponse(responseCode = "403", description = "API key does not have the ACCOUNTS_WRITE scope"),
+    )
+    fun createAccount(
+        @Valid @RequestBody request: CreateAccountRequest,
+    ): ResponseEntity<Any> {
+        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val currency = try {
+            FiatCurrency.valueOf(request.currency.uppercase())
+        } catch (e: IllegalArgumentException) {
+            return ResponseEntity.badRequest()
+                .body(ErrorResponse("INVALID_CURRENCY", "currency must be one of: ${FiatCurrency.entries.joinToString()}"))
+        }
+
+        val type = try {
+            AccountType.valueOf(request.type.uppercase())
+        } catch (e: IllegalArgumentException) {
+            return ResponseEntity.badRequest()
+                .body(ErrorResponse("INVALID_ACCOUNT_TYPE", "type must be one of: ${AccountType.entries.joinToString()}"))
+        }
+
+        val cmd = CreateAccountCommand(
+            tenantId = tenantId,
+            name = request.name,
+            description = request.description,
+            currency = currency,
+            type = type,
+            createdBy = SecurityContextHolder.getContext().authentication?.name ?: "unknown",
+        )
+
+        return createAccountUseCase.execute(cmd).fold(
+            onSuccess = { account ->
+                ResponseEntity.status(HttpStatus.CREATED).body(CreateAccountResponse.from(account))
+            },
+            onFailure = { error ->
+                log.error("Unexpected error creating account", error)
+                ResponseEntity.internalServerError()
+                    .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
+            },
+        )
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('ACCOUNTS_READ')")
+    @Operation(summary = "List all accounts for this tenant")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Account list returned"),
+        ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
+        ApiResponse(responseCode = "403", description = "API key does not have the ACCOUNTS_READ scope"),
+    )
+    fun listAccounts(): ResponseEntity<Any> {
+        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        return listAccountsUseCase.execute(ListAccountsQuery(tenantId)).fold(
+            onSuccess = { accounts ->
+                ResponseEntity.ok(accounts.map { AccountSummaryResponse.from(it) })
+            },
+            onFailure = { error ->
+                log.error("Unexpected error listing accounts", error)
+                ResponseEntity.internalServerError()
+                    .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
+            },
+        )
+    }
 
     @GetMapping("/{accountId}/balance")
     @PreAuthorize("hasAuthority('ACCOUNTS_READ')")
