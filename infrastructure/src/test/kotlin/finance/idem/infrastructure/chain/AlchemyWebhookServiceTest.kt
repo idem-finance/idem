@@ -96,6 +96,16 @@ class AlchemyWebhookServiceTest {
     }
 
     @Test
+    fun `networkToChainKey maps ETH_SEPOLIA to EVM_11155111`() {
+        assertEquals("EVM_11155111", AlchemyWebhookService.networkToChainKey("ETH_SEPOLIA"))
+    }
+
+    @Test
+    fun `networkToChainKey maps BASE_SEPOLIA to EVM_84532`() {
+        assertEquals("EVM_84532", AlchemyWebhookService.networkToChainKey("BASE_SEPOLIA"))
+    }
+
+    @Test
     fun `networkToChainKey returns null for unknown network`() {
         assertNull(AlchemyWebhookService.networkToChainKey("UNKNOWN_CHAIN"))
     }
