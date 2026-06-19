@@ -196,6 +196,11 @@
                                         <exclude>finance.idem.infrastructure.persistence.idempotency.IdempotencyKeyDataModel</exclude>
                                         <exclude>finance.idem.infrastructure.persistence.chain.ChainCheckpointDataModel</exclude>
                                         <exclude>finance.idem.infrastructure.persistence.chain.FailedChainTransferDataModel</exclude>
+                                        <!-- Kotlin data class request/response DTOs — copy$default synthetic
+                                             methods generate unexercisable bytecode branches. -->
+                                        <exclude>finance.idem.api.tenant.UpdateWebhookConfigRequest</exclude>
+                                        <exclude>finance.idem.api.tenant.WebhookConfigCreatedResponse</exclude>
+                                        <exclude>finance.idem.api.tenant.WebhookConfigResponse</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>

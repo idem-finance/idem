@@ -99,4 +99,38 @@ class TenantRepositoryAdapterTest {
 
         assertEquals(TenantWebhookConfig("https://a.example.com/webhook", "secret-a"), configA)
     }
+
+    @Test
+    fun `upsertWebhookConfig inserts a new tenant row when none exists`() {
+        val newTenant = TenantId.generate()
+        val config = TenantWebhookConfig("https://new.example.com/hook", "secret-new")
+
+        adapter.upsertWebhookConfig(newTenant, config)
+
+        assertEquals(config, adapter.findWebhookConfig(newTenant))
+    }
+
+    @Test
+    fun `upsertWebhookConfig updates webhook on existing tenant row`() {
+        insertTenant(tenantA, "https://old.example.com/hook", "old-secret")
+
+        val updated = TenantWebhookConfig("https://new.example.com/hook", "new-secret")
+        adapter.upsertWebhookConfig(tenantA, updated)
+
+        assertEquals(updated, adapter.findWebhookConfig(tenantA))
+    }
+
+    @Test
+    fun `upsertWebhookConfig isolates updates to the target tenant`() {
+        insertTenant(tenantA, "https://a.example.com/hook", "secret-a")
+        insertTenant(tenantB, "https://b.example.com/hook", "secret-b")
+
+        adapter.upsertWebhookConfig(tenantA, TenantWebhookConfig("https://a-new.example.com/hook", "secret-a-new"))
+
+        // tenantB untouched
+        assertEquals(
+            TenantWebhookConfig("https://b.example.com/hook", "secret-b"),
+            adapter.findWebhookConfig(tenantB),
+        )
+    }
 }
