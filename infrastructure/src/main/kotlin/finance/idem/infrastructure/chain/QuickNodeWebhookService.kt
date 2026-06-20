@@ -110,6 +110,7 @@ class QuickNodeWebhookService(
 
         internal fun networkToChainKey(network: String): String? = when (network.lowercase()) {
             "mainnet-beta" -> "SOLANA"
+            "devnet" -> "SOLANA"
             else -> null
         }
     }

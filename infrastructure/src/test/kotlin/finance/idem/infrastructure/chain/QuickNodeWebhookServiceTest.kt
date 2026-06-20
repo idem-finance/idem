@@ -184,7 +184,7 @@ class QuickNodeWebhookServiceTest {
 
     @Test
     fun `returns success and ignores unknown network`() {
-        val body = """{"data":[{"signature":"$testSignature","slot":$testSlot,"network":"devnet"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
+        val body = """{"data":[{"signature":"$testSignature","slot":$testSlot,"network":"testnet"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
 
         val result = service.handle(computeHmac(signingKey, testNonce, testTimestamp, body), testNonce, testTimestamp, body)
 
@@ -365,8 +365,13 @@ class QuickNodeWebhookServiceTest {
     }
 
     @Test
+    fun `networkToChainKey maps devnet to SOLANA`() {
+        assertEquals("SOLANA", QuickNodeWebhookService.networkToChainKey("devnet"))
+    }
+
+    @Test
     fun `networkToChainKey returns null for unknown network`() {
-        assertNull(QuickNodeWebhookService.networkToChainKey("devnet"))
+        assertNull(QuickNodeWebhookService.networkToChainKey("testnet"))
     }
 
     @Test

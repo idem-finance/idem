@@ -146,6 +146,8 @@ class AlchemyWebhookService(
             "ETH_MAINNET" -> "EVM_1"
             "BASE_MAINNET" -> "EVM_8453"
             "MATIC_MAINNET" -> "EVM_137"
+            "ETH_SEPOLIA" -> "EVM_11155111"
+            "BASE_SEPOLIA" -> "EVM_84532"
             else -> null
         }
 
