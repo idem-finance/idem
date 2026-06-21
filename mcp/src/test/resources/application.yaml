@@ -1,0 +1,7 @@
+spring:
+  ai:
+    mcp:
+      server:
+        name: idem-ledger-test
+        version: 0.1.0
+        transport: sse
