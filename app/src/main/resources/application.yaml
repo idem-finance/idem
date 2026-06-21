@@ -1,6 +1,12 @@
 spring:
   application:
     name: idem
+  ai:
+    mcp:
+      server:
+        name: idem-ledger
+        version: 0.1.0
+        transport: sse
   flyway:
     enabled: true
     locations: classpath:db/migration

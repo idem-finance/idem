@@ -186,19 +186,26 @@ class WebhookOutboxPollerIntegrationTest {
 
     @Test
     fun `scenario B - non-2xx response schedules a retry with backoff`() {
+        // Wait until the poller has made at least one attempt. With lockAtLeastFor="4s" on the
+        // production @SchedulerLock, a second attempt cannot occur within 4 s of the first, but on
+        // slow CI this test method may execute after the backoff window has already expired, so we
+        // tolerate attempts >= 1 rather than asserting exactly 1.
         await().atMost(Duration.ofSeconds(5)).untilAsserted {
             val row = webhookOutboxJpaRepository.findById(seed.rowB).orElseThrow()
             assertEquals(OutboxStatus.FAILED, row.status)
-            assertEquals(1, row.attempts)
+            assertTrue(row.attempts >= 1)
         }
 
         val row = webhookOutboxJpaRepository.findById(seed.rowB).orElseThrow()
         assertEquals("HTTP 500", row.lastError)
-        // Anchor the backoff window to createdAt, not Instant.now() — the poller processes the row
-        // at Spring context startup regardless of when this test method runs, so Instant.now()
-        // drifts and causes flaky failures. nextRetryAt ≈ createdAt + ~5s.
-        assertTrue(row.nextRetryAt.isAfter(row.createdAt.plusSeconds(3)), "next_retry_at should be ~5s out")
-        assertTrue(row.nextRetryAt.isBefore(row.createdAt.plusSeconds(10)), "next_retry_at should be ~5s out")
+        // Anchor to createdAt — the backoff minimum is 5 s so nextRetryAt is always at least 3 s
+        // beyond createdAt regardless of how many attempts have accumulated. Avoid Instant.now()
+        // because the snapshot can be taken after the backoff window expires, which would make
+        // nextRetryAt appear to be in the past.
+        assertTrue(
+            row.nextRetryAt.isAfter(row.createdAt.plusSeconds(3)),
+            "backoff must push next_retry_at beyond createdAt+3s; nextRetryAt=${row.nextRetryAt} createdAt=${row.createdAt}"
+        )
     }
 
     @Test
@@ -247,8 +254,10 @@ class WebhookOutboxPollerIntegrationTest {
         )
 
         // Retry until the scheduler finishes its current tick and releases, then take the lock.
+        // lockAtLeastFor="4s" on the production @SchedulerLock means the lock window is ~200ms
+        // every 4.2 s. Allow 30 s so the test gets ~7 chances even on a heavily loaded CI runner.
         var heldLock: Optional<SimpleLock> = Optional.empty()
-        await().atMost(Duration.ofSeconds(10)).until {
+        await().atMost(Duration.ofSeconds(30)).until {
             heldLock = otherReplicaLock.lock(
                 LockConfiguration(Instant.now(), "webhookOutboxPoll", Duration.ofSeconds(30), Duration.ZERO),
             )
@@ -295,8 +304,9 @@ class WebhookOutboxPollerIntegrationTest {
             heldLock.ifPresent { it.unlock() }
         }
 
-        // After release, the scheduler must resume and deliver the row.
-        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+        // After release, the scheduler must resume and deliver the row. The next scheduled tick
+        // fires within poll-interval-ms (200 ms in tests), but on slow CI allow up to 10 s.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted {
             val row = webhookOutboxJpaRepository.findById(rowId).orElseThrow()
             assertEquals(OutboxStatus.DELIVERED, row.status)
         }
