@@ -314,12 +314,18 @@ interface ApiKeyRepository {
     fun save(apiKey: ApiKey): ApiKey
     fun findByPrefix(prefix: String): ApiKey?
     fun findById(id: ApiKeyId, tenantId: TenantId): ApiKey?
+    fun findAllByTenantId(tenantId: TenantId): List<ApiKey>
 }
 ```
 
 `findByPrefix` takes no `tenantId` — the auth filter must read the table before the tenant
 context is established. The bcrypt hash is the security boundary, not row-level isolation.
 The `api_keys` table therefore carries no RLS policy.
+
+`findAllByTenantId` returns all keys for a tenant (active and revoked) for use in key
+management listings. Used by `ListApiKeysUseCase` / `GET /api/v1/api-keys` (requires `ADMIN`
+scope). Key hashes are never included in API responses — the list endpoint exposes only
+`id`, `prefix`, `scopes`, `createdAt`, and `revokedAt`.
 
 ---
 
@@ -442,14 +448,21 @@ data class TenantWebhookConfig(val webhookUrl: String, val webhookSecret: String
 ```kotlin
 interface TenantRepository {
     fun findWebhookConfig(tenantId: TenantId): TenantWebhookConfig?
+    fun upsertWebhookConfig(tenantId: TenantId, config: TenantWebhookConfig)
 }
 ```
 
-`null` means "not configured yet" (no row, or `webhook_url`/`webhook_secret` is
-null/blank) — not an error. The `tenants` table (V13) has RLS enabled but **not
-forced**, mirroring `webhook_outbox` (V12): `WebhookOutboxPoller` resolves any
-tenant's config as the table-owner role while iterating cross-tenant dispatchable
-rows, with no `app.tenant_id` set.
+`findWebhookConfig` returns `null` when the webhook is not yet configured (no row, or
+`webhook_url`/`webhook_secret` is null/blank) — not an error. The `tenants` table (V13)
+has RLS enabled but **not forced**, mirroring `webhook_outbox` (V12): `WebhookOutboxPoller`
+resolves any tenant's config as the table-owner role while iterating cross-tenant
+dispatchable rows, with no `app.tenant_id` set.
+
+`upsertWebhookConfig` inserts the tenant row if none exists, or updates `webhook_url` and
+`webhook_secret` in place — `createdAt` is preserved on updates. Called by
+`UpdateWebhookConfigService` / `PUT /api/v1/tenant/webhook` (requires `WEBHOOK_MANAGE` scope).
+The SSRF guard (`SsrfWebhookUrlValidator`) rejects private-range and link-local URLs before
+this method is called; a 32-byte `SecureRandom` hex secret is generated per call.
 
 ---
 

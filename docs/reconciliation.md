@@ -39,7 +39,8 @@ The return value of `reconcile()` is not propagated to the caller — `execute()
 `Result<TransactionId>` contract is unchanged. Reconciliation outcomes are observable
 via the `transaction.settled` / `reconciliation.unmatched` webhook events and the
 `settlements` table (a future `RECONCILIATION_READ`-scoped endpoint will expose this
-directly).
+directly). For transactions not matched at commit time, the manual batch re-trigger
+endpoint (see below) can re-run reconciliation after a `PENDING` expectation is created.
 
 ---
 
@@ -154,6 +155,59 @@ pattern).
 
 ---
 
+## Manual batch re-trigger — POST /api/v1/reconciliation/batch
+
+Automatic reconciliation runs synchronously at transaction commit time. For transactions
+that were not matched on initial commit (e.g. because no `PENDING` expectation existed
+yet, or after settlement expectations have been updated), callers can manually re-run
+reconciliation for up to 100 committed transactions in a single request.
+
+**Scope:** `RECONCILIATION_WRITE`
+
+**Request body:**
+```json
+{ "transactionIds": ["<uuid>", "..."] }
+```
+Max 100 IDs per call (`@Size(max = 100)`); `transactionIds` must not be empty.
+
+**Application layer types** (`finance.idem.application.reconciliation`):
+
+```kotlin
+data class ReconcileBatchCommand(
+    val transactionIds: List<TransactionId>,
+    val tenantId: TenantId,
+)
+
+data class ReconcileBatchItemResult(
+    val transactionId: TransactionId,
+    val outcome: ReconcileOutcome,
+)
+
+enum class ReconcileOutcome { SETTLED, UNMATCHED, NOT_APPLICABLE, NOT_FOUND }
+```
+
+**Per-item `ReconcileOutcome` values:**
+
+| Outcome | Meaning |
+|---|---|
+| `SETTLED` | A matching `PENDING` expectation was found and transitioned to `SETTLED` |
+| `UNMATCHED` | No match found — a new `UNMATCHED` `Settlement` row was created |
+| `NOT_APPLICABLE` | Transaction has no `OnChainEntry` lines, or reconciliation is globally disabled |
+| `NOT_FOUND` | No transaction with that ID exists for this tenant |
+
+`ReconcileBatchService` (infrastructure layer, `@Transactional` across the whole batch)
+loads each transaction from `TransactionRepository` and delegates to
+`BasicReconciliationUseCase.reconcile()` — the same two-tier matching algorithm as the
+automatic path. A failure on any item rolls back the entire batch.
+
+> **Duplicate UNMATCHED rows:** re-triggering reconciliation for a transaction that was
+> already processed as `UNMATCHED` during the automatic pass will create a second
+> `UNMATCHED` row (see "Known limitations" below). Re-trigger is most useful when a
+> `PENDING` expectation has since been registered and the original automatic pass found
+> no match.
+
+---
+
 ## Component overview
 
 ```mermaid
@@ -167,6 +221,7 @@ graph TD
     subgraph application.reconciliation
         BRU["BasicReconciliationUseCase\n«interface»\nreconcile(transaction)"]
         RR["ReconciliationResult\nNotApplicable | Settled | Unmatched"]
+        RBC["ReconcileBatchUseCase\n«interface»\nexecute(cmd): List<ReconcileBatchItemResult>"]
     end
 
     subgraph application.outbox
@@ -176,11 +231,16 @@ graph TD
     subgraph infrastructure.service
         PTS["PostTransactionService\n@Transactional"]
         BRS["BasicReconciliationService\n@Service"]
+        RBServ["ReconcileBatchService\n@Service @Transactional"]
     end
 
     subgraph infrastructure.persistence.reconciliation
         SRA["SettlementRepositoryAdapter"]
         SJR["SettlementJpaRepository"]
+    end
+
+    subgraph api.reconciliation
+        RC["ReconciliationController\nPOST /api/v1/reconciliation/batch"]
     end
 
     PTS -->|"4th write: reconcile(transaction)\n(same @Transactional)"| BRS
@@ -192,6 +252,9 @@ graph TD
     BRS -->|"on settle / unmatched"| WOE
     SR -.->|"reads/writes"| Settlement
     Settlement -->|"status field"| EntryStatus
+    RC -->|"RECONCILIATION_WRITE"| RBServ
+    RBServ -->|"implements"| RBC
+    RBServ -->|"delegates per item"| BRU
 ```
 
 ---
@@ -284,6 +347,8 @@ sequenceDiagram
   and a second "no match" run creates another row. In practice
   `PostTransactionService`'s idempotency store prevents `execute()` from re-running for
   a `COMMITTED` transaction, so this is defense-in-depth, not a normal-path concern.
+  The same caveat applies when using `POST /api/v1/reconciliation/batch` to re-trigger
+  a transaction that was already processed as `UNMATCHED` — use with care.
   Future: a unique constraint on `(tenant_id, matched_transaction_id, status)` or a
   check-before-create.
 - **`confirmedAt` is wall-clock time**, not the chain's block timestamp — acceptable
@@ -348,6 +413,8 @@ discriminator (tier 1 above). Current state per chain:
 | `BasicReconciliationServiceTest` | Unit (Mockito) — all branches of the algorithm above |
 | `SettlementRepositoryAdapterTest` | Integration (Testcontainers Postgres) — `findPendingCandidates` filtering/ordering, RLS tenant isolation, PENDING→SETTLED in-place update |
 | `PostTransactionServiceTest` | Unit — `reconcile()` called with the persisted transaction, last among the four writes |
+| `ReconcileBatchServiceTest` | Unit (Mockito) — all four `ReconcileOutcome` values plus multi-item batch |
+| `ReconciliationControllerTest` | `@WebMvcTest` — happy path, empty batch 400, scope enforcement |
 | `AlchemyWebhookIntegrationTest` (app module) | Integration (Testcontainers Postgres + real HTTP via `TestRestTemplate`, full Spring context) — end-to-end: valid/invalid HMAC webhook → `PostTransactionService.execute()` → `BasicReconciliationService.reconcile()` as the 4th write; covers PENDING→SETTLED, UNMATCHED creation (no candidate / amount mismatch / outside 24h window), idempotent duplicate webhook |
 
 ```bash
@@ -363,6 +430,7 @@ rtk test mvn test -pl app                   # AlchemyWebhookIntegrationTest (ful
 - `docs/evm-chain-reader.md`, `docs/solana-chain-reader.md`, `docs/tron-chain-reader.md` — on-chain entry sources that feed `PostTransactionService`
 - `docs/webhook-outbox-poller.md` — WebhookOutboxPoller (#55): delivers transaction.committed/settled/reconciliation.unmatched events to per-tenant webhooks
 - `infrastructure/.../service/BasicReconciliationService.kt`
+- `infrastructure/.../service/ReconcileBatchService.kt` — manual batch re-trigger
 - `infrastructure/.../service/PostTransactionService.kt` — call site
 - `infrastructure/.../persistence/reconciliation/SettlementRepositoryAdapter.kt`
 - Issue [#75](https://github.com/idem-finance/idem/issues/75)
