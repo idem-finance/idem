@@ -31,6 +31,11 @@ class ExecuteWorkflowService(
 ) : ExecuteWorkflowUseCase {
 
     override fun execute(cmd: ExecuteWorkflowCommand): Result<WorkflowPlanId> {
+        // SECURITY: cmd.policyRules defaults to emptyList(). PolicyGuard.evaluate() returns Approved
+        // unconditionally when the list is empty — there is no default policy fallback. Callers (MCP
+        // tools, future REST controllers) MUST populate policyRules from the tenant's configured rule
+        // set before invoking this use case.
+        //
         // TODO: pre-compute priorSessionDebitTotal and priorHourlyDebitTotal from
         //  historical journal data before constructing LedgerIntent so that
         //  MaxDebitPerSession and MaxDebitPerHour rules evaluate cumulative totals,

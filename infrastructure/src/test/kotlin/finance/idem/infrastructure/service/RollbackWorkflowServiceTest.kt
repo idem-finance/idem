@@ -161,6 +161,23 @@ class RollbackWorkflowServiceTest {
     }
 
     @Test
+    fun `returns failure when plan is not COMMITTED — no audit or compensating transactions written`() {
+        for (nonCommittedStatus in listOf(WorkflowPlanStatus.PLANNED, WorkflowPlanStatus.EXECUTING, WorkflowPlanStatus.ROLLED_BACK)) {
+            val plan = WorkflowPlan.create(planId, tenantId, agentContext, emptyList(), now)
+                .withStatus(nonCommittedStatus)
+            whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
+
+            val result = service.execute(rollbackCommand())
+
+            assertTrue(result.isFailure, "Expected failure for status $nonCommittedStatus")
+            assertIs<IllegalStateException>(result.exceptionOrNull())
+            assertTrue(result.exceptionOrNull()!!.message!!.contains(nonCommittedStatus.name))
+        }
+        verify(agentAuditRepository, times(0)).save(any())
+        verify(postTransactionUseCase, times(0)).execute(any())
+    }
+
+    @Test
     fun `writes PENDING audit before rollback and COMPLETED after`() {
         val txId = TransactionId.generate()
         val plan = WorkflowPlan.create(planId, tenantId, agentContext, listOf("step-0"), now)

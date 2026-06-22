@@ -28,6 +28,7 @@ class AgentAuditRepositoryAdapter(
     override fun save(event: AgentAuditEvent) {
         setTenantId(event.tenantId)
         val payload = objectMapper.writeValueAsString(mapOf(
+            "tenantId" to event.tenantId.value.toString(),
             "workflowPlanId" to event.workflowPlanId.value.toString(),
             "agentId" to event.agentContext.agentId,
             "sessionId" to event.agentContext.sessionId,

@@ -31,6 +31,14 @@ class RollbackWorkflowService(
         val plan = workflowPlanRepository.findById(cmd.workflowPlanId, cmd.tenantId)
             ?: return Result.failure(WorkflowPlanNotFound(cmd.workflowPlanId))
 
+        if (plan.status != WorkflowPlanStatus.COMMITTED) {
+            return Result.failure(
+                IllegalStateException(
+                    "Cannot rollback plan ${cmd.workflowPlanId.value}: expected COMMITTED, was ${plan.status}"
+                )
+            )
+        }
+
         agentAuditRepository.save(
             AgentAuditEvent.pending(
                 workflowPlanId = cmd.workflowPlanId,
@@ -40,6 +48,8 @@ class RollbackWorkflowService(
             )
         )
 
+        // Compensating transactions bypass PolicyGuard by design — rollback must always succeed
+        // regardless of the current policy configuration (e.g. AllowedTokens, RequireHumanApproval).
         plan.executedSteps().sortedByDescending { it.stepIndex }.forEach { step ->
             val originalTxId = step.transactionId ?: return@forEach
             val originalTx = transactionRepository.findById(originalTxId, cmd.tenantId) ?: return@forEach

@@ -54,3 +54,8 @@ CREATE POLICY tenant_isolation ON workflow_plan_steps
     FOR ALL
     USING      (tenant_id = current_setting('app.tenant_id', true)::UUID)
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::UUID);
+
+-- Prevent deletion of workflow plan rows so execution history is always recoverable.
+-- Steps intentionally keep DELETE permission — the adapter deletes and re-inserts all
+-- steps on every save() to work around JPA cascade ordering on the unique index.
+REVOKE DELETE ON workflow_plans FROM PUBLIC;
