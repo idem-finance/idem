@@ -67,7 +67,7 @@ class ExecuteWorkflowService(
             stepIdempotencyKeys = cmd.steps.map { it.idempotencyKey },
             occurredAt = now,
         )
-        workflowPlanRepository.save(plan)
+        workflowPlanRepository.insert(plan)
 
         agentAuditRepository.save(
             AgentAuditEvent.pending(
@@ -78,8 +78,7 @@ class ExecuteWorkflowService(
             )
         )
 
-        plan = plan.withStatus(WorkflowPlanStatus.EXECUTING)
-        workflowPlanRepository.save(plan)
+        workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowPlanStatus.EXECUTING, null)
 
         cmd.steps.forEachIndexed { index, step ->
             val txCmd = PostTransactionCommand(
@@ -94,11 +93,12 @@ class ExecuteWorkflowService(
             txResult.fold(
                 onSuccess = { txId ->
                     plan = plan.withStepExecuted(index, txId)
-                    workflowPlanRepository.save(plan)
+                    workflowPlanRepository.updateStep(planId, cmd.tenantId, plan.steps[index])
                 },
                 onFailure = { ex ->
                     plan = plan.withStepFailed(index).withStatus(WorkflowPlanStatus.ROLLED_BACK)
-                    workflowPlanRepository.save(plan)
+                    workflowPlanRepository.updateStep(planId, cmd.tenantId, plan.steps[index])
+                    workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowPlanStatus.ROLLED_BACK, null)
                     agentAuditRepository.save(
                         AgentAuditEvent.failed(
                             workflowPlanId = planId,
@@ -115,7 +115,7 @@ class ExecuteWorkflowService(
         val committedPlan = plan
             .withStatus(WorkflowPlanStatus.COMMITTED)
             .copy(committedAt = Instant.now())
-        workflowPlanRepository.save(committedPlan)
+        workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowPlanStatus.COMMITTED, committedPlan.committedAt)
 
         agentAuditRepository.save(
             AgentAuditEvent.completed(

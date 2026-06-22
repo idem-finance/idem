@@ -22,6 +22,7 @@ import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.agentic.WorkflowPlan
 import finance.idem.core.agentic.WorkflowPlanStatus
+import finance.idem.core.agentic.WorkflowPlanStep
 import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -30,12 +31,14 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
@@ -90,13 +93,17 @@ class ExecuteWorkflowServiceTest {
 
         assertTrue(result.isSuccess)
 
-        val planCaptor = argumentCaptor<WorkflowPlan>()
-        verify(workflowPlanRepository, times(5)).save(planCaptor.capture())
-        val statuses = planCaptor.allValues.map { it.status }
-        assertEquals(WorkflowPlanStatus.PLANNED, statuses[0])
-        assertEquals(WorkflowPlanStatus.EXECUTING, statuses[1])
-        // steps 2 and 3 are after each step execution; status stays EXECUTING
-        assertEquals(WorkflowPlanStatus.COMMITTED, statuses[4])
+        // insert once for the initial PLANNED state
+        verify(workflowPlanRepository, times(1)).insert(any())
+
+        // updateStatus: EXECUTING, then COMMITTED
+        val statusCaptor = argumentCaptor<WorkflowPlanStatus>()
+        verify(workflowPlanRepository, times(2)).updateStatus(any(), any(), statusCaptor.capture(), anyOrNull())
+        assertEquals(WorkflowPlanStatus.EXECUTING, statusCaptor.allValues[0])
+        assertEquals(WorkflowPlanStatus.COMMITTED, statusCaptor.allValues[1])
+
+        // updateStep: once per step
+        verify(workflowPlanRepository, times(2)).updateStep(any(), any(), any())
 
         val auditCaptor = argumentCaptor<AgentAuditEvent>()
         verify(agentAuditRepository, times(2)).save(auditCaptor.capture())
@@ -110,19 +117,19 @@ class ExecuteWorkflowServiceTest {
 
     @Test
     fun `PolicyViolationException thrown when rules are Denied — no plan created`() {
-        // MaxDebitPerSession(0): any positive debit violates
         val rules = listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.ZERO))
 
         assertThrows<PolicyViolationException> {
             service.execute(twoStepCommand(policyRules = rules))
         }
 
-        verify(workflowPlanRepository, times(0)).save(any())
+        verify(workflowPlanRepository, times(0)).insert(any())
+        verify(workflowPlanRepository, times(0)).updateStatus(any(), any(), any(), anyOrNull())
         verify(agentAuditRepository, times(0)).save(any())
     }
 
     @Test
-    fun `step failure rolls back — plan becomes ROLLED_BACK and FAILED audit event written`() {
+    fun `step failure — plan becomes ROLLED_BACK and FAILED audit event written`() {
         val txId0 = TransactionId.generate()
         whenever(postTransactionUseCase.execute(any()))
             .thenReturn(Result.success(txId0))
@@ -132,10 +139,18 @@ class ExecuteWorkflowServiceTest {
             service.execute(twoStepCommand())
         }
 
-        val planCaptor = argumentCaptor<WorkflowPlan>()
-        verify(workflowPlanRepository, times(4)).save(planCaptor.capture())
-        val lastStatus = planCaptor.allValues.last().status
-        assertEquals(WorkflowPlanStatus.ROLLED_BACK, lastStatus)
+        verify(workflowPlanRepository, times(1)).insert(any())
+
+        val statusCaptor = argumentCaptor<WorkflowPlanStatus>()
+        verify(workflowPlanRepository, times(2)).updateStatus(any(), any(), statusCaptor.capture(), anyOrNull())
+        assertEquals(WorkflowPlanStatus.EXECUTING, statusCaptor.allValues[0])
+        assertEquals(WorkflowPlanStatus.ROLLED_BACK, statusCaptor.allValues[1])
+
+        // updateStep: step 0 EXECUTED, step 1 FAILED
+        val stepCaptor = argumentCaptor<WorkflowPlanStep>()
+        verify(workflowPlanRepository, times(2)).updateStep(any(), any(), stepCaptor.capture())
+        assertNotNull(stepCaptor.allValues[0].transactionId)       // step 0 got a txId
+        assertEquals(finance.idem.core.agentic.WorkflowStepStatus.FAILED, stepCaptor.allValues[1].status)
 
         val auditCaptor = argumentCaptor<AgentAuditEvent>()
         verify(agentAuditRepository, times(2)).save(auditCaptor.capture())

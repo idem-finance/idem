@@ -82,7 +82,7 @@ class RollbackWorkflowService(
         }
 
         val rolledBackPlan = plan.withStatus(WorkflowPlanStatus.ROLLED_BACK)
-        workflowPlanRepository.save(rolledBackPlan)
+        workflowPlanRepository.updateStatus(cmd.workflowPlanId, cmd.tenantId, WorkflowPlanStatus.ROLLED_BACK, null)
 
         agentAuditRepository.save(
             AgentAuditEvent.completed(

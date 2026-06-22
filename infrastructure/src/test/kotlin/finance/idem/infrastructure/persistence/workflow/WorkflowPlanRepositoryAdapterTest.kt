@@ -6,6 +6,7 @@ import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentContext
 import finance.idem.core.agentic.WorkflowPlan
 import finance.idem.core.agentic.WorkflowPlanStatus
+import finance.idem.core.agentic.WorkflowStepStatus
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
@@ -74,9 +75,9 @@ class WorkflowPlanRepositoryAdapterTest {
     }
 
     @Test
-    fun `save and findById round-trip preserves all fields`() {
+    fun `insert and findById round-trip preserves all fields`() {
         val original = plan()
-        adapter.save(original)
+        adapter.insert(original)
 
         entityManager.flush()
         entityManager.clear()
@@ -94,16 +95,13 @@ class WorkflowPlanRepositoryAdapterTest {
     }
 
     @Test
-    fun `second save with updated status overwrites first via JPA merge`() {
+    fun `updateStatus transitions plan status without touching steps`() {
         val original = plan()
-        adapter.save(original)
+        adapter.insert(original)
         entityManager.flush()
         entityManager.clear()
 
-        val updated = original
-            .withStatus(WorkflowPlanStatus.EXECUTING)
-            .withStepExecuted(0, TransactionId.generate())
-        adapter.save(updated)
+        adapter.updateStatus(original.id, tenantA, WorkflowPlanStatus.EXECUTING, null)
         entityManager.flush()
         entityManager.clear()
 
@@ -111,22 +109,41 @@ class WorkflowPlanRepositoryAdapterTest {
 
         assertNotNull(found)
         assertEquals(WorkflowPlanStatus.EXECUTING, found.status)
-        assertEquals(finance.idem.core.agentic.WorkflowStepStatus.EXECUTED, found.steps[0].status)
-        assertNotNull(found.steps[0].transactionId)
+        assertEquals(2, found.steps.size)
+        assertEquals(WorkflowStepStatus.PENDING, found.steps[0].status)
+        assertEquals(WorkflowStepStatus.PENDING, found.steps[1].status)
     }
 
     @Test
-    fun `committedAt is persisted when plan is COMMITTED`() {
+    fun `updateStep marks a single step EXECUTED with transactionId`() {
         val original = plan()
-        adapter.save(original)
+        adapter.insert(original)
+        entityManager.flush()
+        entityManager.clear()
+
+        val txId = TransactionId.generate()
+        val executedStep = original.withStepExecuted(0, txId).steps[0]
+        adapter.updateStep(original.id, tenantA, executedStep)
+        entityManager.flush()
+        entityManager.clear()
+
+        val found = adapter.findById(original.id, tenantA)
+
+        assertNotNull(found)
+        assertEquals(WorkflowStepStatus.EXECUTED, found.steps[0].status)
+        assertEquals(txId, found.steps[0].transactionId)
+        assertEquals(WorkflowStepStatus.PENDING, found.steps[1].status)
+    }
+
+    @Test
+    fun `committedAt is persisted via updateStatus`() {
+        val original = plan()
+        adapter.insert(original)
         entityManager.flush()
         entityManager.clear()
 
         val committedAt = Instant.now()
-        val committed = original
-            .withStatus(WorkflowPlanStatus.COMMITTED)
-            .copy(committedAt = committedAt)
-        adapter.save(committed)
+        adapter.updateStatus(original.id, tenantA, WorkflowPlanStatus.COMMITTED, committedAt)
         entityManager.flush()
         entityManager.clear()
 
@@ -146,7 +163,7 @@ class WorkflowPlanRepositoryAdapterTest {
     @Test
     fun `RLS — tenant A cannot see tenant B plans`() {
         val planB = plan(tenantB)
-        adapter.save(planB)
+        adapter.insert(planB)
         entityManager.flush()
         entityManager.clear()
 

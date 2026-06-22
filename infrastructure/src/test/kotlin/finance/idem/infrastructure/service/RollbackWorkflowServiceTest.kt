@@ -30,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -221,9 +222,9 @@ class RollbackWorkflowServiceTest {
 
         service.execute(rollbackCommand())
 
-        val planCaptor = argumentCaptor<WorkflowPlan>()
-        verify(workflowPlanRepository, times(1)).save(planCaptor.capture())
-        assertEquals(WorkflowPlanStatus.ROLLED_BACK, planCaptor.firstValue.status)
+        val statusCaptor = argumentCaptor<WorkflowPlanStatus>()
+        verify(workflowPlanRepository, times(1)).updateStatus(any(), any(), statusCaptor.capture(), org.mockito.kotlin.anyOrNull())
+        assertEquals(WorkflowPlanStatus.ROLLED_BACK, statusCaptor.firstValue)
     }
 
     @Test

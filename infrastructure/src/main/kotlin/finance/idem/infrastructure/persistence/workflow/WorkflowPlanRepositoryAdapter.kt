@@ -12,6 +12,7 @@ import finance.idem.core.agentic.WorkflowStepStatus
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.util.UUID
 
 @Component
@@ -25,21 +26,34 @@ class WorkflowPlanRepositoryAdapter(
             .executeUpdate()
     }
 
-    // Trade-off: save() is called ~5 times per workflow execution (PLANNED, EXECUTING, per step,
-    // COMMITTED), each time deleting all steps and re-inserting them. For MVP workflow sizes this
-    // is acceptable. At scale (>~20 steps) or high concurrency, replace with targeted
-    // updateStatus() + saveStep() methods to avoid O(N) churn per save call.
     @Transactional
-    override fun save(plan: WorkflowPlan) {
+    override fun insert(plan: WorkflowPlan) {
         setTenantId(plan.tenantId)
-        // Delete steps first to avoid duplicate key on the (workflow_plan_id, step_index) unique constraint.
-        // JPA cascade flushes INSERTs before orphanRemoval DELETEs, so we pre-empt this by deleting via SQL.
-        entityManager.createNativeQuery(
-            "DELETE FROM workflow_plan_steps WHERE workflow_plan_id = '${plan.id.value}'"
-        ).executeUpdate()
-        entityManager.flush()
-        entityManager.clear()
         jpaRepository.save(plan.toEntity())
+    }
+
+    @Transactional
+    override fun updateStatus(id: WorkflowPlanId, tenantId: TenantId, status: WorkflowPlanStatus, committedAt: Instant?) {
+        setTenantId(tenantId)
+        if (committedAt != null) {
+            entityManager.createNativeQuery(
+                "UPDATE workflow_plans SET status = '${status.name}', committed_at = '${committedAt}' WHERE id = '${id.value}' AND tenant_id = '${tenantId.value}'"
+            ).executeUpdate()
+        } else {
+            entityManager.createNativeQuery(
+                "UPDATE workflow_plans SET status = '${status.name}' WHERE id = '${id.value}' AND tenant_id = '${tenantId.value}'"
+            ).executeUpdate()
+        }
+    }
+
+    @Transactional
+    override fun updateStep(id: WorkflowPlanId, tenantId: TenantId, step: WorkflowPlanStep) {
+        setTenantId(tenantId)
+        val txIdValue = step.transactionId
+        val txIdSql = if (txIdValue != null) "'${txIdValue.value}'" else "NULL"
+        entityManager.createNativeQuery(
+            "UPDATE workflow_plan_steps SET status = '${step.status.name}', transaction_id = $txIdSql WHERE workflow_plan_id = '${id.value}' AND step_index = ${step.stepIndex} AND tenant_id = '${tenantId.value}'"
+        ).executeUpdate()
     }
 
     @Transactional(readOnly = true)
