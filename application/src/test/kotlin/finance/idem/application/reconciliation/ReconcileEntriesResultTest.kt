@@ -1,8 +1,12 @@
 package finance.idem.application.reconciliation
 
+import finance.idem.core.AccountId
+import finance.idem.core.TenantId
 import org.junit.jupiter.api.Test
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class ReconcileEntriesResultTest {
 
@@ -33,5 +37,29 @@ class ReconcileEntriesResultTest {
         assertEquals(id, ex.settlementId)
         assertEquals(null, ex.txHash)
         assertEquals("reason", ex.reason)
+    }
+
+    @Test
+    fun `ReconcileEntriesCommand preserves all fields`() {
+        val tenantId = TenantId.generate()
+        val accountId = AccountId.generate()
+        val from = Instant.now().minusSeconds(3600)
+        val to = Instant.now()
+        val cmd = ReconcileEntriesCommand(tenantId = tenantId, accountId = accountId, from = from, to = to)
+
+        assertEquals(tenantId, cmd.tenantId)
+        assertEquals(accountId, cmd.accountId)
+        assertEquals(from, cmd.from)
+        assertEquals(to, cmd.to)
+    }
+
+    @Test
+    fun `ReconcileEntriesCommand defaults accountId to null`() {
+        val cmd = ReconcileEntriesCommand(
+            tenantId = TenantId.generate(),
+            from = Instant.now().minusSeconds(3600),
+            to = Instant.now(),
+        )
+        assertNull(cmd.accountId)
     }
 }
