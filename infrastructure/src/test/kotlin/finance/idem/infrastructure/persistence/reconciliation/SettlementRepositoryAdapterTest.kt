@@ -367,4 +367,81 @@ class SettlementRepositoryAdapterTest {
         assertEquals(matchA, resultsA[0].id)
         assertEquals(1, resultsB.size)
     }
+
+    // ── findUnmatchedInWindow ──────────────────────────────────────────────────
+
+    @Test
+    fun `findUnmatchedInWindow returns UNMATCHED rows in the window`() {
+        val id = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED)
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.PENDING)
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.SETTLED)
+
+        val results = adapter.findUnmatchedInWindow(tenantA, null, now.minusSeconds(3600), now.plusSeconds(3600))
+
+        assertEquals(1, results.size)
+        assertEquals(id, results[0].id)
+    }
+
+    @Test
+    fun `findUnmatchedInWindow excludes rows outside the time window`() {
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED,
+            createdAtExpr = "now() - interval '2 hours'")
+        val inWindow = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED,
+            createdAtExpr = "now() - interval '30 minutes'")
+
+        val results = adapter.findUnmatchedInWindow(
+            tenantA, null, now.minusSeconds(3600), now.plusSeconds(3600),
+        )
+
+        assertEquals(1, results.size)
+        assertEquals(inWindow, results[0].id)
+    }
+
+    @Test
+    fun `findUnmatchedInWindow respects optional accountId filter`() {
+        val matchAccount = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED)
+        insertSettlement(tenantId = tenantA, accountId = accountA2, status = EntryStatus.UNMATCHED)
+
+        val results = adapter.findUnmatchedInWindow(tenantA, accountA, now.minusSeconds(3600), now.plusSeconds(3600))
+
+        assertEquals(1, results.size)
+        assertEquals(matchAccount, results[0].id)
+    }
+
+    @Test
+    fun `findUnmatchedInWindow returns all accounts when accountId is null`() {
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED)
+        insertSettlement(tenantId = tenantA, accountId = accountA2, status = EntryStatus.UNMATCHED)
+
+        val results = adapter.findUnmatchedInWindow(tenantA, null, now.minusSeconds(3600), now.plusSeconds(3600))
+
+        assertEquals(2, results.size)
+    }
+
+    @Test
+    fun `findUnmatchedInWindow orders results by createdAt ascending`() {
+        val newer = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED,
+            createdAtExpr = "now() - interval '5 seconds'")
+        val older = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED,
+            createdAtExpr = "now() - interval '1 hour'")
+
+        val results = adapter.findUnmatchedInWindow(tenantA, null, now.minusSeconds(7200), now.plusSeconds(3600))
+
+        assertEquals(2, results.size)
+        assertEquals(older, results[0].id, "Older entry must come first")
+        assertEquals(newer, results[1].id, "Newer entry must come second")
+    }
+
+    @Test
+    fun `findUnmatchedInWindow is isolated by tenant (RLS)`() {
+        val matchA = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED)
+        insertSettlement(tenantId = tenantB, accountId = accountB, status = EntryStatus.UNMATCHED)
+
+        val resultsA = adapter.findUnmatchedInWindow(tenantA, null, now.minusSeconds(3600), now.plusSeconds(3600))
+        val resultsB = adapter.findUnmatchedInWindow(tenantB, null, now.minusSeconds(3600), now.plusSeconds(3600))
+
+        assertEquals(1, resultsA.size)
+        assertEquals(matchA, resultsA[0].id)
+        assertEquals(1, resultsB.size)
+    }
 }

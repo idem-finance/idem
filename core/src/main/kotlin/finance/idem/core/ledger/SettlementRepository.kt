@@ -22,4 +22,13 @@ interface SettlementRepository {
         walletAddress: String,
         since: Instant,
     ): List<Settlement>
+
+    /** UNMATCHED rows for tenant in [from, to), optionally filtered by accountId.
+     * Ordered createdAt ASC. */
+    fun findUnmatchedInWindow(
+        tenantId: TenantId,
+        accountId: AccountId?,
+        from: Instant,
+        to: Instant,
+    ): List<Settlement>
 }

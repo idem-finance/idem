@@ -55,6 +55,19 @@ class SettlementRepositoryAdapter(
             token.name, chainId.name, walletAddress, since,
         ).map { it.toDomain() }
     }
+
+    @Transactional(readOnly = true)
+    override fun findUnmatchedInWindow(
+        tenantId: TenantId,
+        accountId: AccountId?,
+        from: Instant,
+        to: Instant,
+    ): List<Settlement> {
+        setTenantId(tenantId)
+        return jpaRepository.findUnmatchedInWindow(
+            tenantId.value, accountId?.value, from, to,
+        ).map { it.toDomain() }
+    }
 }
 
 private fun Settlement.toEntity() = SettlementDataModel(

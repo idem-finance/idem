@@ -36,4 +36,22 @@ interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
         @Param("walletAddress") walletAddress: String,
         @Param("since") since: Instant,
     ): List<SettlementDataModel>
+
+    @Query(
+        """
+        SELECT s FROM SettlementDataModel s
+        WHERE s.tenantId = :tenantId
+          AND s.status = 'UNMATCHED'
+          AND s.createdAt >= :from
+          AND s.createdAt < :to
+          AND (:accountId IS NULL OR s.accountId = :accountId)
+        ORDER BY s.createdAt ASC
+        """
+    )
+    fun findUnmatchedInWindow(
+        @Param("tenantId") tenantId: UUID,
+        @Param("accountId") accountId: UUID?,
+        @Param("from") from: Instant,
+        @Param("to") to: Instant,
+    ): List<SettlementDataModel>
 }
