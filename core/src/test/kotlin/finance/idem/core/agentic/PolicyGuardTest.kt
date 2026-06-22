@@ -273,6 +273,20 @@ class PolicyGuardTest {
         approved(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
     }
 
+    @Test
+    fun `RequireHumanApprovalAbove - each offending debit line produces its own violation`() {
+        val rule = PolicyRule.RequireHumanApprovalAbove(MonetaryAmount.of("1000"))
+        val intent = LedgerIntent(
+            lines = listOf(
+                fiatDebitLine("1500"),
+                fiatDebitLine("2000"),
+            ),
+        )
+        val result = denied(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
+        assertEquals(2, result.violations.size)
+        result.violations.forEach { assertEquals(rule, it.rule) }
+    }
+
     // ── AllowedTokens ────────────────────────────────────────────────────────
 
     @Test

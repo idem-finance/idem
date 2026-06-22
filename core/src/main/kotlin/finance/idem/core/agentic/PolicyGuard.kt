@@ -116,18 +116,15 @@ object PolicyGuard {
         intent: LedgerIntent,
         violations: MutableList<PolicyViolation>,
     ) {
-        val offendingLines = intent.lines.filter {
-            it.entryType == EntryType.DEBIT && it.monetaryEntry.amount > rule.threshold
-        }
-
-        if (offendingLines.isNotEmpty()) {
-            val maxAmount = offendingLines.maxByOrNull { it.monetaryEntry.amount.value }!!.monetaryEntry.amount
-            violations += PolicyViolation(
-                rule = rule,
-                message = "Debit of $maxAmount exceeds human-approval threshold (${rule.threshold}); " +
-                    "manual approval is required",
-            )
-        }
+        intent.lines
+            .filter { it.entryType == EntryType.DEBIT && it.monetaryEntry.amount > rule.threshold }
+            .forEach { line ->
+                violations += PolicyViolation(
+                    rule = rule,
+                    message = "Debit of ${line.monetaryEntry.amount} exceeds human-approval threshold " +
+                        "(${rule.threshold}); manual approval is required",
+                )
+            }
     }
 
     private fun checkAllowedTokens(
