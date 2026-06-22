@@ -31,6 +31,10 @@ class ExecuteWorkflowService(
 ) : ExecuteWorkflowUseCase {
 
     override fun execute(cmd: ExecuteWorkflowCommand): Result<WorkflowPlanId> {
+        // TODO: pre-compute priorSessionDebitTotal and priorHourlyDebitTotal from
+        //  historical journal data before constructing LedgerIntent so that
+        //  MaxDebitPerSession and MaxDebitPerHour rules evaluate cumulative totals,
+        //  not just this workflow's lines. Tracked in issue #TODO.
         val ledgerIntent = LedgerIntent(
             lines = cmd.steps.flatMap { step ->
                 step.lines.map { line ->

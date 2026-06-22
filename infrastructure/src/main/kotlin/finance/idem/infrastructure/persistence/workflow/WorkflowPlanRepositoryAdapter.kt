@@ -25,6 +25,10 @@ class WorkflowPlanRepositoryAdapter(
             .executeUpdate()
     }
 
+    // Trade-off: save() is called ~5 times per workflow execution (PLANNED, EXECUTING, per step,
+    // COMMITTED), each time deleting all steps and re-inserting them. For MVP workflow sizes this
+    // is acceptable. At scale (>~20 steps) or high concurrency, replace with targeted
+    // updateStatus() + saveStep() methods to avoid O(N) churn per save call.
     @Transactional
     override fun save(plan: WorkflowPlan) {
         setTenantId(plan.tenantId)

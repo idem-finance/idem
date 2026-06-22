@@ -50,7 +50,7 @@ data class WebhookOutboxEntry(
                 tenantId = plan.tenantId,
                 eventType = "workflow.committed",
                 transactionId = TransactionId(plan.id.value),
-                occurredAt = plan.committedAt ?: Instant.now(),
+                occurredAt = requireNotNull(plan.committedAt) { "COMMITTED plan must have committedAt" },
             )
 
         fun workflowRolledBack(plan: WorkflowPlan): WebhookOutboxEntry =

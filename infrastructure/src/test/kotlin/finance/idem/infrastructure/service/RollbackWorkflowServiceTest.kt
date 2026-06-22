@@ -149,7 +149,7 @@ class RollbackWorkflowServiceTest {
     }
 
     @Test
-    fun `returns WorkflowPlanNotFound when plan does not exist`() {
+    fun `returns WorkflowPlanNotFound when plan does not exist — no audit written`() {
         whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(null)
 
         val result = service.execute(rollbackCommand())
@@ -157,6 +157,7 @@ class RollbackWorkflowServiceTest {
         assertTrue(result.isFailure)
         assertIs<WorkflowPlanNotFound>(result.exceptionOrNull())
         verify(postTransactionUseCase, times(0)).execute(any())
+        verify(agentAuditRepository, times(0)).save(any())
     }
 
     @Test
@@ -206,5 +207,25 @@ class RollbackWorkflowServiceTest {
         val planCaptor = argumentCaptor<WorkflowPlan>()
         verify(workflowPlanRepository, times(1)).save(planCaptor.capture())
         assertEquals(WorkflowPlanStatus.ROLLED_BACK, planCaptor.firstValue.status)
+    }
+
+    @Test
+    fun `compensating transaction failure propagates as RuntimeException`() {
+        val txId = TransactionId.generate()
+        val plan = WorkflowPlan.create(planId, tenantId, agentContext, listOf("step-0"), now)
+            .withStepExecuted(0, txId)
+            .withStatus(WorkflowPlanStatus.COMMITTED)
+
+        whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
+        whenever(transactionRepository.findById(txId, tenantId)).thenReturn(originalTx(txId))
+        whenever(postTransactionUseCase.execute(any()))
+            .thenReturn(Result.failure(RuntimeException("ledger rejected")))
+
+        val ex = org.junit.jupiter.api.assertThrows<RuntimeException> {
+            service.execute(rollbackCommand())
+        }
+        assertTrue(ex.message!!.contains("step 0"))
+        // No outbox entry written — compensating tx failed, outer @Transactional rolls back
+        verify(webhookOutboxRepository, times(0)).save(any())
     }
 }

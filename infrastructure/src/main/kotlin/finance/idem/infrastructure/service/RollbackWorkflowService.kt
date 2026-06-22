@@ -28,6 +28,9 @@ class RollbackWorkflowService(
 ) : RollbackWorkflowUseCase {
 
     override fun execute(cmd: RollbackWorkflowCommand): Result<Unit> {
+        val plan = workflowPlanRepository.findById(cmd.workflowPlanId, cmd.tenantId)
+            ?: return Result.failure(WorkflowPlanNotFound(cmd.workflowPlanId))
+
         agentAuditRepository.save(
             AgentAuditEvent.pending(
                 workflowPlanId = cmd.workflowPlanId,
@@ -36,9 +39,6 @@ class RollbackWorkflowService(
                 intent = "ROLLBACK",
             )
         )
-
-        val plan = workflowPlanRepository.findById(cmd.workflowPlanId, cmd.tenantId)
-            ?: return Result.failure(WorkflowPlanNotFound(cmd.workflowPlanId))
 
         plan.executedSteps().sortedByDescending { it.stepIndex }.forEach { step ->
             val originalTxId = step.transactionId ?: return@forEach
