@@ -171,6 +171,10 @@
                         <exclude>finance/idem/infrastructure/security/WebSecurityConfig*</exclude>
                         <!-- InstallationMetadataDataModel — JPA no-arg constructor synthetic branches -->
                         <exclude>finance/idem/infrastructure/persistence/telemetry/InstallationMetadataDataModel*</exclude>
+                        <!-- Workflow / agent audit JPA data models — Kotlin-generated no-arg constructor synthetic branches -->
+                        <exclude>finance/idem/infrastructure/persistence/workflow/WorkflowPlanDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/persistence/workflow/WorkflowPlanStepDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/persistence/audit/AgentAuditEventDataModel*</exclude>
                     </excludes>
                 </configuration>
             </plugin>

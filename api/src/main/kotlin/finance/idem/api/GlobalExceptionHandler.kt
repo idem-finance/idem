@@ -10,6 +10,7 @@ import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.core.LedgerInvariantViolation
+import finance.idem.core.agentic.PolicyViolationException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
@@ -52,6 +53,11 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleAccessDenied(): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.FORBIDDEN)
             .body(ErrorResponse("insufficient_scope", "API key does not have the required scope"))
+
+    @ExceptionHandler(PolicyViolationException::class)
+    fun handlePolicyViolation(ex: PolicyViolationException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+            .body(ErrorResponse("POLICY_VIOLATION", ex.violations.joinToString("; ") { it.message }))
 
     @ExceptionHandler(LedgerInvariantViolation::class)
     fun handleLedgerInvariantViolation(ex: LedgerInvariantViolation): ResponseEntity<ErrorResponse> =

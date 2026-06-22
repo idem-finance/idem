@@ -10,6 +10,10 @@ import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.core.AccountId
 import finance.idem.core.LedgerInvariantViolation
+import finance.idem.core.MonetaryAmount
+import finance.idem.core.agentic.PolicyRule
+import finance.idem.core.agentic.PolicyViolation
+import finance.idem.core.agentic.PolicyViolationException
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
@@ -113,6 +117,15 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    fun `PolicyViolationException returns 422 with all violation messages`() {
+        mockMvc.get("/throw?type=policy-violation").andExpect {
+            status { isUnprocessableEntity() }
+            jsonPath("$.code") { value("POLICY_VIOLATION") }
+            jsonPath("$.message") { value("Debit exceeds session limit") }
+        }
+    }
+
+    @Test
     fun `unexpected Exception returns 500 without leaking stack trace`() {
         mockMvc.get("/throw?type=unexpected").andExpect {
             status { isInternalServerError() }
@@ -138,6 +151,9 @@ class GlobalExceptionHandlerTest {
                 "statement-account-not-found" -> StatementAccountNotFound(accountId)
                 "invalid-range" -> InvalidStatementRange(now.plusSeconds(10), now)
                 "invalid-cursor" -> InvalidCursor("bad-cursor")
+                "policy-violation" -> PolicyViolationException(
+                    listOf(PolicyViolation(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("1000")), "Debit exceeds session limit"))
+                )
                 else -> RuntimeException("unexpected boom")
             }
         }
