@@ -56,7 +56,8 @@ class SettlementRepositoryAdapter(
         ).map { it.toDomain() }
     }
 
-    @Transactional(readOnly = true)
+    // Not readOnly: PESSIMISTIC_WRITE on findUnmatchedInWindow requires a read-write transaction.
+    @Transactional
     override fun findUnmatchedInWindow(
         tenantId: TenantId,
         accountId: AccountId?,

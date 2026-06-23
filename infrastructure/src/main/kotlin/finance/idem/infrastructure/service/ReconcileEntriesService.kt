@@ -6,6 +6,8 @@ import finance.idem.application.reconciliation.ReconcileEntriesCommand
 import finance.idem.application.reconciliation.ReconcileEntriesResult
 import finance.idem.application.reconciliation.ReconcileEntriesUseCase
 import finance.idem.application.reconciliation.ReconciliationException
+import finance.idem.core.ChainId
+import finance.idem.core.StablecoinToken
 import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.ledger.Settlement
 import finance.idem.core.ledger.SettlementRepository
@@ -27,6 +29,14 @@ class ReconcileEntriesService(
 
     private val transactionTemplate = TransactionTemplate(txManager)
 
+    private sealed class EntryOutcome {
+        data object Settled : EntryOutcome()
+        data class Unmatched(val exception: ReconciliationException) : EntryOutcome()
+        data class Failed(val exception: ReconciliationException) : EntryOutcome()
+    }
+
+    private data class GroupKey(val token: StablecoinToken, val chainId: ChainId, val walletAddress: String)
+
     override fun execute(cmd: ReconcileEntriesCommand): Result<ReconcileEntriesResult> {
         val unmatchedEntries = settlementRepository.findUnmatchedInWindow(
             tenantId = cmd.tenantId,
@@ -35,33 +45,60 @@ class ReconcileEntriesService(
             to = cmd.to,
         )
 
-        val exceptions = mutableListOf<ReconciliationException>()
-        var matched = 0
+        val outcomes = mutableListOf<EntryOutcome>()
+        val grouped = unmatchedEntries.groupBy { GroupKey(it.token, it.chainId, it.walletAddress) }
 
-        for (entry in unmatchedEntries) {
-            val settled = transactionTemplate.execute { processEntry(cmd, entry, exceptions) } ?: false
-            if (settled) matched++
+        for ((key, entries) in grouped) {
+            try {
+                val groupOutcomes = transactionTemplate.execute { processGroup(cmd, key, entries) }
+                    ?: entries.map { EntryOutcome.Failed(ReconciliationException(it.id, it.txHash, "transaction aborted")) }
+                outcomes += groupOutcomes
+            } catch (e: Exception) {
+                log.error(
+                    "ReconcileEntries: group failed token={} chainId={} wallet={} tenant={} — {}",
+                    key.token, key.chainId, key.walletAddress, cmd.tenantId.value, e.message, e,
+                )
+                entries.forEach { entry ->
+                    outcomes += EntryOutcome.Failed(
+                        ReconciliationException(entry.id, entry.txHash, e.message ?: "unexpected error")
+                    )
+                }
+            }
         }
 
+        val matched = outcomes.count { it is EntryOutcome.Settled }
+        val exceptions = outcomes.mapNotNull {
+            when (it) {
+                is EntryOutcome.Settled -> null
+                is EntryOutcome.Unmatched -> it.exception
+                is EntryOutcome.Failed -> it.exception
+            }
+        }
         val unmatched = unmatchedEntries.size - matched
         return Result.success(ReconcileEntriesResult(matched, unmatched, exceptions))
     }
 
-    private fun processEntry(
+    private fun processGroup(
         cmd: ReconcileEntriesCommand,
-        entry: Settlement,
-        exceptions: MutableList<ReconciliationException>,
-    ): Boolean {
+        key: GroupKey,
+        entries: List<Settlement>,
+    ): List<EntryOutcome> {
         val candidates = settlementRepository.findPendingCandidates(
             tenantId = cmd.tenantId,
-            accountIds = setOf(entry.accountId),
-            token = entry.token,
-            chainId = entry.chainId,
-            walletAddress = entry.walletAddress,
+            accountIds = entries.map { it.accountId }.toSet(),
+            token = key.token,
+            chainId = key.chainId,
+            walletAddress = key.walletAddress,
             since = cmd.from,
-        )
-        val match = findMatch(candidates, entry)
+        ).toMutableList()
+
+        return entries.map { entry -> settleEntry(entry, candidates) }
+    }
+
+    private fun settleEntry(entry: Settlement, candidates: MutableList<Settlement>): EntryOutcome {
+        val match = findMatch(candidates.filter { it.accountId == entry.accountId }, entry)
         return if (match != null) {
+            candidates.remove(match)
             settlementRepository.save(
                 match.copy(
                     status = EntryStatus.SETTLED,
@@ -77,10 +114,10 @@ class ReconcileEntriesService(
                 "ReconcileEntries: settled UNMATCHED={} against PENDING={} tenant={} amount={} token={} txHash={}",
                 entry.id, match.id, entry.tenantId.value, entry.amount.value, entry.token, entry.txHash,
             )
-            true
+            EntryOutcome.Settled
         } else {
             webhookOutboxRepository.save(WebhookOutboxEntry.reconciliationException(entry))
-            exceptions += ReconciliationException(
+            val exception = ReconciliationException(
                 settlementId = entry.id,
                 txHash = entry.txHash,
                 reason = "No matching pending settlement found",
@@ -89,7 +126,7 @@ class ReconcileEntriesService(
                 "ReconcileEntries: no PENDING match for UNMATCHED={} tenant={} amount={} token={} chainId={} wallet={}",
                 entry.id, entry.tenantId.value, entry.amount.value, entry.token, entry.chainId, entry.walletAddress,
             )
-            false
+            EntryOutcome.Unmatched(exception)
         }
     }
 
@@ -104,7 +141,7 @@ class ReconcileEntriesService(
             .filter { it.expectedFromAddress == null }
             .firstOrNull { candidate ->
                 if (tolerancePercent > BigDecimal.ZERO) {
-                    val tolerance = entry.amount.value * tolerancePercent
+                    val tolerance = entry.amount.value * tolerancePercent / BigDecimal("100")
                     (candidate.amount.value - entry.amount.value).abs() <= tolerance
                 } else {
                     candidate.amount == entry.amount

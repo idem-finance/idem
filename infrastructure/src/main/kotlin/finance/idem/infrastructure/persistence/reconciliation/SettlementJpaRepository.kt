@@ -37,6 +37,10 @@ interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
         @Param("since") since: Instant,
     ): List<SettlementDataModel>
 
+    // PESSIMISTIC_WRITE so concurrent sweeps serialise at this point: the second sweep
+    // blocks until the first commits all its per-group transactions, at which point
+    // settled entries no longer match the UNMATCHED status filter.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(
         """
         SELECT s FROM SettlementDataModel s

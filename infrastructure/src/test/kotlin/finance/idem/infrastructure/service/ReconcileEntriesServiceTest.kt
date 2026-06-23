@@ -19,10 +19,13 @@ import finance.idem.core.monetary.OnChainEntry
 import finance.idem.infrastructure.persistence.AccountRepositoryAdapter
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import finance.idem.infrastructure.persistence.TransactionRepositoryAdapter
+import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxJpaRepository
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
 import jakarta.persistence.EntityManager
+import java.math.BigDecimal
+import org.springframework.transaction.PlatformTransactionManager
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -73,6 +76,8 @@ class ReconcileEntriesServiceTest {
     @Autowired lateinit var accountAdapter: AccountRepositoryAdapter
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
     @Autowired lateinit var outboxJpaRepository: WebhookOutboxJpaRepository
+    @Autowired lateinit var webhookOutboxRepository: WebhookOutboxRepository
+    @Autowired lateinit var txManager: PlatformTransactionManager
     @Autowired lateinit var entityManager: EntityManager
 
     private val tenantA = TenantId.generate()
@@ -330,5 +335,55 @@ class ReconcileEntriesServiceTest {
         assertEquals(0, result.matched)
         assertEquals(0, result.unmatched)
         assertTrue(result.exceptions.isEmpty())
+    }
+
+    // ── amount tolerance ──────────────────────────────────────────────────────
+
+    @Test
+    fun `tolerance of 1 percent matches entry within range`() {
+        val toleranceService = ReconcileEntriesService(settlementAdapter, webhookOutboxRepository, txManager, BigDecimal("1"))
+        val txId = createOnChainTx(tenantA, accountA, accountA2, amount = "100.000000")
+        settlementAdapter.save(unmatchedSettlement(amount = "100.000000", matchedTransactionId = txId))
+        // 0.5% deviation — within 1% tolerance
+        settlementAdapter.save(pendingSettlement(amount = "100.500000"))
+
+        val result = toleranceService.execute(cmd()).getOrThrow()
+
+        assertEquals(1, result.matched)
+        assertEquals(0, result.unmatched)
+        assertTrue(result.exceptions.isEmpty())
+    }
+
+    @Test
+    fun `tolerance of 1 percent rejects entry outside range`() {
+        val toleranceService = ReconcileEntriesService(settlementAdapter, webhookOutboxRepository, txManager, BigDecimal("1"))
+        val txId = createOnChainTx(tenantA, accountA, accountA2, amount = "100.000000")
+        settlementAdapter.save(unmatchedSettlement(amount = "100.000000", matchedTransactionId = txId))
+        // 2% deviation — outside 1% tolerance
+        settlementAdapter.save(pendingSettlement(amount = "102.000000"))
+
+        val result = toleranceService.execute(cmd()).getOrThrow()
+
+        assertEquals(0, result.matched)
+        assertEquals(1, result.unmatched)
+    }
+
+    // ── grouped batch fetch ───────────────────────────────────────────────────
+
+    @Test
+    fun `multiple UNMATCHED entries sharing same wallet and token are all settled in one batch`() {
+        val txId1 = createOnChainTx(tenantA, accountA, accountA2, amount = "100.000000", txHash = "hash-batch-1")
+        val txId2 = createOnChainTx(tenantA, accountA, accountA2, amount = "200.000000", txHash = "hash-batch-2")
+        settlementAdapter.save(unmatchedSettlement(amount = "100.000000", matchedTransactionId = txId1, txHash = "hash-batch-1"))
+        settlementAdapter.save(unmatchedSettlement(amount = "200.000000", matchedTransactionId = txId2, txHash = "hash-batch-2"))
+        settlementAdapter.save(pendingSettlement(amount = "100.000000"))
+        settlementAdapter.save(pendingSettlement(amount = "200.000000"))
+
+        val result = service.execute(cmd()).getOrThrow()
+
+        assertEquals(2, result.matched)
+        assertEquals(0, result.unmatched)
+        assertTrue(result.exceptions.isEmpty())
+        assertEquals(2L, outboxCount("transaction.settled"))
     }
 }
