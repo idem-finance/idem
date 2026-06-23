@@ -25,9 +25,7 @@ class DescribeAccountService(
 
         val entryCount = journalLineRepository.countByAccountId(query.accountId, query.tenantId)
 
-        val lastActivityAt = journalLineRepository
-            .findByAccountId(query.accountId, query.tenantId, null, null, null, null, 1)
-            .firstOrNull()?.createdAt
+        val lastActivityAt = journalLineRepository.findMostRecentEntry(query.accountId, query.tenantId)?.createdAt
 
         val balance = getBalanceUseCase.execute(
             GetBalanceQuery(accountId = query.accountId, tenantId = query.tenantId, asOf = null),

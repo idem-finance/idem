@@ -85,8 +85,7 @@ class DescribeAccountServiceTest {
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(account)
         whenever(journalLineRepository.countByAccountId(accountId, tenantId)).thenReturn(7L)
-        whenever(journalLineRepository.findByAccountId(accountId, tenantId, null, null, null, null, 1))
-            .thenReturn(listOf(line))
+        whenever(journalLineRepository.findMostRecentEntry(accountId, tenantId)).thenReturn(line)
         whenever(getBalanceUseCase.execute(any())).thenReturn(Result.success(balance))
 
         val result = service.execute(DescribeAccountQuery(accountId, tenantId))
@@ -118,8 +117,7 @@ class DescribeAccountServiceTest {
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(account)
         whenever(journalLineRepository.countByAccountId(accountId, tenantId)).thenReturn(0L)
-        whenever(journalLineRepository.findByAccountId(accountId, tenantId, null, null, null, null, 1))
-            .thenReturn(emptyList())
+        whenever(journalLineRepository.findMostRecentEntry(accountId, tenantId)).thenReturn(null)
         whenever(getBalanceUseCase.execute(any())).thenReturn(Result.success(balance))
 
         val result = service.execute(DescribeAccountQuery(accountId, tenantId))

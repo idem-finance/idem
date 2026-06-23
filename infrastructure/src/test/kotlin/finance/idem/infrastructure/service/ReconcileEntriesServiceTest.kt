@@ -16,6 +16,7 @@ import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Settlement
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.infrastructure.persistence.AccountRepositoryAdapter
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import finance.idem.infrastructure.persistence.TransactionRepositoryAdapter
@@ -75,6 +76,8 @@ class ReconcileEntriesServiceTest {
     @Autowired lateinit var settlementAdapter: SettlementRepositoryAdapter
     @Autowired lateinit var accountAdapter: AccountRepositoryAdapter
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
+    @Autowired lateinit var webhookOutboxRepository: WebhookOutboxRepository
+    @Autowired lateinit var txManager: PlatformTransactionManager
     @Autowired lateinit var outboxJpaRepository: WebhookOutboxJpaRepository
     @Autowired lateinit var webhookOutboxRepository: WebhookOutboxRepository
     @Autowired lateinit var txManager: PlatformTransactionManager

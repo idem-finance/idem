@@ -227,6 +227,7 @@ class IdemMcpServerTest {
         assertEquals(txId.value.toString(), result.entries[0].transactionId)
         assertEquals("CREDIT", result.entries[0].entryType)
         assertEquals("250", result.entries[0].amount)
+        assertEquals("BRL", result.entries[0].currency)
         assertEquals("Test payment", result.entries[0].description)
         assertEquals("cursor-abc", result.nextCursor)
     }

@@ -112,6 +112,10 @@ class IdemMcpServer(
                             transactionId = line.transactionId.value.toString(),
                             entryType = line.entryType.name,
                             amount = line.monetaryEntry.amount.value.toPlainString(),
+                            currency = when (val me = line.monetaryEntry) {
+                                is FiatEntry -> me.currency.name
+                                is OnChainEntry -> me.token.name
+                            },
                             description = line.description,
                             createdAt = line.createdAt.toString(),
                         )
@@ -216,6 +220,7 @@ data class EntryItem(
     val transactionId: String,
     val entryType: String,
     val amount: String,
+    val currency: String,
     val description: String?,
     val createdAt: String,
 )

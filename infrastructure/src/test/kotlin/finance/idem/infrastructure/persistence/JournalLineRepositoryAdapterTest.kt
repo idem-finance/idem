@@ -26,6 +26,8 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @DataJpaTest
@@ -169,5 +171,27 @@ class JournalLineRepositoryAdapterTest {
         val page = journalLineAdapter.findByAccountId(debitAccountId, tenantB, null, null, null, null, limit = 10)
 
         assertTrue(page.isEmpty())
+    }
+
+    @Test
+    fun `findMostRecentEntry returns the entry with the latest createdAt`() {
+        postTx(tenantA, base)
+        postTx(tenantA, base.plusSeconds(60))
+        postTx(tenantA, base.plusSeconds(120))
+
+        val entry = journalLineAdapter.findMostRecentEntry(debitAccountId, tenantA)
+
+        assertNotNull(entry)
+        assertEquals(base.plusSeconds(120), entry.createdAt)
+    }
+
+    @Test
+    fun `findMostRecentEntry returns null when account has no entries`() {
+        val emptyAccount = AccountId.generate()
+        accountAdapter.save(Account.create(emptyAccount, tenantA, "Empty", FiatCurrency.BRL, AccountType.ASSET, base, "test"))
+
+        val entry = journalLineAdapter.findMostRecentEntry(emptyAccount, tenantA)
+
+        assertNull(entry)
     }
 }

@@ -33,6 +33,12 @@ class JournalLineRepositoryAdapter(
     }
 
     @Transactional(readOnly = true)
+    override fun findMostRecentEntry(accountId: AccountId, tenantId: TenantId): JournalLine? {
+        setTenantId(tenantId)
+        return jpaRepository.findLatest(accountId.value, tenantId.value)?.toDomain(tenantId, objectMapper)
+    }
+
+    @Transactional(readOnly = true)
     override fun findByAccountId(
         accountId: AccountId,
         tenantId: TenantId,
