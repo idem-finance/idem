@@ -100,6 +100,8 @@ private class SessionCapturingOutputStream(
         delegate.write(b, off, len)
     }
 
+    override fun flush() = delegate.flush()
+    override fun close() = delegate.close()
     override fun isReady(): Boolean = delegate.isReady
     override fun setWriteListener(writeListener: WriteListener?) = delegate.setWriteListener(writeListener)
 }
