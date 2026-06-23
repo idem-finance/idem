@@ -22,6 +22,7 @@ class WebSecurityConfig {
     fun securityFilterChain(
         http: HttpSecurity,
         apiKeyAuthFilter: ApiKeyAuthFilter,
+        mcpSseAuthBridgeFilter: McpSseAuthBridgeFilter,
         traceIdFilter: TraceIdFilter,
     ): SecurityFilterChain {
         return http
@@ -38,6 +39,9 @@ class WebSecurityConfig {
                 auth.anyRequest().authenticated()
             }
             .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
+            // MCP bridge runs after API key filter: picks up session auth for POST /mcp/messages
+            // that arrive without an X-API-Key header (mcp-remote only sends it on GET /sse).
+            .addFilterAfter(mcpSseAuthBridgeFilter, ApiKeyAuthFilter::class.java)
             .addFilterBefore(traceIdFilter, ApiKeyAuthFilter::class.java)
             .exceptionHandling { ex ->
                 ex.authenticationEntryPoint { _, response, _ ->
