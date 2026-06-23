@@ -3,6 +3,7 @@ package finance.idem.application.outbox
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.agentic.WorkflowPlan
+import finance.idem.core.ledger.Settlement
 import finance.idem.core.ledger.Transaction
 import java.time.Instant
 import java.util.UUID
@@ -33,6 +34,18 @@ data class WebhookOutboxEntry(
                 occurredAt = tx.occurredAt,
             )
 
+        /** Emitted by ReconcileEntriesUseCase when a sweep retroactively settles an UNMATCHED entry. */
+        fun transactionSettled(settlement: Settlement): WebhookOutboxEntry =
+            WebhookOutboxEntry(
+                id = UUID.randomUUID(),
+                tenantId = settlement.tenantId,
+                eventType = "transaction.settled",
+                transactionId = requireNotNull(settlement.matchedTransactionId) {
+                    "UNMATCHED settlement ${settlement.id} must have matchedTransactionId"
+                },
+                occurredAt = settlement.confirmedAt ?: Instant.now(),
+            )
+
         fun reconciliationUnmatched(tx: Transaction): WebhookOutboxEntry =
             WebhookOutboxEntry(
                 id = UUID.randomUUID(),
@@ -40,6 +53,18 @@ data class WebhookOutboxEntry(
                 eventType = "reconciliation.unmatched",
                 transactionId = tx.id,
                 occurredAt = tx.occurredAt,
+            )
+
+        /** Emitted by ReconcileEntriesUseCase when a sweep attempt still finds no PENDING match. */
+        fun reconciliationException(settlement: Settlement): WebhookOutboxEntry =
+            WebhookOutboxEntry(
+                id = UUID.randomUUID(),
+                tenantId = settlement.tenantId,
+                eventType = "reconciliation.exception",
+                transactionId = requireNotNull(settlement.matchedTransactionId) {
+                    "UNMATCHED settlement ${settlement.id} must have matchedTransactionId"
+                },
+                occurredAt = settlement.confirmedAt ?: Instant.now(),
             )
 
         // workflow events reuse the transactionId UUID column to store workflowPlanId;

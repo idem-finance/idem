@@ -36,4 +36,26 @@ interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
         @Param("walletAddress") walletAddress: String,
         @Param("since") since: Instant,
     ): List<SettlementDataModel>
+
+    // PESSIMISTIC_WRITE so concurrent sweeps serialise at this point: the second sweep
+    // blocks until the first commits all its per-group transactions, at which point
+    // settled entries no longer match the UNMATCHED status filter.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+        """
+        SELECT s FROM SettlementDataModel s
+        WHERE s.tenantId = :tenantId
+          AND s.status = 'UNMATCHED'
+          AND s.createdAt >= :from
+          AND s.createdAt < :to
+          AND (:accountId IS NULL OR s.accountId = :accountId)
+        ORDER BY s.createdAt ASC
+        """
+    )
+    fun findUnmatchedInWindow(
+        @Param("tenantId") tenantId: UUID,
+        @Param("accountId") accountId: UUID?,
+        @Param("from") from: Instant,
+        @Param("to") to: Instant,
+    ): List<SettlementDataModel>
 }
