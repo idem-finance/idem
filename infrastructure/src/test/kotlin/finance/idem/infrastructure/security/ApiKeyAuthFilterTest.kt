@@ -54,6 +54,8 @@ class ApiKeyAuthFilterTest {
         val auth = SecurityContextHolder.getContext().authentication as ApiKeyAuthentication
         assertEquals(tenantId, auth.tenantId)
         assertEquals(listOf("TRANSACTIONS_WRITE"), auth.authorities.map { it.authority })
+        assertEquals("sk_live_abc1", auth.keyPrefix)
+        assertEquals("sk_live_abc1", auth.name)
     }
 
     @Test
@@ -66,6 +68,7 @@ class ApiKeyAuthFilterTest {
 
         val auth = SecurityContextHolder.getContext().authentication as ApiKeyAuthentication
         assertEquals(tenantId, auth.tenantId)
+        assertEquals("sk_live_abc1", auth.keyPrefix)
     }
 
     @Test

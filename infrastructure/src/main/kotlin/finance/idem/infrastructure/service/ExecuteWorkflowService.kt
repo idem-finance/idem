@@ -39,7 +39,7 @@ class ExecuteWorkflowService(
         // TODO: pre-compute priorSessionDebitTotal and priorHourlyDebitTotal from
         //  historical journal data before constructing LedgerIntent so that
         //  MaxDebitPerSession and MaxDebitPerHour rules evaluate cumulative totals,
-        //  not just this workflow's lines. Tracked in issue #TODO.
+        //  not just this workflow's lines. Tracked in issue #200.
         val ledgerIntent = LedgerIntent(
             lines = cmd.steps.flatMap { step ->
                 step.lines.map { line ->
