@@ -36,4 +36,13 @@ interface JournalLineJpaRepository : JpaRepository<JournalLineDataModel, UUID> {
         @Param("afterId") afterId: UUID?,
         @Param("limit") limit: Int,
     ): List<JournalLineDataModel>
+
+    @Query(
+        value = "SELECT COUNT(*) FROM journal_lines WHERE account_id = :accountId AND tenant_id = :tenantId",
+        nativeQuery = true,
+    )
+    fun countByAccountAndTenant(
+        @Param("accountId") accountId: UUID,
+        @Param("tenantId") tenantId: UUID,
+    ): Long
 }

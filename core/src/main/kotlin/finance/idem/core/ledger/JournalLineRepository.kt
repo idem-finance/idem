@@ -37,4 +37,6 @@ interface JournalLineRepository {
         afterId: UUID?,
         limit: Int,
     ): List<JournalLine>
+
+    fun countByAccountId(accountId: AccountId, tenantId: TenantId): Long
 }
