@@ -6,6 +6,7 @@ import jakarta.servlet.WriteListener
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.servlet.http.HttpServletResponseWrapper
+import org.slf4j.LoggerFactory
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
@@ -25,6 +26,8 @@ class McpSseAuthBridgeFilter(
     private val sessionAuthStore: McpSseSessionAuthStore,
 ) : OncePerRequestFilter() {
 
+    private val log = LoggerFactory.getLogger(McpSseAuthBridgeFilter::class.java)
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -33,9 +36,11 @@ class McpSseAuthBridgeFilter(
         when {
             request.method == "GET" && request.requestURI == "/sse" -> {
                 val auth = currentAuth()
+                log.debug("GET /sse — authenticated={}", auth != null)
                 if (auth != null) {
                     chain.doFilter(request, SessionCapturingResponseWrapper(response) { sessionId ->
                         sessionAuthStore.register(sessionId, auth)
+                        log.info("MCP SSE session registered: sessionId={}", sessionId)
                     })
                 } else {
                     chain.doFilter(request, response)
@@ -43,10 +48,11 @@ class McpSseAuthBridgeFilter(
             }
 
             request.requestURI.contains("/mcp/messages") && currentAuth() == null -> {
-                request.getParameter("sessionId")?.let { sessionId ->
-                    sessionAuthStore.getAuth(sessionId)?.let { storedAuth ->
-                        SecurityContextHolder.getContext().authentication = storedAuth
-                    }
+                val sessionId = request.getParameter("sessionId")
+                val storedAuth = sessionId?.let { sessionAuthStore.getAuth(it) }
+                log.debug("POST /mcp/messages — sessionId={}, authFound={}", sessionId, storedAuth != null)
+                if (storedAuth != null) {
+                    SecurityContextHolder.getContext().authentication = storedAuth
                 }
                 chain.doFilter(request, response)
             }
