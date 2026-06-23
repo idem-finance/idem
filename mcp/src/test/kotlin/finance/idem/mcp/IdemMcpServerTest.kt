@@ -108,6 +108,28 @@ class IdemMcpServerTest {
     }
 
     @Test
+    fun `postTransaction populates apiKeyPrefix in AgentContext from authentication name`() {
+        val planId = WorkflowPlanId.generate()
+        whenever(executeWorkflowUseCase.execute(any())).thenReturn(Result.success(planId))
+
+        val entry = McpJournalLineInput(
+            accountId = accountId.value.toString(),
+            entryType = "DEBIT",
+            monetaryEntryType = "FIAT",
+            amount = "50.00",
+            currency = "USD",
+            rail = "WIRE",
+        )
+        server.postTransaction(listOf(entry), "key", null, "agent", "session")
+
+        val captor = argumentCaptor<ExecuteWorkflowCommand>()
+        verify(executeWorkflowUseCase).execute(captor.capture())
+        // apiKeyPrefix must be non-null — in production it is the verified 12-char key prefix
+        // extracted from ApiKeyAuthentication.getName(); in tests it is the auth token's name
+        assertNotNull(captor.firstValue.agentContext.apiKeyPrefix)
+    }
+
+    @Test
     fun `postTransaction propagates PolicyViolationException`() {
         whenever(executeWorkflowUseCase.execute(any())).thenReturn(
             Result.failure(PolicyViolationException(emptyList())),
@@ -164,6 +186,13 @@ class IdemMcpServerTest {
         assertEquals(asOf, captor.firstValue.asOf)
     }
 
+    @Test
+    fun `getBalance throws IllegalArgumentException for malformed asOf — not raw DateTimeParseException`() {
+        assertFailsWith<IllegalArgumentException> {
+            server.getBalance(accountId = accountId.value.toString(), asOf = "not-a-valid-date")
+        }
+    }
+
     // ── listEntries ───────────────────────────────────────────────────────────
 
     @Test
@@ -187,6 +216,20 @@ class IdemMcpServerTest {
         assertEquals(accountId, captor.firstValue.accountId)
         assertEquals(tenantId, captor.firstValue.tenantId)
         assertEquals(25, captor.firstValue.limit)
+    }
+
+    @Test
+    fun `listEntries throws IllegalArgumentException for malformed from — not raw DateTimeParseException`() {
+        assertFailsWith<IllegalArgumentException> {
+            server.listEntries(accountId.value.toString(), from = "not-a-date", to = null, limit = null, cursor = null)
+        }
+    }
+
+    @Test
+    fun `listEntries throws IllegalArgumentException for malformed to`() {
+        assertFailsWith<IllegalArgumentException> {
+            server.listEntries(accountId.value.toString(), from = null, to = "not-a-date", limit = null, cursor = null)
+        }
     }
 
     @Test

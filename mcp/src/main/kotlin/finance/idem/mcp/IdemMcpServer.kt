@@ -11,21 +11,26 @@ import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.core.AccountId
+import finance.idem.core.ChainId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
-import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
+import org.slf4j.LoggerFactory
 import org.springframework.ai.tool.annotation.Tool
 import org.springframework.ai.tool.annotation.ToolParam
+import org.springframework.security.access.AccessDeniedException
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import java.time.Instant
+import java.time.format.DateTimeParseException
 
 @Component
 class IdemMcpServer(
@@ -34,7 +39,9 @@ class IdemMcpServer(
     private val getEntriesUseCase: GetEntriesUseCase,
     private val describeAccountUseCase: DescribeAccountUseCase,
 ) {
+    private val log = LoggerFactory.getLogger(IdemMcpServer::class.java)
 
+    @PreAuthorize("hasAuthority('AGENTS_EXECUTE')")
     @Tool(description = "Post a double-entry ledger transaction as an AI agent. Requires AGENTS_EXECUTE scope. Policy rules are evaluated before commit; a PolicyViolationException is thrown if any rule is violated.")
     fun postTransaction(
         @ToolParam(description = "Journal lines: each line specifies accountId, entryType (DEBIT/CREDIT), monetaryEntryType (FIAT/ON_CHAIN), amount, and type-specific fields") entries: List<McpJournalLineInput>,
@@ -44,7 +51,15 @@ class IdemMcpServer(
         @ToolParam(description = "Session identifier grouping related agent actions") sessionId: String,
     ): PostTransactionResult {
         val tenantId = tenantId()
-        val agentContext = AgentContext(agentId = agentId, sessionId = sessionId, intent = intentDescription)
+        // Extract the verified API key prefix from the authenticated principal so the audit log
+        // can trace this action to an actual credential, independent of the caller-supplied agentId.
+        val apiKeyPrefix = SecurityContextHolder.getContext().authentication?.name
+        val agentContext = AgentContext(
+            agentId = agentId,
+            sessionId = sessionId,
+            intent = intentDescription,
+            apiKeyPrefix = apiKeyPrefix,
+        )
         val cmd = ExecuteWorkflowCommand(
             tenantId = tenantId,
             agentContext = agentContext,
@@ -54,15 +69,16 @@ class IdemMcpServer(
                     lines = entries.map { it.toJournalLineRequest() },
                 ),
             ),
-            policyRules = emptyList(),
+            policyRules = emptyList(), // TODO(#200): load from PolicyRepository once implemented
             createdBy = agentId,
         )
         return executeWorkflowUseCase.execute(cmd).fold(
             onSuccess = { planId -> PostTransactionResult(workflowPlanId = planId.value.toString(), status = "COMMITTED") },
-            onFailure = { throw it },
+            onFailure = { handleFailure(it) },
         )
     }
 
+    @PreAuthorize("hasAuthority('AGENTS_EXECUTE')")
     @Tool(description = "Get the current balance for an account. Optionally pass asOf (ISO-8601 instant) to compute a historical balance. Requires AGENTS_EXECUTE scope.")
     fun getBalance(
         @ToolParam(description = "Account UUID") accountId: String,
@@ -71,7 +87,7 @@ class IdemMcpServer(
         val query = GetBalanceQuery(
             accountId = AccountId.of(accountId),
             tenantId = tenantId(),
-            asOf = asOf?.let { Instant.parse(it) },
+            asOf = asOf?.let { parseInstant(it, "asOf") },
         )
         return getBalanceUseCase.execute(query).fold(
             onSuccess = { balance ->
@@ -82,10 +98,11 @@ class IdemMcpServer(
                     computedAt = balance.computedAt.toString(),
                 )
             },
-            onFailure = { throw it },
+            onFailure = { handleFailure(it) },
         )
     }
 
+    @PreAuthorize("hasAuthority('AGENTS_EXECUTE')")
     @Tool(description = "List journal entries for an account, newest first. Supports time-range filtering and cursor-based pagination. Requires AGENTS_EXECUTE scope.")
     fun listEntries(
         @ToolParam(description = "Account UUID") accountId: String,
@@ -97,8 +114,8 @@ class IdemMcpServer(
         val query = GetEntriesQuery(
             accountId = AccountId.of(accountId),
             tenantId = tenantId(),
-            from = from?.let { Instant.parse(it) },
-            to = to?.let { Instant.parse(it) },
+            from = from?.let { parseInstant(it, "from") },
+            to = to?.let { parseInstant(it, "to") },
             limit = (limit ?: 50).coerceIn(1, 200),
             cursor = cursor,
         )
@@ -123,10 +140,11 @@ class IdemMcpServer(
                     nextCursor = page.nextCursor,
                 )
             },
-            onFailure = { throw it },
+            onFailure = { handleFailure(it) },
         )
     }
 
+    @PreAuthorize("hasAuthority('AGENTS_EXECUTE')")
     @Tool(description = "Describe an account: returns name, currency, entry count, last activity timestamp, and current balance. Requires AGENTS_EXECUTE scope.")
     fun describeAccount(
         @ToolParam(description = "Account UUID") accountId: String,
@@ -148,13 +166,29 @@ class IdemMcpServer(
                     balanceAmount = desc.balance.amount.value.toPlainString(),
                 )
             },
-            onFailure = { throw it },
+            onFailure = { handleFailure(it) },
         )
     }
 
     private fun tenantId(): TenantId =
         SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: throw IllegalStateException("No authenticated tenant in SecurityContext")
+            ?: throw AccessDeniedException("No authenticated tenant in SecurityContext")
+
+    private fun parseInstant(value: String, paramName: String): Instant =
+        try {
+            Instant.parse(value)
+        } catch (e: DateTimeParseException) {
+            throw IllegalArgumentException("Invalid ISO-8601 instant for '$paramName': $value")
+        }
+
+    private fun handleFailure(error: Throwable): Nothing = when (error) {
+        is PolicyViolationException -> throw error
+        is IllegalArgumentException -> throw error
+        else -> {
+            log.error("MCP tool execution failed", error)
+            throw RuntimeException("Tool execution failed")
+        }
+    }
 }
 
 // ── Input DTO ──────────────────────────────────────────────────────────────────

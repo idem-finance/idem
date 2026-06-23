@@ -20,7 +20,7 @@ class ApiKeyAuthFilter(
             apiKeyService.validate(rawKey)?.let { validated ->
                 val authorities = validated.scopes.map { SimpleGrantedAuthority(it.name) }
                 SecurityContextHolder.getContext().authentication =
-                    ApiKeyAuthentication(validated.tenantId, authorities)
+                    ApiKeyAuthentication(validated.tenantId, rawKey.take(12), authorities)
             }
         }
         chain.doFilter(request, response)
