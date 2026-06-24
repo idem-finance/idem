@@ -7,7 +7,6 @@ import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.port.WebhookOutboxRepository
-import finance.idem.application.port.WorkflowPlanRepository
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.LedgerIntent
@@ -16,7 +15,8 @@ import finance.idem.core.agentic.PolicyEvaluationResult
 import finance.idem.core.agentic.PolicyGuard
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.agentic.WorkflowPlan
-import finance.idem.core.agentic.WorkflowPlanStatus
+import finance.idem.core.agentic.WorkflowPlanRepository
+import finance.idem.core.agentic.WorkflowStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -64,8 +64,8 @@ class ExecuteWorkflowService(
             id = planId,
             tenantId = cmd.tenantId,
             agentContext = cmd.agentContext,
-            stepIdempotencyKeys = cmd.steps.map { it.idempotencyKey },
-            occurredAt = now,
+            stepDescriptions = cmd.steps.map { it.description.ifBlank { it.idempotencyKey } },
+            createdAt = now,
         )
         workflowPlanRepository.insert(plan)
 
@@ -78,7 +78,7 @@ class ExecuteWorkflowService(
             )
         )
 
-        workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowPlanStatus.EXECUTING, null)
+        workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowStatus.EXECUTING)
 
         cmd.steps.forEachIndexed { index, step ->
             val txCmd = PostTransactionCommand(
@@ -96,9 +96,9 @@ class ExecuteWorkflowService(
                     workflowPlanRepository.updateStep(planId, cmd.tenantId, plan.steps[index])
                 },
                 onFailure = { ex ->
-                    plan = plan.withStepFailed(index).withStatus(WorkflowPlanStatus.ROLLED_BACK)
+                    plan = plan.withStepFailed(index).withStatus(WorkflowStatus.FAILED)
                     workflowPlanRepository.updateStep(planId, cmd.tenantId, plan.steps[index])
-                    workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowPlanStatus.ROLLED_BACK, null)
+                    workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowStatus.FAILED)
                     agentAuditRepository.save(
                         AgentAuditEvent.failed(
                             workflowPlanId = planId,
@@ -112,10 +112,11 @@ class ExecuteWorkflowService(
             )
         }
 
+        val completedAt = Instant.now()
         val committedPlan = plan
-            .withStatus(WorkflowPlanStatus.COMMITTED)
-            .copy(committedAt = Instant.now())
-        workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowPlanStatus.COMMITTED, committedPlan.committedAt)
+            .withStatus(WorkflowStatus.COMMITTED)
+            .copy(completedAt = completedAt)
+        workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowStatus.COMMITTED, completedAt = completedAt)
 
         agentAuditRepository.save(
             AgentAuditEvent.completed(

@@ -4,9 +4,9 @@ import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.agentic.StepStatus
 import finance.idem.core.agentic.WorkflowPlan
-import finance.idem.core.agentic.WorkflowPlanStatus
-import finance.idem.core.agentic.WorkflowStepStatus
+import finance.idem.core.agentic.WorkflowStatus
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
@@ -69,8 +69,8 @@ class WorkflowPlanRepositoryAdapterTest {
             id = planId,
             tenantId = tenantId,
             agentContext = agentContext(planId),
-            stepIdempotencyKeys = listOf("step-0", "step-1"),
-            occurredAt = now,
+            stepDescriptions = listOf("step-0", "step-1"),
+            createdAt = now,
         )
     }
 
@@ -87,11 +87,13 @@ class WorkflowPlanRepositoryAdapterTest {
         assertNotNull(found)
         assertEquals(original.id, found.id)
         assertEquals(tenantA, found.tenantId)
-        assertEquals(WorkflowPlanStatus.PLANNED, found.status)
+        assertEquals(WorkflowStatus.PLANNED, found.status)
         assertEquals(2, found.steps.size)
-        assertEquals("step-0", found.steps[0].idempotencyKey)
-        assertEquals("step-1", found.steps[1].idempotencyKey)
-        assertNull(found.committedAt)
+        assertEquals("step-0", found.steps[0].description)
+        assertEquals("step-1", found.steps[1].description)
+        assertNull(found.completedAt)
+        assertNull(found.rolledBackAt)
+        assertNull(found.rollbackReason)
     }
 
     @Test
@@ -101,21 +103,21 @@ class WorkflowPlanRepositoryAdapterTest {
         entityManager.flush()
         entityManager.clear()
 
-        adapter.updateStatus(original.id, tenantA, WorkflowPlanStatus.EXECUTING, null)
+        adapter.updateStatus(original.id, tenantA, WorkflowStatus.EXECUTING)
         entityManager.flush()
         entityManager.clear()
 
         val found = adapter.findById(original.id, tenantA)
 
         assertNotNull(found)
-        assertEquals(WorkflowPlanStatus.EXECUTING, found.status)
+        assertEquals(WorkflowStatus.EXECUTING, found.status)
         assertEquals(2, found.steps.size)
-        assertEquals(WorkflowStepStatus.PENDING, found.steps[0].status)
-        assertEquals(WorkflowStepStatus.PENDING, found.steps[1].status)
+        assertEquals(StepStatus.PENDING, found.steps[0].status)
+        assertEquals(StepStatus.PENDING, found.steps[1].status)
     }
 
     @Test
-    fun `updateStep marks a single step EXECUTED with transactionId`() {
+    fun `updateStep marks a single step EXECUTED with transactionId and executedAt`() {
         val original = plan()
         adapter.insert(original)
         entityManager.flush()
@@ -130,28 +132,73 @@ class WorkflowPlanRepositoryAdapterTest {
         val found = adapter.findById(original.id, tenantA)
 
         assertNotNull(found)
-        assertEquals(WorkflowStepStatus.EXECUTED, found.steps[0].status)
+        assertEquals(StepStatus.EXECUTED, found.steps[0].status)
         assertEquals(txId, found.steps[0].transactionId)
-        assertEquals(WorkflowStepStatus.PENDING, found.steps[1].status)
+        assertNotNull(found.steps[0].executedAt)
+        assertEquals(StepStatus.PENDING, found.steps[1].status)
     }
 
     @Test
-    fun `committedAt is persisted via updateStatus`() {
+    fun `completedAt is persisted via updateStatus`() {
         val original = plan()
         adapter.insert(original)
         entityManager.flush()
         entityManager.clear()
 
-        val committedAt = Instant.now()
-        adapter.updateStatus(original.id, tenantA, WorkflowPlanStatus.COMMITTED, committedAt)
+        val completedAt = Instant.now()
+        adapter.updateStatus(original.id, tenantA, WorkflowStatus.COMMITTED, completedAt = completedAt)
         entityManager.flush()
         entityManager.clear()
 
         val found = adapter.findById(original.id, tenantA)
 
         assertNotNull(found)
-        assertEquals(WorkflowPlanStatus.COMMITTED, found.status)
-        assertNotNull(found.committedAt)
+        assertEquals(WorkflowStatus.COMMITTED, found.status)
+        assertNotNull(found.completedAt)
+    }
+
+    @Test
+    fun `rolledBackAt and rollbackReason are persisted via updateStatus`() {
+        val original = plan()
+        adapter.insert(original)
+        entityManager.flush()
+        entityManager.clear()
+
+        val rolledBackAt = Instant.now()
+        adapter.updateStatus(original.id, tenantA, WorkflowStatus.ROLLED_BACK,
+            rolledBackAt = rolledBackAt, rollbackReason = "compliance review")
+        entityManager.flush()
+        entityManager.clear()
+
+        val found = adapter.findById(original.id, tenantA)
+
+        assertNotNull(found)
+        assertEquals(WorkflowStatus.ROLLED_BACK, found.status)
+        assertNotNull(found.rolledBackAt)
+        assertEquals("compliance review", found.rollbackReason)
+    }
+
+    @Test
+    fun `compensatingTransactionId is persisted after rollback step update`() {
+        val original = plan()
+        adapter.insert(original)
+        entityManager.flush()
+        entityManager.clear()
+
+        val txId = TransactionId.generate()
+        val compensatingTxId = TransactionId.generate()
+        val executedPlan = original.withStepExecuted(0, txId)
+        adapter.updateStep(original.id, tenantA, executedPlan.steps[0])
+        val rolledBackPlan = executedPlan.withStepRolledBack(0, compensatingTxId)
+        adapter.updateStep(original.id, tenantA, rolledBackPlan.steps[0])
+        entityManager.flush()
+        entityManager.clear()
+
+        val found = adapter.findById(original.id, tenantA)
+
+        assertNotNull(found)
+        assertEquals(StepStatus.ROLLED_BACK, found.steps[0].status)
+        assertEquals(compensatingTxId, found.steps[0].compensatingTransactionId)
     }
 
     @Test

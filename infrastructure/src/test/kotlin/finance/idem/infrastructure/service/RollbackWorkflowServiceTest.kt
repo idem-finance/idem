@@ -6,7 +6,6 @@ import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.WebhookOutboxRepository
-import finance.idem.application.port.WorkflowPlanRepository
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
@@ -19,7 +18,8 @@ import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.AgentAuditStatus
 import finance.idem.core.agentic.AgentContext
 import finance.idem.core.agentic.WorkflowPlan
-import finance.idem.core.agentic.WorkflowPlanStatus
+import finance.idem.core.agentic.WorkflowPlanRepository
+import finance.idem.core.agentic.WorkflowStatus
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
@@ -86,14 +86,14 @@ class RollbackWorkflowServiceTest {
     private fun committedPlanWithSteps(tx0Id: TransactionId, tx1Id: TransactionId): WorkflowPlan =
         WorkflowPlan.create(
             id = planId, tenantId = tenantId, agentContext = agentContext,
-            stepIdempotencyKeys = listOf("step-0", "step-1"),
-            occurredAt = now,
+            stepDescriptions = listOf("step-0", "step-1"),
+            createdAt = now,
         )
-            .withStatus(WorkflowPlanStatus.EXECUTING)
+            .withStatus(WorkflowStatus.EXECUTING)
             .withStepExecuted(0, tx0Id)
             .withStepExecuted(1, tx1Id)
-            .withStatus(WorkflowPlanStatus.COMMITTED)
-            .copy(committedAt = now)
+            .withStatus(WorkflowStatus.COMMITTED)
+            .copy(completedAt = now)
 
     private fun rollbackCommand() = RollbackWorkflowCommand(
         tenantId = tenantId,
@@ -130,9 +130,9 @@ class RollbackWorkflowServiceTest {
     fun `compensating lines swap DEBIT to CREDIT and vice versa`() {
         val txId = TransactionId.generate()
         val plan = WorkflowPlan.create(planId, tenantId, agentContext, listOf("step-0"), now)
-            .withStatus(WorkflowPlanStatus.EXECUTING)
+            .withStatus(WorkflowStatus.EXECUTING)
             .withStepExecuted(0, txId)
-            .withStatus(WorkflowPlanStatus.COMMITTED)
+            .withStatus(WorkflowStatus.COMMITTED)
 
         whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
         whenever(transactionRepository.findById(txId, tenantId)).thenReturn(originalTx(txId))
@@ -144,7 +144,6 @@ class RollbackWorkflowServiceTest {
         verify(postTransactionUseCase).execute(captor.capture())
         val lines = captor.firstValue.lines
 
-        // Original: DEBIT + CREDIT → compensating: CREDIT + DEBIT
         assertEquals(EntryType.CREDIT, lines.first { it.accountId == debitAccountId }.entryType)
         assertEquals(EntryType.DEBIT, lines.first { it.accountId == creditAccountId }.entryType)
     }
@@ -163,7 +162,7 @@ class RollbackWorkflowServiceTest {
 
     @Test
     fun `returns failure when plan is not COMMITTED — no audit or compensating transactions written`() {
-        for (nonCommittedStatus in listOf(WorkflowPlanStatus.PLANNED, WorkflowPlanStatus.EXECUTING, WorkflowPlanStatus.ROLLED_BACK)) {
+        for (nonCommittedStatus in listOf(WorkflowStatus.PLANNED, WorkflowStatus.EXECUTING, WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED)) {
             val plan = WorkflowPlan.create(planId, tenantId, agentContext, emptyList(), now)
                 .withStatus(nonCommittedStatus)
             whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
@@ -183,7 +182,7 @@ class RollbackWorkflowServiceTest {
         val txId = TransactionId.generate()
         val plan = WorkflowPlan.create(planId, tenantId, agentContext, listOf("step-0"), now)
             .withStepExecuted(0, txId)
-            .withStatus(WorkflowPlanStatus.COMMITTED)
+            .withStatus(WorkflowStatus.COMMITTED)
 
         whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
         whenever(transactionRepository.findById(txId, tenantId)).thenReturn(originalTx(txId))
@@ -201,7 +200,7 @@ class RollbackWorkflowServiceTest {
     @Test
     fun `outbox entry has workflow_rolled_back eventType`() {
         val plan = WorkflowPlan.create(planId, tenantId, agentContext, emptyList(), now)
-            .withStatus(WorkflowPlanStatus.COMMITTED)
+            .withStatus(WorkflowStatus.COMMITTED)
 
         whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
 
@@ -214,17 +213,17 @@ class RollbackWorkflowServiceTest {
     }
 
     @Test
-    fun `plan status becomes ROLLED_BACK`() {
+    fun `plan status becomes ROLLED_BACK with rolledBackAt and rollbackReason`() {
         val plan = WorkflowPlan.create(planId, tenantId, agentContext, emptyList(), now)
-            .withStatus(WorkflowPlanStatus.COMMITTED)
+            .withStatus(WorkflowStatus.COMMITTED)
 
         whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
 
         service.execute(rollbackCommand())
 
-        val statusCaptor = argumentCaptor<WorkflowPlanStatus>()
-        verify(workflowPlanRepository, times(1)).updateStatus(any(), any(), statusCaptor.capture(), org.mockito.kotlin.anyOrNull())
-        assertEquals(WorkflowPlanStatus.ROLLED_BACK, statusCaptor.firstValue)
+        val statusCaptor = argumentCaptor<WorkflowStatus>()
+        verify(workflowPlanRepository, times(1)).updateStatus(any(), any(), statusCaptor.capture(), anyOrNull(), anyOrNull(), anyOrNull())
+        assertEquals(WorkflowStatus.ROLLED_BACK, statusCaptor.firstValue)
     }
 
     @Test
@@ -232,7 +231,7 @@ class RollbackWorkflowServiceTest {
         val txId = TransactionId.generate()
         val plan = WorkflowPlan.create(planId, tenantId, agentContext, listOf("step-0"), now)
             .withStepExecuted(0, txId)
-            .withStatus(WorkflowPlanStatus.COMMITTED)
+            .withStatus(WorkflowStatus.COMMITTED)
 
         whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
         whenever(transactionRepository.findById(txId, tenantId)).thenReturn(originalTx(txId))
@@ -243,7 +242,6 @@ class RollbackWorkflowServiceTest {
             service.execute(rollbackCommand())
         }
         assertTrue(ex.message!!.contains("step 0"))
-        // No outbox entry written — compensating tx failed, outer @Transactional rolls back
         verify(webhookOutboxRepository, times(0)).save(any())
     }
 }

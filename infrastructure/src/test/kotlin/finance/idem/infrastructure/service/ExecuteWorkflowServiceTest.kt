@@ -7,7 +7,6 @@ import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.WebhookOutboxRepository
-import finance.idem.application.port.WorkflowPlanRepository
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
@@ -20,9 +19,10 @@ import finance.idem.core.agentic.AgentAuditStatus
 import finance.idem.core.agentic.AgentContext
 import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyViolationException
-import finance.idem.core.agentic.WorkflowPlan
-import finance.idem.core.agentic.WorkflowPlanStatus
-import finance.idem.core.agentic.WorkflowPlanStep
+import finance.idem.core.agentic.StepStatus
+import finance.idem.core.agentic.WorkflowPlanRepository
+import finance.idem.core.agentic.WorkflowStatus
+import finance.idem.core.agentic.WorkflowStep
 import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -76,8 +76,8 @@ class ExecuteWorkflowServiceTest {
         tenantId = tenantId,
         agentContext = agentContext,
         steps = listOf(
-            WorkflowStepCommand("step-0-idem", listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
-            WorkflowStepCommand("step-1-idem", listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
+            WorkflowStepCommand("step-0-idem", lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
+            WorkflowStepCommand("step-1-idem", lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
         ),
         policyRules = policyRules,
         createdBy = "sk_agent_test",
@@ -93,16 +93,13 @@ class ExecuteWorkflowServiceTest {
 
         assertTrue(result.isSuccess)
 
-        // insert once for the initial PLANNED state
         verify(workflowPlanRepository, times(1)).insert(any())
 
-        // updateStatus: EXECUTING, then COMMITTED
-        val statusCaptor = argumentCaptor<WorkflowPlanStatus>()
-        verify(workflowPlanRepository, times(2)).updateStatus(any(), any(), statusCaptor.capture(), anyOrNull())
-        assertEquals(WorkflowPlanStatus.EXECUTING, statusCaptor.allValues[0])
-        assertEquals(WorkflowPlanStatus.COMMITTED, statusCaptor.allValues[1])
+        val statusCaptor = argumentCaptor<WorkflowStatus>()
+        verify(workflowPlanRepository, times(2)).updateStatus(any(), any(), statusCaptor.capture(), anyOrNull(), anyOrNull(), anyOrNull())
+        assertEquals(WorkflowStatus.EXECUTING, statusCaptor.allValues[0])
+        assertEquals(WorkflowStatus.COMMITTED, statusCaptor.allValues[1])
 
-        // updateStep: once per step
         verify(workflowPlanRepository, times(2)).updateStep(any(), any(), any())
 
         val auditCaptor = argumentCaptor<AgentAuditEvent>()
@@ -124,12 +121,12 @@ class ExecuteWorkflowServiceTest {
         }
 
         verify(workflowPlanRepository, times(0)).insert(any())
-        verify(workflowPlanRepository, times(0)).updateStatus(any(), any(), any(), anyOrNull())
+        verify(workflowPlanRepository, times(0)).updateStatus(any(), any(), any(), anyOrNull(), anyOrNull(), anyOrNull())
         verify(agentAuditRepository, times(0)).save(any())
     }
 
     @Test
-    fun `step failure — plan becomes ROLLED_BACK and FAILED audit event written`() {
+    fun `step failure — plan becomes FAILED and FAILED audit event written`() {
         val txId0 = TransactionId.generate()
         whenever(postTransactionUseCase.execute(any()))
             .thenReturn(Result.success(txId0))
@@ -141,16 +138,15 @@ class ExecuteWorkflowServiceTest {
 
         verify(workflowPlanRepository, times(1)).insert(any())
 
-        val statusCaptor = argumentCaptor<WorkflowPlanStatus>()
-        verify(workflowPlanRepository, times(2)).updateStatus(any(), any(), statusCaptor.capture(), anyOrNull())
-        assertEquals(WorkflowPlanStatus.EXECUTING, statusCaptor.allValues[0])
-        assertEquals(WorkflowPlanStatus.ROLLED_BACK, statusCaptor.allValues[1])
+        val statusCaptor = argumentCaptor<WorkflowStatus>()
+        verify(workflowPlanRepository, times(2)).updateStatus(any(), any(), statusCaptor.capture(), anyOrNull(), anyOrNull(), anyOrNull())
+        assertEquals(WorkflowStatus.EXECUTING, statusCaptor.allValues[0])
+        assertEquals(WorkflowStatus.FAILED, statusCaptor.allValues[1])
 
-        // updateStep: step 0 EXECUTED, step 1 FAILED
-        val stepCaptor = argumentCaptor<WorkflowPlanStep>()
+        val stepCaptor = argumentCaptor<WorkflowStep>()
         verify(workflowPlanRepository, times(2)).updateStep(any(), any(), stepCaptor.capture())
-        assertNotNull(stepCaptor.allValues[0].transactionId)       // step 0 got a txId
-        assertEquals(finance.idem.core.agentic.WorkflowStepStatus.FAILED, stepCaptor.allValues[1].status)
+        assertNotNull(stepCaptor.allValues[0].transactionId)
+        assertEquals(StepStatus.FAILED, stepCaptor.allValues[1].status)
 
         val auditCaptor = argumentCaptor<AgentAuditEvent>()
         verify(agentAuditRepository, times(2)).save(auditCaptor.capture())
@@ -168,10 +164,10 @@ class ExecuteWorkflowServiceTest {
         service.execute(twoStepCommand())
 
         val order = inOrder(agentAuditRepository, postTransactionUseCase, webhookOutboxRepository)
-        order.verify(agentAuditRepository).save(any())                // PENDING audit before steps
-        order.verify(postTransactionUseCase, times(2)).execute(any()) // all steps execute
-        order.verify(agentAuditRepository).save(any())                // COMPLETED audit after steps
-        order.verify(webhookOutboxRepository).save(any())             // outbox is last
+        order.verify(agentAuditRepository).save(any())
+        order.verify(postTransactionUseCase, times(2)).execute(any())
+        order.verify(agentAuditRepository).save(any())
+        order.verify(webhookOutboxRepository).save(any())
     }
 
     @Test
@@ -182,7 +178,7 @@ class ExecuteWorkflowServiceTest {
             tenantId = tenantId,
             agentContext = agentContext,
             steps = listOf(
-                WorkflowStepCommand("single-step", listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
+                WorkflowStepCommand("single-step", lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
             ),
             createdBy = "sk_agent_test",
         ))

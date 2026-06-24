@@ -9,13 +9,14 @@ import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.WebhookOutboxRepository
-import finance.idem.application.port.WorkflowPlanRepository
 import finance.idem.core.EntryType
 import finance.idem.core.agentic.AgentAuditEvent
-import finance.idem.core.agentic.WorkflowPlanStatus
+import finance.idem.core.agentic.WorkflowPlanRepository
+import finance.idem.core.agentic.WorkflowStatus
 import finance.idem.core.ledger.TransactionRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 
 @Service
 @Transactional
@@ -31,7 +32,7 @@ class RollbackWorkflowService(
         val plan = workflowPlanRepository.findById(cmd.workflowPlanId, cmd.tenantId)
             ?: return Result.failure(WorkflowPlanNotFound(cmd.workflowPlanId))
 
-        if (plan.status != WorkflowPlanStatus.COMMITTED) {
+        if (plan.status != WorkflowStatus.COMMITTED) {
             return Result.failure(
                 IllegalStateException(
                     "Cannot rollback plan ${cmd.workflowPlanId.value}: expected COMMITTED, was ${plan.status}"
@@ -50,7 +51,8 @@ class RollbackWorkflowService(
 
         // Compensating transactions bypass PolicyGuard by design — rollback must always succeed
         // regardless of the current policy configuration (e.g. AllowedTokens, RequireHumanApproval).
-        plan.executedSteps().sortedByDescending { it.stepIndex }.forEach { step ->
+        var updatedPlan = plan
+        plan.executedSteps().sortedByDescending { it.stepOrder }.forEach { step ->
             val originalTxId = step.transactionId ?: return@forEach
             val originalTx = transactionRepository.findById(originalTxId, cmd.tenantId) ?: return@forEach
 
@@ -76,13 +78,21 @@ class RollbackWorkflowService(
                     workflowPlanId = cmd.workflowPlanId,
                 ),
             )
-            postTransactionUseCase.execute(compensatingCmd).getOrElse { ex ->
-                throw RuntimeException("Failed to post compensating transaction for step ${step.stepIndex}: ${ex.message}", ex)
+            val compensatingTxId = postTransactionUseCase.execute(compensatingCmd).getOrElse { ex ->
+                throw RuntimeException("Failed to post compensating transaction for step ${step.stepOrder}: ${ex.message}", ex)
             }
+            updatedPlan = updatedPlan.withStepRolledBack(step.stepOrder, compensatingTxId)
+            workflowPlanRepository.updateStep(cmd.workflowPlanId, cmd.tenantId, updatedPlan.steps[step.stepOrder])
         }
 
-        val rolledBackPlan = plan.withStatus(WorkflowPlanStatus.ROLLED_BACK)
-        workflowPlanRepository.updateStatus(cmd.workflowPlanId, cmd.tenantId, WorkflowPlanStatus.ROLLED_BACK, null)
+        val rolledBackAt = Instant.now()
+        val rolledBackPlan = updatedPlan
+            .withStatus(WorkflowStatus.ROLLED_BACK)
+            .copy(rolledBackAt = rolledBackAt, rollbackReason = cmd.reason)
+        workflowPlanRepository.updateStatus(
+            cmd.workflowPlanId, cmd.tenantId, WorkflowStatus.ROLLED_BACK,
+            rolledBackAt = rolledBackAt, rollbackReason = cmd.reason,
+        )
 
         agentAuditRepository.save(
             AgentAuditEvent.completed(

@@ -30,16 +30,22 @@ class WorkflowPlanDataModel(
     @Column(nullable = false)
     val status: String,
 
-    @Column(name = "occurred_at", nullable = false)
-    val occurredAt: Instant,
+    @Column(name = "created_at", nullable = false)
+    val createdAt: Instant,
 
-    @Column(name = "committed_at")
-    val committedAt: Instant?,
+    @Column(name = "completed_at")
+    val completedAt: Instant?,
+
+    @Column(name = "rolled_back_at")
+    val rolledBackAt: Instant?,
+
+    @Column(name = "rollback_reason")
+    val rollbackReason: String?,
 
     @OneToMany(mappedBy = "workflowPlan", cascade = [CascadeType.ALL], fetch = FetchType.EAGER, orphanRemoval = true)
-    val steps: MutableList<WorkflowPlanStepDataModel> = mutableListOf(),
+    val steps: MutableList<WorkflowStepDataModel> = mutableListOf(),
 ) {
     constructor() : this(
-        UUID.randomUUID(), UUID.randomUUID(), "", "", null, "PLANNED", Instant.now(), null,
+        UUID.randomUUID(), UUID.randomUUID(), "", "", null, "PLANNED", Instant.now(), null, null, null,
     )
 }
