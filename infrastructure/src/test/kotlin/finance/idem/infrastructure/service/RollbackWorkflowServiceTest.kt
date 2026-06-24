@@ -26,12 +26,14 @@ import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -161,20 +163,77 @@ class RollbackWorkflowServiceTest {
     }
 
     @Test
-    fun `returns failure when plan is not COMMITTED — no audit or compensating transactions written`() {
-        for (nonCommittedStatus in listOf(WorkflowStatus.PLANNED, WorkflowStatus.EXECUTING, WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED)) {
+    fun `returns failure when plan is in a non-rollbackable status`() {
+        for (status in listOf(WorkflowStatus.PLANNED, WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK)) {
             val plan = WorkflowPlan.create(planId, tenantId, agentContext, emptyList(), now)
-                .withStatus(nonCommittedStatus)
+                .withStatus(status)
             whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
 
             val result = service.execute(rollbackCommand())
 
-            assertTrue(result.isFailure, "Expected failure for status $nonCommittedStatus")
+            assertTrue(result.isFailure, "Expected failure for status $status")
             assertIs<IllegalStateException>(result.exceptionOrNull())
-            assertTrue(result.exceptionOrNull()!!.message!!.contains(nonCommittedStatus.name))
+            assertTrue(result.exceptionOrNull()!!.message!!.contains(status.name))
         }
         verify(agentAuditRepository, times(0)).save(any())
         verify(postTransactionUseCase, times(0)).execute(any())
+    }
+
+    @Test
+    fun `EXECUTING plan rolls back successfully`() {
+        val txId = TransactionId.generate()
+        val plan = WorkflowPlan.create(planId, tenantId, agentContext, listOf("step-0"), now)
+            .withStepExecuted(0, txId)
+            .withStatus(WorkflowStatus.EXECUTING)
+
+        whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
+        whenever(transactionRepository.findById(txId, tenantId)).thenReturn(originalTx(txId))
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId.generate()))
+
+        assertTrue(service.execute(rollbackCommand()).isSuccess)
+    }
+
+    @Test
+    fun `compensating transaction carries compensating_for metadata`() {
+        val txId = TransactionId.generate()
+        val plan = WorkflowPlan.create(planId, tenantId, agentContext, listOf("step-0"), now)
+            .withStepExecuted(0, txId)
+            .withStatus(WorkflowStatus.COMMITTED)
+
+        whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
+        whenever(transactionRepository.findById(txId, tenantId)).thenReturn(originalTx(txId))
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId.generate()))
+
+        service.execute(rollbackCommand())
+
+        val captor = argumentCaptor<finance.idem.application.ledger.PostTransactionCommand>()
+        verify(postTransactionUseCase).execute(captor.capture())
+        assertEquals(txId.value.toString(), captor.firstValue.metadata["compensating_for"])
+    }
+
+    @Test
+    fun `each executed step is marked ROLLED_BACK via updateStep`() {
+        val tx0Id = TransactionId.generate()
+        val tx1Id = TransactionId.generate()
+        val comp1Id = TransactionId.generate()
+        val comp0Id = TransactionId.generate()
+        val plan = committedPlanWithSteps(tx0Id, tx1Id)
+
+        whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
+        whenever(transactionRepository.findById(tx0Id, tenantId)).thenReturn(originalTx(tx0Id))
+        whenever(transactionRepository.findById(tx1Id, tenantId)).thenReturn(originalTx(tx1Id))
+        // Reverse order: step 1 compensated first, then step 0
+        whenever(postTransactionUseCase.execute(any()))
+            .thenReturn(Result.success(comp1Id))
+            .thenReturn(Result.success(comp0Id))
+
+        service.execute(rollbackCommand())
+
+        val stepCaptor = argumentCaptor<finance.idem.core.agentic.WorkflowStep>()
+        verify(workflowPlanRepository, times(2)).updateStep(any(), any(), stepCaptor.capture())
+        assertTrue(stepCaptor.allValues.all { it.status == finance.idem.core.agentic.StepStatus.ROLLED_BACK })
+        assertTrue(stepCaptor.allValues.any { it.stepOrder == 1 && it.compensatingTransactionId == comp1Id })
+        assertTrue(stepCaptor.allValues.any { it.stepOrder == 0 && it.compensatingTransactionId == comp0Id })
     }
 
     @Test
