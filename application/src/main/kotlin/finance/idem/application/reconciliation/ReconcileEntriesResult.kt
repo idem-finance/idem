@@ -4,4 +4,5 @@ data class ReconcileEntriesResult(
     val matched: Int,
     val unmatched: Int,
     val exceptions: List<ReconciliationException>,
+    val settlementIds: List<String> = emptyList(),
 )

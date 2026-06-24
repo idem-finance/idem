@@ -9,4 +9,5 @@ data class ReconcileEntriesCommand(
     val accountId: AccountId? = null,
     val from: Instant,
     val to: Instant,
+    val tolerancePercent: Double? = null,
 )

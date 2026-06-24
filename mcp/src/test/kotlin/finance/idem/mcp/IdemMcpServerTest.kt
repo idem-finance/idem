@@ -1,7 +1,11 @@
 package finance.idem.mcp
 
+import finance.idem.application.agentic.CompensatedStepSummary
 import finance.idem.application.agentic.ExecuteWorkflowCommand
 import finance.idem.application.agentic.ExecuteWorkflowUseCase
+import finance.idem.application.agentic.RollbackWorkflowCommand
+import finance.idem.application.agentic.RollbackWorkflowSummary
+import finance.idem.application.agentic.RollbackWorkflowUseCase
 import finance.idem.application.ledger.AccountDescription
 import finance.idem.application.ledger.Balance
 import finance.idem.application.ledger.DescribeAccountQuery
@@ -11,6 +15,12 @@ import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
+import finance.idem.application.port.AgentAuditRepository
+import finance.idem.application.port.AgentAuditView
+import finance.idem.application.reconciliation.ReconcileEntriesCommand
+import finance.idem.application.reconciliation.ReconcileEntriesResult
+import finance.idem.application.reconciliation.ReconcileEntriesUseCase
+import finance.idem.application.reconciliation.ReconciliationException
 import finance.idem.core.AccountId
 import finance.idem.core.ChainId
 import finance.idem.core.EntryType
@@ -21,6 +31,7 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
+import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.monetary.FiatEntry
@@ -42,6 +53,7 @@ import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 @ExtendWith(MockitoExtension::class)
 class IdemMcpServerTest {
@@ -50,6 +62,29 @@ class IdemMcpServerTest {
     @Mock lateinit var getBalanceUseCase: GetBalanceUseCase
     @Mock lateinit var getEntriesUseCase: GetEntriesUseCase
     @Mock lateinit var describeAccountUseCase: DescribeAccountUseCase
+    @Mock lateinit var rollbackWorkflowUseCase: RollbackWorkflowUseCase
+    @Mock lateinit var reconcileEntriesUseCase: ReconcileEntriesUseCase
+
+    // TenantId is a @JvmInline value class — Kotlin mangles the JVM name of methods that accept it
+    // directly (findByFilter-FMvxmJw), which breaks Mockito's proxy-based stubbing. Use a
+    // concrete anonymous implementation to avoid the mismatch.
+    private var stubbedAuditViews: List<AgentAuditView> = emptyList()
+    private var capturedAuditLimit: Int = -1
+    private var capturedAuditSessionId: String? = "not-set"
+    private val testAuditRepo: AgentAuditRepository = object : AgentAuditRepository {
+        override fun save(event: AgentAuditEvent) = Unit
+        override fun findByFilter(
+            tenantId: TenantId,
+            sessionId: String?,
+            from: Instant?,
+            to: Instant?,
+            limit: Int,
+        ): List<AgentAuditView> {
+            capturedAuditLimit = limit
+            capturedAuditSessionId = sessionId
+            return stubbedAuditViews
+        }
+    }
 
     private lateinit var server: IdemMcpServer
 
@@ -58,8 +93,14 @@ class IdemMcpServerTest {
 
     @BeforeEach
     fun setUp() {
-        server = IdemMcpServer(executeWorkflowUseCase, getBalanceUseCase, getEntriesUseCase, describeAccountUseCase)
-        val auth = TestingAuthenticationToken(tenantId, null, "AGENTS_EXECUTE")
+        stubbedAuditViews = emptyList()
+        capturedAuditLimit = -1
+        capturedAuditSessionId = "not-set"
+        server = IdemMcpServer(
+            executeWorkflowUseCase, getBalanceUseCase, getEntriesUseCase, describeAccountUseCase,
+            rollbackWorkflowUseCase, reconcileEntriesUseCase, testAuditRepo,
+        )
+        val auth = TestingAuthenticationToken(tenantId, null, "AGENTS_EXECUTE", "AGENTS_AUDIT_READ")
         SecurityContextHolder.getContext().authentication = auth
     }
 
@@ -375,6 +416,160 @@ class IdemMcpServerTest {
         assertFailsWith<IllegalArgumentException> {
             input.toJournalLineRequest()
         }
+    }
+
+    // ── rollbackWorkflow ──────────────────────────────────────────────────────
+
+    @Test
+    fun `rollbackWorkflow returns rollbackId and compensated steps on success`() {
+        val planId = WorkflowPlanId.generate()
+        val txId = TransactionId(UUID.randomUUID())
+        val summary = RollbackWorkflowSummary(
+            workflowPlanId = planId,
+            compensatedSteps = listOf(CompensatedStepSummary(0, "Transfer funds", txId)),
+            status = "ROLLED_BACK",
+        )
+        whenever(rollbackWorkflowUseCase.execute(any())).thenReturn(Result.success(summary))
+
+        val result = server.rollbackWorkflow(
+            workflowPlanId = planId.value.toString(),
+            reason = "Test rollback",
+            agentId = "agent-1",
+            sessionId = "session-1",
+        )
+
+        assertEquals(planId.value.toString(), result.rollbackId)
+        assertEquals("ROLLED_BACK", result.status)
+        assertEquals(1, result.compensatedSteps.size)
+        assertEquals(0, result.compensatedSteps[0].stepOrder)
+        assertEquals("Transfer funds", result.compensatedSteps[0].description)
+        assertEquals(txId.value.toString(), result.compensatedSteps[0].compensatingTransactionId)
+
+        val captor = argumentCaptor<RollbackWorkflowCommand>()
+        verify(rollbackWorkflowUseCase).execute(captor.capture())
+        val cmd = captor.firstValue
+        assertEquals(tenantId, cmd.tenantId)
+        assertEquals(planId, cmd.workflowPlanId)
+        assertEquals("Test rollback", cmd.reason)
+        assertEquals("agent-1", cmd.agentContext.agentId)
+        assertEquals("session-1", cmd.agentContext.sessionId)
+    }
+
+    @Test
+    fun `rollbackWorkflow propagates failure`() {
+        whenever(rollbackWorkflowUseCase.execute(any())).thenReturn(
+            Result.failure(IllegalStateException("Cannot rollback PLANNED workflow"))
+        )
+        assertFailsWith<RuntimeException> {
+            server.rollbackWorkflow(
+                workflowPlanId = UUID.randomUUID().toString(),
+                reason = "test",
+                agentId = "agent",
+                sessionId = "session",
+            )
+        }
+    }
+
+    // ── reconcileBatch ────────────────────────────────────────────────────────
+
+    @Test
+    fun `reconcileBatch maps result fields correctly`() {
+        val reconcileResult = ReconcileEntriesResult(
+            matched = 3,
+            unmatched = 1,
+            exceptions = listOf(ReconciliationException(UUID.randomUUID(), "0xabc", "No match")),
+            settlementIds = listOf("id-1", "id-2", "id-3"),
+        )
+        whenever(reconcileEntriesUseCase.execute(any())).thenReturn(Result.success(reconcileResult))
+
+        val result = server.reconcileBatch(
+            accountId = null,
+            from = "2025-01-01T00:00:00Z",
+            to = "2025-01-31T23:59:59Z",
+            tolerancePercent = null,
+        )
+
+        assertEquals(3, result.matched)
+        assertEquals(1, result.unmatched)
+        assertEquals(1, result.exceptions.size)
+        assertEquals(3, result.settlementIds.size)
+        assertEquals(listOf("id-1", "id-2", "id-3"), result.settlementIds)
+    }
+
+    @Test
+    fun `reconcileBatch forwards tolerancePercent in command`() {
+        whenever(reconcileEntriesUseCase.execute(any())).thenReturn(
+            Result.success(ReconcileEntriesResult(0, 0, emptyList(), emptyList()))
+        )
+
+        server.reconcileBatch(
+            accountId = accountId.value.toString(),
+            from = "2025-01-01T00:00:00Z",
+            to = "2025-01-31T23:59:59Z",
+            tolerancePercent = 2.5,
+        )
+
+        val captor = argumentCaptor<ReconcileEntriesCommand>()
+        verify(reconcileEntriesUseCase).execute(captor.capture())
+        assertEquals(2.5, captor.firstValue.tolerancePercent)
+        assertEquals(accountId, captor.firstValue.accountId)
+    }
+
+    // ── getAgentAuditLog ──────────────────────────────────────────────────────
+
+    @Test
+    fun `getAgentAuditLog returns mapped audit events`() {
+        val eventId = UUID.randomUUID()
+        val planId = UUID.randomUUID()
+        val now = Instant.now()
+        stubbedAuditViews = listOf(
+            AgentAuditView(
+                id = eventId,
+                workflowPlanId = planId,
+                agentId = "agent-99",
+                sessionId = "sess-abc",
+                eventType = "AGENT_ACTION_COMPLETED",
+                intentPayload = "transfer funds",
+                status = "COMPLETED",
+                occurredAt = now,
+                completedAt = now,
+                hmacSignature = "hmac-base64-value",
+            )
+        )
+
+        val result = server.getAgentAuditLog(sessionId = "sess-abc", from = null, to = null, limit = null)
+
+        assertEquals(1, result.total)
+        assertEquals(1, result.auditEvents.size)
+        val item = result.auditEvents[0]
+        assertEquals(eventId.toString(), item.id)
+        assertEquals(planId.toString(), item.workflowPlanId)
+        assertEquals("agent-99", item.agentId)
+        assertNull(item.model)
+        assertEquals("sess-abc", item.sessionId)
+        assertEquals("AGENT_ACTION_COMPLETED", item.eventType)
+        assertEquals("transfer funds", item.intentPayload)
+        assertEquals("COMPLETED", item.status)
+        assertEquals(now.toString(), item.occurredAt)
+        assertEquals(now.toString(), item.completedAt)
+        assertEquals("hmac-base64-value", item.hmacSignature)
+        assertEquals("sess-abc", capturedAuditSessionId)
+    }
+
+    @Test
+    fun `getAgentAuditLog clamps limit to 200`() {
+        server.getAgentAuditLog(sessionId = null, from = null, to = null, limit = 999)
+
+        assertEquals(200, capturedAuditLimit)
+    }
+
+    @Test
+    fun `getAgentAuditLog returns empty list when no events`() {
+        val result = server.getAgentAuditLog(sessionId = null, from = null, to = null, limit = null)
+
+        assertEquals(0, result.total)
+        assertEquals(0, result.auditEvents.size)
+        assertEquals(50, capturedAuditLimit)
     }
 
     // ── describeAccount ───────────────────────────────────────────────────────
