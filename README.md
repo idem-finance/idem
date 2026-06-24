@@ -145,6 +145,26 @@ val tx = client.postTransaction(
 )
 ```
 
+### MCP server (AI agent integration)
+
+Plug Idem directly into Claude Desktop, Claude Code, or any MCP-compatible agent runtime:
+
+```json
+{
+  "mcpServers": {
+    "idem": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://<your-host>/sse"],
+      "env": {
+        "MCP_HEADER_X_API_KEY": "sk_agent_..."
+      }
+    }
+  }
+}
+```
+
+Requires an API key with `AGENTS_EXECUTE` scope. Available tools: `post_transaction`, `get_balance`, `list_entries`, `describe_account`. Full connection guide: [`docs/mcp-server.md`](docs/mcp-server.md).
+
 ---
 
 ## API reference
@@ -171,7 +191,7 @@ Idem is a modular monolith (Spring Modulith). Module boundaries are enforced at 
 ```
 app ──┬── api ──────────────┬── application ── core
       ├── infrastructure ───┘
-      └── mcp (planned)
+      └── mcp
 
 sdk-kotlin  (standalone HTTP client, no internal module deps)
 ```
@@ -205,7 +225,7 @@ Technical documentation for individual components lives in [`docs/`](docs/).
 
 ## Project status
 
-Idem is under active development. The core ledger engine, API key authentication, chain readers (EVM, Solana, Tron), webhook outbox, reconciliation, and Kotlin SDK are complete. **Not yet implemented:** MCP server, agentic workflow engine (PolicyGuard, rollback service), Travel Rule (IVMS 101), LGPD export, and Keycloak dashboard login.
+Idem is under active development. The core ledger engine, API key authentication, chain readers (EVM, Solana, Tron), webhook outbox, reconciliation, Kotlin SDK, PolicyGuard (agentic policy evaluation), and MCP server (four tools: `post_transaction`, `get_balance`, `list_entries`, `describe_account`) are complete. **Not yet implemented:** agentic workflow engine (WorkflowOrchestrator, RollbackService), MCP tools that depend on it (`rollback_workflow`, `reconcile_batch`, `get_agent_audit_log`), agent audit trail (HMAC-signed `AgentAuditEvent`), Travel Rule (IVMS 101), LGPD export, and Keycloak dashboard login.
 
 Not yet recommended for production use without independent review.
 

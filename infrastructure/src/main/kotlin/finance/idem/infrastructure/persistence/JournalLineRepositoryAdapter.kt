@@ -27,6 +27,18 @@ class JournalLineRepositoryAdapter(
     }
 
     @Transactional(readOnly = true)
+    override fun countByAccountId(accountId: AccountId, tenantId: TenantId): Long {
+        setTenantId(tenantId)
+        return jpaRepository.countByAccountAndTenant(accountId.value, tenantId.value)
+    }
+
+    @Transactional(readOnly = true)
+    override fun findMostRecentEntry(accountId: AccountId, tenantId: TenantId): JournalLine? {
+        setTenantId(tenantId)
+        return jpaRepository.findLatest(accountId.value, tenantId.value)?.toDomain(tenantId, objectMapper)
+    }
+
+    @Transactional(readOnly = true)
     override fun findByAccountId(
         accountId: AccountId,
         tenantId: TenantId,

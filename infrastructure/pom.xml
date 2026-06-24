@@ -30,6 +30,13 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
+        <!-- Micrometer context propagation — propagates SecurityContextHolder across Reactor threads
+             used by McpReactorSecurityConfig to bridge MCP async tool dispatch with our auth -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>context-propagation</artifactId>
+        </dependency>
+
         <!-- Spring Web MVC — needed for OncePerRequestFilter (ApiKeyAuthFilter) and WebSecurityConfig -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -175,6 +182,15 @@
                         <exclude>finance/idem/infrastructure/persistence/workflow/WorkflowPlanDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/workflow/WorkflowPlanStepDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/audit/AgentAuditEventDataModel*</exclude>
+                        <!-- MCP SSE session auth bridge — ServletOutputStream adapter boilerplate:
+                             write(int), isReady(), setWriteListener() are unconditional delegates
+                             required by the abstract class contract; not exercisable in unit tests. -->
+                        <exclude>finance/idem/infrastructure/security/SessionCapturingResponseWrapper*</exclude>
+                        <exclude>finance/idem/infrastructure/security/SessionCapturingOutputStream*</exclude>
+                        <exclude>finance/idem/infrastructure/security/McpSseAuthBridgeFilterKt*</exclude>
+                        <!-- SecurityContextAccessor — ThreadLocalAccessor plumbing: getValue/setValue/reset
+                             delegate unconditionally to SecurityContextHolder; not the right layer to test -->
+                        <exclude>finance/idem/infrastructure/security/SecurityContextAccessor*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
