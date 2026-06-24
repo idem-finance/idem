@@ -72,13 +72,14 @@ class AgentAuditRepositoryAdapter(
         if (sessionId != null) sql.append(" AND session_id = :sessionId")
         if (from != null) sql.append(" AND occurred_at >= :from")
         if (to != null) sql.append(" AND occurred_at <= :to")
-        sql.append(" ORDER BY occurred_at DESC LIMIT $effectiveLimit")
+        sql.append(" ORDER BY occurred_at DESC")
 
         val query = entityManager.createNativeQuery(sql.toString(), AgentAuditEventDataModel::class.java)
         query.setParameter("tenantId", tenantId.value)
         if (sessionId != null) query.setParameter("sessionId", sessionId)
         if (from != null) query.setParameter("from", from)
         if (to != null) query.setParameter("to", to)
+        query.maxResults = effectiveLimit
 
         return (query.resultList as List<AgentAuditEventDataModel>).map { it.toView() }
     }

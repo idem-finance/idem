@@ -21,6 +21,7 @@ import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class ReconcileEntriesServiceUnitTest {
@@ -61,6 +62,36 @@ class ReconcileEntriesServiceUnitTest {
         tenantId = tenantId, accountId = null,
         from = now.minusSeconds(3600), to = now.plusSeconds(3600),
     )
+
+    private val emptySettlementRepo = object : SettlementRepository {
+        override fun save(settlement: Settlement) = settlement
+        override fun findById(id: UUID, tenantId: TenantId): Settlement? = null
+        override fun findUnmatchedInWindow(tenantId: TenantId, accountId: AccountId?, from: Instant, to: Instant) = emptyList<Settlement>()
+        override fun findPendingCandidates(tenantId: TenantId, accountIds: Set<AccountId>, token: StablecoinToken, chainId: ChainId, walletAddress: String, since: Instant) = emptyList<Settlement>()
+    }
+
+    @Test
+    fun `tolerancePercent above 100 is rejected`() {
+        val service = ReconcileEntriesService(emptySettlementRepo, outboxRepo, txManager, BigDecimal.ZERO)
+        assertFailsWith<IllegalArgumentException> {
+            service.execute(cmd().copy(tolerancePercent = BigDecimal("100.01"))).getOrThrow()
+        }
+    }
+
+    @Test
+    fun `negative tolerancePercent is rejected`() {
+        val service = ReconcileEntriesService(emptySettlementRepo, outboxRepo, txManager, BigDecimal.ZERO)
+        assertFailsWith<IllegalArgumentException> {
+            service.execute(cmd().copy(tolerancePercent = BigDecimal("-0.01"))).getOrThrow()
+        }
+    }
+
+    @Test
+    fun `tolerancePercent at boundary values 0 and 100 are accepted`() {
+        val service = ReconcileEntriesService(emptySettlementRepo, outboxRepo, txManager, BigDecimal.ZERO)
+        service.execute(cmd().copy(tolerancePercent = BigDecimal.ZERO)).getOrThrow()
+        service.execute(cmd().copy(tolerancePercent = BigDecimal("100"))).getOrThrow()
+    }
 
     @Test
     fun `DB exception in processGroup is caught, entry recorded as Failed, remaining groups continue`() {

@@ -78,7 +78,7 @@ class IdemMcpServerTest {
             executeWorkflowUseCase, getBalanceUseCase, getEntriesUseCase, describeAccountUseCase,
             rollbackWorkflowUseCase, reconcileEntriesUseCase, getAgentAuditLogUseCase,
         )
-        val auth = TestingAuthenticationToken(tenantId, null, "AGENTS_EXECUTE", "AGENTS_AUDIT_READ")
+        val auth = TestingAuthenticationToken(tenantId, null, "AGENTS_EXECUTE", "AGENTS_ROLLBACK", "AGENTS_AUDIT_READ")
         SecurityContextHolder.getContext().authentication = auth
     }
 

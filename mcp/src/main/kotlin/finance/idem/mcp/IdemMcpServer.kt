@@ -181,8 +181,8 @@ class IdemMcpServer(
         )
     }
 
-    @PreAuthorize("hasAuthority('AGENTS_EXECUTE')")
-    @Tool(description = "Roll back a committed or executing workflow using compensating transactions (saga pattern). Each executed step is reversed in reverse order. Requires AGENTS_EXECUTE scope.")
+    @PreAuthorize("hasAuthority('AGENTS_ROLLBACK')")
+    @Tool(description = "Roll back a committed or executing workflow using compensating transactions (saga pattern). Each executed step is reversed in reverse order. Requires AGENTS_ROLLBACK scope.")
     fun rollbackWorkflow(
         @ToolParam(description = "WorkflowPlan UUID to roll back") workflowPlanId: String,
         @ToolParam(description = "Human-readable reason for the rollback, recorded in the audit log") reason: String,

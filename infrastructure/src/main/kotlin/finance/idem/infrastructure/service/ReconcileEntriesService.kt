@@ -46,6 +46,9 @@ class ReconcileEntriesService(
         )
 
         val effectiveTolerance = cmd.tolerancePercent ?: tolerancePercent
+        require(effectiveTolerance.compareTo(BigDecimal.ZERO) >= 0 && effectiveTolerance.compareTo(BigDecimal("100")) <= 0) {
+            "tolerancePercent must be in [0, 100], got $effectiveTolerance"
+        }
         val outcomes = mutableListOf<EntryOutcome>()
         val grouped = unmatchedEntries.groupBy { GroupKey(it.token, it.chainId, it.walletAddress) }
 
