@@ -45,7 +45,7 @@ class ReconcileEntriesService(
             to = cmd.to,
         )
 
-        val effectiveTolerance = cmd.tolerancePercent?.toBigDecimal() ?: tolerancePercent
+        val effectiveTolerance = cmd.tolerancePercent ?: tolerancePercent
         val outcomes = mutableListOf<EntryOutcome>()
         val grouped = unmatchedEntries.groupBy { GroupKey(it.token, it.chainId, it.walletAddress) }
 

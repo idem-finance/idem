@@ -55,8 +55,11 @@ class RollbackWorkflowService(
         // regardless of the current policy configuration (e.g. AllowedTokens, RequireHumanApproval).
         var updatedPlan = plan
         plan.executedSteps().sortedByDescending { it.stepOrder }.forEach { step ->
-            val originalTxId = step.transactionId ?: return@forEach
-            val originalTx = transactionRepository.findById(originalTxId, cmd.tenantId) ?: return@forEach
+            val originalTxId = checkNotNull(step.transactionId) {
+                "Executed step ${step.stepOrder} of plan ${cmd.workflowPlanId.value} has null transactionId — data integrity violation"
+            }
+            val originalTx = transactionRepository.findById(originalTxId, cmd.tenantId)
+                ?: error("Original transaction $originalTxId not found for step ${step.stepOrder} — cannot compensate")
 
             val compensatingLines = originalTx.lines.map { line ->
                 JournalLineRequest(

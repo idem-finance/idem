@@ -2,6 +2,8 @@ package finance.idem.mcp
 
 import finance.idem.application.agentic.ExecuteWorkflowCommand
 import finance.idem.application.agentic.ExecuteWorkflowUseCase
+import finance.idem.application.agentic.GetAgentAuditLogQuery
+import finance.idem.application.agentic.GetAgentAuditLogUseCase
 import finance.idem.application.agentic.RollbackWorkflowCommand
 import finance.idem.application.agentic.RollbackWorkflowUseCase
 import finance.idem.application.agentic.WorkflowStepCommand
@@ -12,7 +14,6 @@ import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.application.ledger.JournalLineRequest
-import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.reconciliation.ReconcileEntriesCommand
 import finance.idem.application.reconciliation.ReconcileEntriesUseCase
 import finance.idem.core.AccountId
@@ -47,7 +48,7 @@ class IdemMcpServer(
     private val describeAccountUseCase: DescribeAccountUseCase,
     private val rollbackWorkflowUseCase: RollbackWorkflowUseCase,
     private val reconcileEntriesUseCase: ReconcileEntriesUseCase,
-    private val agentAuditRepository: AgentAuditRepository,
+    private val getAgentAuditLogUseCase: GetAgentAuditLogUseCase,
 ) {
     private val log = LoggerFactory.getLogger(IdemMcpServer::class.java)
 
@@ -223,7 +224,7 @@ class IdemMcpServer(
             accountId = accountId?.let { AccountId.of(it) },
             from = parseInstant(from, "from"),
             to = parseInstant(to, "to"),
-            tolerancePercent = tolerancePercent,
+            tolerancePercent = tolerancePercent?.let { java.math.BigDecimal(it.toString()) },
         )
         return reconcileEntriesUseCase.execute(cmd).fold(
             onSuccess = { result ->
@@ -246,14 +247,14 @@ class IdemMcpServer(
         @ToolParam(description = "Optional upper bound on event timestamp (ISO-8601)") to: String?,
         @ToolParam(description = "Max events to return (1-200, default 50)") limit: Int?,
     ): AuditLogResult {
-        val events = agentAuditRepository.findByFilter(
+        val query = GetAgentAuditLogQuery(
             tenantId = tenantId(),
             sessionId = sessionId,
             from = from?.let { parseInstant(it, "from") },
             to = to?.let { parseInstant(it, "to") },
             limit = (limit ?: 50).coerceIn(1, 200),
         )
-        val items = events.map {
+        val items = getAgentAuditLogUseCase.execute(query).map {
             AuditEventItem(
                 id = it.id.toString(),
                 workflowPlanId = it.workflowPlanId.toString(),

@@ -15,7 +15,8 @@ import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
-import finance.idem.application.port.AgentAuditRepository
+import finance.idem.application.agentic.GetAgentAuditLogQuery
+import finance.idem.application.agentic.GetAgentAuditLogUseCase
 import finance.idem.application.port.AgentAuditView
 import finance.idem.application.reconciliation.ReconcileEntriesCommand
 import finance.idem.application.reconciliation.ReconcileEntriesResult
@@ -31,8 +32,8 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
-import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.PolicyViolationException
+import java.math.BigDecimal
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
@@ -64,27 +65,7 @@ class IdemMcpServerTest {
     @Mock lateinit var describeAccountUseCase: DescribeAccountUseCase
     @Mock lateinit var rollbackWorkflowUseCase: RollbackWorkflowUseCase
     @Mock lateinit var reconcileEntriesUseCase: ReconcileEntriesUseCase
-
-    // TenantId is a @JvmInline value class — Kotlin mangles the JVM name of methods that accept it
-    // directly (findByFilter-FMvxmJw), which breaks Mockito's proxy-based stubbing. Use a
-    // concrete anonymous implementation to avoid the mismatch.
-    private var stubbedAuditViews: List<AgentAuditView> = emptyList()
-    private var capturedAuditLimit: Int = -1
-    private var capturedAuditSessionId: String? = "not-set"
-    private val testAuditRepo: AgentAuditRepository = object : AgentAuditRepository {
-        override fun save(event: AgentAuditEvent) = Unit
-        override fun findByFilter(
-            tenantId: TenantId,
-            sessionId: String?,
-            from: Instant?,
-            to: Instant?,
-            limit: Int,
-        ): List<AgentAuditView> {
-            capturedAuditLimit = limit
-            capturedAuditSessionId = sessionId
-            return stubbedAuditViews
-        }
-    }
+    @Mock lateinit var getAgentAuditLogUseCase: GetAgentAuditLogUseCase
 
     private lateinit var server: IdemMcpServer
 
@@ -93,12 +74,9 @@ class IdemMcpServerTest {
 
     @BeforeEach
     fun setUp() {
-        stubbedAuditViews = emptyList()
-        capturedAuditLimit = -1
-        capturedAuditSessionId = "not-set"
         server = IdemMcpServer(
             executeWorkflowUseCase, getBalanceUseCase, getEntriesUseCase, describeAccountUseCase,
-            rollbackWorkflowUseCase, reconcileEntriesUseCase, testAuditRepo,
+            rollbackWorkflowUseCase, reconcileEntriesUseCase, getAgentAuditLogUseCase,
         )
         val auth = TestingAuthenticationToken(tenantId, null, "AGENTS_EXECUTE", "AGENTS_AUDIT_READ")
         SecurityContextHolder.getContext().authentication = auth
@@ -511,7 +489,7 @@ class IdemMcpServerTest {
 
         val captor = argumentCaptor<ReconcileEntriesCommand>()
         verify(reconcileEntriesUseCase).execute(captor.capture())
-        assertEquals(2.5, captor.firstValue.tolerancePercent)
+        assertEquals(BigDecimal("2.5"), captor.firstValue.tolerancePercent)
         assertEquals(accountId, captor.firstValue.accountId)
     }
 
@@ -522,7 +500,7 @@ class IdemMcpServerTest {
         val eventId = UUID.randomUUID()
         val planId = UUID.randomUUID()
         val now = Instant.now()
-        stubbedAuditViews = listOf(
+        whenever(getAgentAuditLogUseCase.execute(any())).thenReturn(listOf(
             AgentAuditView(
                 id = eventId,
                 workflowPlanId = planId,
@@ -535,7 +513,7 @@ class IdemMcpServerTest {
                 completedAt = now,
                 hmacSignature = "hmac-base64-value",
             )
-        )
+        ))
 
         val result = server.getAgentAuditLog(sessionId = "sess-abc", from = null, to = null, limit = null)
 
@@ -553,23 +531,35 @@ class IdemMcpServerTest {
         assertEquals(now.toString(), item.occurredAt)
         assertEquals(now.toString(), item.completedAt)
         assertEquals("hmac-base64-value", item.hmacSignature)
-        assertEquals("sess-abc", capturedAuditSessionId)
+
+        val captor = argumentCaptor<GetAgentAuditLogQuery>()
+        verify(getAgentAuditLogUseCase).execute(captor.capture())
+        assertEquals("sess-abc", captor.firstValue.sessionId)
     }
 
     @Test
     fun `getAgentAuditLog clamps limit to 200`() {
+        whenever(getAgentAuditLogUseCase.execute(any())).thenReturn(emptyList())
+
         server.getAgentAuditLog(sessionId = null, from = null, to = null, limit = 999)
 
-        assertEquals(200, capturedAuditLimit)
+        val captor = argumentCaptor<GetAgentAuditLogQuery>()
+        verify(getAgentAuditLogUseCase).execute(captor.capture())
+        assertEquals(200, captor.firstValue.limit)
     }
 
     @Test
     fun `getAgentAuditLog returns empty list when no events`() {
+        whenever(getAgentAuditLogUseCase.execute(any())).thenReturn(emptyList())
+
         val result = server.getAgentAuditLog(sessionId = null, from = null, to = null, limit = null)
 
         assertEquals(0, result.total)
         assertEquals(0, result.auditEvents.size)
-        assertEquals(50, capturedAuditLimit)
+
+        val captor = argumentCaptor<GetAgentAuditLogQuery>()
+        verify(getAgentAuditLogUseCase).execute(captor.capture())
+        assertEquals(50, captor.firstValue.limit)
     }
 
     // ── describeAccount ───────────────────────────────────────────────────────

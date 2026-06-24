@@ -1,11 +1,11 @@
 package finance.idem.mcp
 
 import finance.idem.application.agentic.ExecuteWorkflowUseCase
+import finance.idem.application.agentic.GetAgentAuditLogUseCase
 import finance.idem.application.agentic.RollbackWorkflowUseCase
 import finance.idem.application.ledger.DescribeAccountUseCase
 import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.GetEntriesUseCase
-import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.reconciliation.ReconcileEntriesUseCase
 import org.junit.jupiter.api.Test
 import org.springframework.ai.tool.ToolCallbackProvider
@@ -24,7 +24,7 @@ class McpServerContextLoadTest {
     @MockBean lateinit var describeAccountUseCase: DescribeAccountUseCase
     @MockBean lateinit var rollbackWorkflowUseCase: RollbackWorkflowUseCase
     @MockBean lateinit var reconcileEntriesUseCase: ReconcileEntriesUseCase
-    @MockBean lateinit var agentAuditRepository: AgentAuditRepository
+    @MockBean lateinit var getAgentAuditLogUseCase: GetAgentAuditLogUseCase
 
     @Autowired lateinit var toolCallbackProvider: ToolCallbackProvider
 
