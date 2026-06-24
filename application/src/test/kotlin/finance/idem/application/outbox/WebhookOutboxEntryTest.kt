@@ -205,13 +205,13 @@ class WebhookOutboxEntryTest {
     }
 
     @Test
-    fun `workflowCommitted throws when WorkflowPlan has null committedAt`() {
+    fun `workflowCommitted throws when WorkflowPlan has null completedAt`() {
         val plan = WorkflowPlan.create(
             id = WorkflowPlanId.generate(),
             tenantId = tenantId,
             agentContext = AgentContext(agentId = "a", sessionId = "s"),
-            stepIdempotencyKeys = listOf("k1"),
-            occurredAt = now,
+            stepDescriptions = listOf("step-0"),
+            createdAt = now,
         )
         assertFailsWith<IllegalArgumentException> {
             WebhookOutboxEntry.workflowCommitted(plan)

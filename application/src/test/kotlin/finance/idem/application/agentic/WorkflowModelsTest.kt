@@ -35,9 +35,9 @@ class WorkflowModelsTest {
         id = planId,
         tenantId = tenantId,
         agentContext = agentContext,
-        stepIdempotencyKeys = listOf("step-0"),
-        occurredAt = now,
-    ).copy(committedAt = Instant.now())
+        stepDescriptions = listOf("step-0"),
+        createdAt = now,
+    ).copy(completedAt = Instant.now())
 
     // ── WorkflowStepCommand ───────────────────────────────────────────────────
 
@@ -61,11 +61,17 @@ class WorkflowModelsTest {
         assertEquals(mapOf("ref" to "abc"), cmd.metadata)
     }
 
+    @Test
+    fun `WorkflowStepCommand description defaults to empty string`() {
+        val cmd = WorkflowStepCommand(idempotencyKey = "k", lines = emptyList())
+        assertEquals("", cmd.description)
+    }
+
     // ── ExecuteWorkflowCommand ────────────────────────────────────────────────
 
     @Test
     fun `ExecuteWorkflowCommand holds all fields`() {
-        val step = WorkflowStepCommand("idem-0", emptyList())
+        val step = WorkflowStepCommand("idem-0", lines = emptyList())
         val cmd = ExecuteWorkflowCommand(
             tenantId = tenantId,
             agentContext = agentContext,

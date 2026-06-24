@@ -1,14 +1,14 @@
 package finance.idem.infrastructure.persistence.workflow
 
-import finance.idem.application.port.WorkflowPlanRepository
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.agentic.StepStatus
 import finance.idem.core.agentic.WorkflowPlan
-import finance.idem.core.agentic.WorkflowPlanStatus
-import finance.idem.core.agentic.WorkflowPlanStep
-import finance.idem.core.agentic.WorkflowStepStatus
+import finance.idem.core.agentic.WorkflowPlanRepository
+import finance.idem.core.agentic.WorkflowStatus
+import finance.idem.core.agentic.WorkflowStep
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -33,26 +33,31 @@ class WorkflowPlanRepositoryAdapter(
     }
 
     @Transactional
-    override fun updateStatus(id: WorkflowPlanId, tenantId: TenantId, status: WorkflowPlanStatus, committedAt: Instant?) {
+    override fun updateStatus(
+        id: WorkflowPlanId,
+        tenantId: TenantId,
+        status: WorkflowStatus,
+        completedAt: Instant?,
+        rolledBackAt: Instant?,
+        rollbackReason: String?,
+    ) {
         setTenantId(tenantId)
-        if (committedAt != null) {
-            entityManager.createNativeQuery(
-                "UPDATE workflow_plans SET status = '${status.name}', committed_at = '${committedAt}' WHERE id = '${id.value}' AND tenant_id = '${tenantId.value}'"
-            ).executeUpdate()
-        } else {
-            entityManager.createNativeQuery(
-                "UPDATE workflow_plans SET status = '${status.name}' WHERE id = '${id.value}' AND tenant_id = '${tenantId.value}'"
-            ).executeUpdate()
-        }
+        val setParts = mutableListOf("status = '${status.name}'")
+        if (completedAt != null) setParts += "completed_at = '$completedAt'"
+        if (rolledBackAt != null) setParts += "rolled_back_at = '$rolledBackAt'"
+        if (rollbackReason != null) setParts += "rollback_reason = '${rollbackReason.replace("'", "''")}'"
+        val sql = "UPDATE workflow_plans SET ${setParts.joinToString(", ")} WHERE id = '${id.value}' AND tenant_id = '${tenantId.value}'"
+        entityManager.createNativeQuery(sql).executeUpdate()
     }
 
     @Transactional
-    override fun updateStep(id: WorkflowPlanId, tenantId: TenantId, step: WorkflowPlanStep) {
+    override fun updateStep(id: WorkflowPlanId, tenantId: TenantId, step: WorkflowStep) {
         setTenantId(tenantId)
-        val txIdValue = step.transactionId
-        val txIdSql = if (txIdValue != null) "'${txIdValue.value}'" else "NULL"
+        val txIdSql = step.transactionId?.let { "'${it.value}'" } ?: "NULL"
+        val executedAtSql = step.executedAt?.let { "'$it'" } ?: "NULL"
+        val compensatingTxIdSql = step.compensatingTransactionId?.let { "'${it.value}'" } ?: "NULL"
         entityManager.createNativeQuery(
-            "UPDATE workflow_plan_steps SET status = '${step.status.name}', transaction_id = $txIdSql WHERE workflow_plan_id = '${id.value}' AND step_index = ${step.stepIndex} AND tenant_id = '${tenantId.value}'"
+            "UPDATE workflow_steps SET status = '${step.status.name}', transaction_id = $txIdSql, executed_at = $executedAtSql, compensating_transaction_id = $compensatingTxIdSql WHERE workflow_plan_id = '${id.value}' AND step_order = ${step.stepOrder} AND tenant_id = '${tenantId.value}'"
         ).executeUpdate()
     }
 
@@ -75,20 +80,25 @@ private fun WorkflowPlanDataModel.toDomain(): WorkflowPlan =
             workflowPlanId = WorkflowPlanId(id),
             intent = intent,
         ),
-        status = WorkflowPlanStatus.valueOf(status),
+        status = WorkflowStatus.valueOf(status),
         steps = steps
-            .sortedBy { it.stepIndex }
+            .sortedBy { it.stepOrder }
             .map { it.toDomain() },
-        occurredAt = occurredAt,
-        committedAt = committedAt,
+        createdAt = createdAt,
+        completedAt = completedAt,
+        rolledBackAt = rolledBackAt,
+        rollbackReason = rollbackReason,
     )
 
-private fun WorkflowPlanStepDataModel.toDomain(): WorkflowPlanStep =
-    WorkflowPlanStep(
-        stepIndex = stepIndex,
-        idempotencyKey = idempotencyKey,
-        status = WorkflowStepStatus.valueOf(status),
+private fun WorkflowStepDataModel.toDomain(): WorkflowStep =
+    WorkflowStep(
+        stepId = id,
+        stepOrder = stepOrder,
+        description = description,
         transactionId = transactionId?.let { TransactionId(it) },
+        status = StepStatus.valueOf(status),
+        executedAt = executedAt,
+        compensatingTransactionId = compensatingTransactionId?.let { TransactionId(it) },
     )
 
 // ── Domain → Entity ──────────────────────────────────────────────────────────
@@ -101,20 +111,24 @@ private fun WorkflowPlan.toEntity(): WorkflowPlanDataModel {
         sessionId = agentContext.sessionId,
         intent = agentContext.intent,
         status = status.name,
-        occurredAt = occurredAt,
-        committedAt = committedAt,
+        createdAt = createdAt,
+        completedAt = completedAt,
+        rolledBackAt = rolledBackAt,
+        rollbackReason = rollbackReason,
     )
     steps.map { it.toEntity(entity) }.forEach { entity.steps.add(it) }
     return entity
 }
 
-private fun WorkflowPlanStep.toEntity(plan: WorkflowPlanDataModel): WorkflowPlanStepDataModel =
-    WorkflowPlanStepDataModel(
-        id = UUID.randomUUID(),
+private fun WorkflowStep.toEntity(plan: WorkflowPlanDataModel): WorkflowStepDataModel =
+    WorkflowStepDataModel(
+        id = stepId,
         workflowPlan = plan,
         tenantId = plan.tenantId,
-        stepIndex = stepIndex,
-        idempotencyKey = idempotencyKey,
+        stepOrder = stepOrder,
+        description = description,
         status = status.name,
         transactionId = transactionId?.value,
+        executedAt = executedAt,
+        compensatingTransactionId = compensatingTransactionId?.value,
     )
