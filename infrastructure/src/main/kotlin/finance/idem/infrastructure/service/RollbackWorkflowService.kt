@@ -32,10 +32,10 @@ class RollbackWorkflowService(
         val plan = workflowPlanRepository.findById(cmd.workflowPlanId, cmd.tenantId)
             ?: return Result.failure(WorkflowPlanNotFound(cmd.workflowPlanId))
 
-        if (plan.status != WorkflowStatus.COMMITTED) {
+        if (plan.status !in setOf(WorkflowStatus.COMMITTED, WorkflowStatus.EXECUTING)) {
             return Result.failure(
                 IllegalStateException(
-                    "Cannot rollback plan ${cmd.workflowPlanId.value}: expected COMMITTED, was ${plan.status}"
+                    "Cannot rollback plan ${cmd.workflowPlanId.value}: expected COMMITTED or EXECUTING, was ${plan.status}"
                 )
             )
         }
@@ -77,6 +77,7 @@ class RollbackWorkflowService(
                     intent = "ROLLBACK",
                     workflowPlanId = cmd.workflowPlanId,
                 ),
+                metadata = mapOf("compensating_for" to originalTxId.value.toString()),
             )
             val compensatingTxId = postTransactionUseCase.execute(compensatingCmd).getOrElse { ex ->
                 throw RuntimeException("Failed to post compensating transaction for step ${step.stepOrder}: ${ex.message}", ex)
