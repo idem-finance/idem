@@ -208,6 +208,25 @@ class WorkflowPlanTest {
         }
     }
 
+    @Test
+    fun `withStatus throws when transitioning from COMMITTED to non-rollback status`() {
+        val plan = planWithSteps()
+            .withStatus(WorkflowStatus.EXECUTING)
+            .withStatus(WorkflowStatus.COMMITTED)
+        assertFailsWith<LedgerInvariantViolation> {
+            plan.withStatus(WorkflowStatus.EXECUTING)
+        }
+    }
+
+    @Test
+    fun `withStatus allows COMMITTED to ROLLED_BACK for saga compensation`() {
+        val plan = planWithSteps()
+            .withStatus(WorkflowStatus.EXECUTING)
+            .withStatus(WorkflowStatus.COMMITTED)
+        val rolledBack = plan.withStatus(WorkflowStatus.ROLLED_BACK)
+        assertEquals(WorkflowStatus.ROLLED_BACK, rolledBack.status)
+    }
+
     private fun planWithSteps() = WorkflowPlan.create(
         id = planId,
         tenantId = tenantId,

@@ -7,7 +7,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class AgentAuditEventTest {
 
@@ -84,9 +83,22 @@ class AgentAuditEventTest {
     }
 
     @Test
-    fun `computeHmac returns a non-empty Base64 string`() {
+    fun `computeHmac produces a 44-character Base64-encoded SHA-256 signature`() {
         val event = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, "offramp")
-        assertTrue(event.computeHmac("test-secret").isNotBlank())
+        assertEquals(44, event.computeHmac("test-secret").length)
+    }
+
+    @Test
+    fun `computeHmac changes when any covered field changes`() {
+        val event = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, "offramp")
+        assertNotEquals(event.computeHmac("secret"), event.copy(intent = "onramp").computeHmac("secret"))
+    }
+
+    @Test
+    fun `computeHmac distinguishes null intent from the literal string null`() {
+        val base = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, null)
+        val withLiteralNull = base.copy(intent = "null")
+        assertNotEquals(base.computeHmac("secret"), withLiteralNull.computeHmac("secret"))
     }
 
     @Test

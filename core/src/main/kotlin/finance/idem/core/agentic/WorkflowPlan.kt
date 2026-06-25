@@ -21,6 +21,12 @@ data class WorkflowPlan internal constructor(
     val rollbackReason: String?,
 ) {
     companion object {
+        // COMMITTED is intentionally absent: the saga compensation path transitions
+        // COMMITTED → ROLLED_BACK via withStatus; only step mutations are blocked from COMMITTED.
+        private val STEP_TERMINAL_STATUSES = setOf(
+            WorkflowStatus.COMMITTED, WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED
+        )
+
         fun create(
             id: WorkflowPlanId,
             tenantId: TenantId,
@@ -75,11 +81,13 @@ data class WorkflowPlan internal constructor(
     fun withStatus(newStatus: WorkflowStatus): WorkflowPlan {
         if (status == WorkflowStatus.ROLLED_BACK || status == WorkflowStatus.FAILED)
             throw LedgerInvariantViolation("Cannot transition from terminal status $status")
+        if (status == WorkflowStatus.COMMITTED && newStatus != WorkflowStatus.ROLLED_BACK)
+            throw LedgerInvariantViolation("Cannot transition from COMMITTED to $newStatus")
         return copy(status = newStatus)
     }
 
     fun withStepExecuted(stepOrder: Int, txId: TransactionId): WorkflowPlan {
-        if (status in setOf(WorkflowStatus.COMMITTED, WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED))
+        if (status in STEP_TERMINAL_STATUSES)
             throw LedgerInvariantViolation("Cannot execute steps in terminal status $status")
         return copy(
             steps = steps.map { step ->
@@ -91,7 +99,7 @@ data class WorkflowPlan internal constructor(
     }
 
     fun withStepFailed(stepOrder: Int): WorkflowPlan {
-        if (status in setOf(WorkflowStatus.COMMITTED, WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED))
+        if (status in STEP_TERMINAL_STATUSES)
             throw LedgerInvariantViolation("Cannot fail steps in terminal status $status")
         return copy(
             steps = steps.map { step ->

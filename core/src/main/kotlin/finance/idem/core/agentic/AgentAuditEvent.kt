@@ -71,8 +71,12 @@ data class AgentAuditEvent(
     }
 
     fun computeHmac(secret: String): String {
+        // Escape \ then | in free-text fields so neither can shift field boundaries.
+        // \N is the null sentinel — distinct from the empty string and from the literal "null".
+        fun String?.safe() = this?.replace("\\", "\\\\")?.replace("|", "\\|") ?: "\\N"
         val canonical = "$id|${workflowPlanId.value}|${tenantId.value}|" +
-            "${agentContext.agentId}|${agentContext.sessionId}|$intent|${status.name}|$outcome"
+            "${agentContext.agentId}|${agentContext.sessionId}|${intent.safe()}|" +
+            "${status.name}|${outcome.safe()}|${occurredAt.toEpochMilli()}"
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
         return Base64.getEncoder().encodeToString(mac.doFinal(canonical.toByteArray(Charsets.UTF_8)))
