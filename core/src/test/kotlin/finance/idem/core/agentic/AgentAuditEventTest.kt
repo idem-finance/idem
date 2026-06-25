@@ -4,8 +4,10 @@ import finance.idem.core.TenantId
 import finance.idem.core.WorkflowPlanId
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AgentAuditEventTest {
 
@@ -79,5 +81,23 @@ class AgentAuditEventTest {
         val e1 = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, null)
         val e2 = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, null)
         assert(e1.id != e2.id)
+    }
+
+    @Test
+    fun `computeHmac returns a non-empty Base64 string`() {
+        val event = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, "offramp")
+        assertTrue(event.computeHmac("test-secret").isNotBlank())
+    }
+
+    @Test
+    fun `computeHmac is deterministic for same event and secret`() {
+        val event = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, "offramp")
+        assertEquals(event.computeHmac("secret-1"), event.computeHmac("secret-1"))
+    }
+
+    @Test
+    fun `computeHmac produces different signatures for different secrets`() {
+        val event = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, "offramp")
+        assertNotEquals(event.computeHmac("secret-A"), event.computeHmac("secret-B"))
     }
 }

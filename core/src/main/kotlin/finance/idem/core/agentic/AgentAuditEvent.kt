@@ -3,7 +3,10 @@ package finance.idem.core.agentic
 import finance.idem.core.TenantId
 import finance.idem.core.WorkflowPlanId
 import java.time.Instant
+import java.util.Base64
 import java.util.UUID
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 enum class AgentAuditStatus { PENDING, COMPLETED, FAILED }
 
@@ -65,5 +68,13 @@ data class AgentAuditEvent(
             outcome = outcome,
             occurredAt = Instant.now(),
         )
+    }
+
+    fun computeHmac(secret: String): String {
+        val canonical = "$id|${workflowPlanId.value}|${tenantId.value}|" +
+            "${agentContext.agentId}|${agentContext.sessionId}|$intent|${status.name}|$outcome"
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        return Base64.getEncoder().encodeToString(mac.doFinal(canonical.toByteArray(Charsets.UTF_8)))
     }
 }

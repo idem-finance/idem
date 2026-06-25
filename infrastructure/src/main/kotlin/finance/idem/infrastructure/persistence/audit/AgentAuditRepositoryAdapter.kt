@@ -9,9 +9,6 @@ import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
-import java.util.Base64
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 @Component
 class AgentAuditRepositoryAdapter(
@@ -49,7 +46,7 @@ class AgentAuditRepositoryAdapter(
                 status = event.status.name,
                 outcome = event.outcome,
                 payload = payload,
-                hmac = hmacSha256(payload, auditProperties.hmacSecret),
+                hmac = event.computeHmac(auditProperties.hmacSecret),
                 occurredAt = event.occurredAt,
             )
         )
@@ -106,9 +103,4 @@ class AgentAuditRepositoryAdapter(
         )
     }
 
-    private fun hmacSha256(data: String, key: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
-        return Base64.getEncoder().encodeToString(mac.doFinal(data.toByteArray(Charsets.UTF_8)))
-    }
 }
