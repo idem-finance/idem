@@ -30,6 +30,11 @@
             <email>flaubert165@gmail.com</email>
         </developer>
     </developers>
+    <scm>
+        <connection>scm:git:git://github.com/idem-finance/idem.git</connection>
+        <developerConnection>scm:git:ssh://github.com/idem-finance/idem.git</developerConnection>
+        <url>https://github.com/idem-finance/idem</url>
+    </scm>
 
     <modules>
         <module>core</module>
@@ -51,6 +56,7 @@
         <web3j.version>4.12.0</web3j.version>
         <wiremock.version>2.35.1</wiremock.version>
         <shedlock.version>6.6.0</shedlock.version>
+        <dokka.version>1.9.20</dokka.version>
     </properties>
 
     <dependencyManagement>
