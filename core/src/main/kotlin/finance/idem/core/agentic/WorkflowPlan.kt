@@ -1,5 +1,6 @@
 package finance.idem.core.agentic
 
+import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
@@ -20,6 +21,12 @@ data class WorkflowPlan internal constructor(
     val rollbackReason: String?,
 ) {
     companion object {
+        // COMMITTED is intentionally absent: the saga compensation path transitions
+        // COMMITTED → ROLLED_BACK via withStatus; only step mutations are blocked from COMMITTED.
+        private val STEP_TERMINAL_STATUSES = setOf(
+            WorkflowStatus.COMMITTED, WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED
+        )
+
         fun create(
             id: WorkflowPlanId,
             tenantId: TenantId,
@@ -71,22 +78,36 @@ data class WorkflowPlan internal constructor(
         )
     }
 
-    fun withStatus(newStatus: WorkflowStatus): WorkflowPlan = copy(status = newStatus)
+    fun withStatus(newStatus: WorkflowStatus): WorkflowPlan {
+        if (status == WorkflowStatus.ROLLED_BACK || status == WorkflowStatus.FAILED)
+            throw LedgerInvariantViolation("Cannot transition from terminal status $status")
+        if (status == WorkflowStatus.COMMITTED && newStatus != WorkflowStatus.ROLLED_BACK)
+            throw LedgerInvariantViolation("Cannot transition from COMMITTED to $newStatus")
+        return copy(status = newStatus)
+    }
 
-    fun withStepExecuted(stepOrder: Int, txId: TransactionId): WorkflowPlan = copy(
-        steps = steps.map { step ->
-            if (step.stepOrder == stepOrder)
-                step.copy(status = StepStatus.EXECUTED, transactionId = txId, executedAt = Instant.now())
-            else step
-        }
-    )
+    fun withStepExecuted(stepOrder: Int, txId: TransactionId): WorkflowPlan {
+        if (status in STEP_TERMINAL_STATUSES)
+            throw LedgerInvariantViolation("Cannot execute steps in terminal status $status")
+        return copy(
+            steps = steps.map { step ->
+                if (step.stepOrder == stepOrder)
+                    step.copy(status = StepStatus.EXECUTED, transactionId = txId, executedAt = Instant.now())
+                else step
+            }
+        )
+    }
 
-    fun withStepFailed(stepOrder: Int): WorkflowPlan = copy(
-        steps = steps.map { step ->
-            if (step.stepOrder == stepOrder) step.copy(status = StepStatus.FAILED)
-            else step
-        }
-    )
+    fun withStepFailed(stepOrder: Int): WorkflowPlan {
+        if (status in STEP_TERMINAL_STATUSES)
+            throw LedgerInvariantViolation("Cannot fail steps in terminal status $status")
+        return copy(
+            steps = steps.map { step ->
+                if (step.stepOrder == stepOrder) step.copy(status = StepStatus.FAILED)
+                else step
+            }
+        )
+    }
 
     fun withStepRolledBack(stepOrder: Int, compensatingTxId: TransactionId): WorkflowPlan = copy(
         steps = steps.map { step ->

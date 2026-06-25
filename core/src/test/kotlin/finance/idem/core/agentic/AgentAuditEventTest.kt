@@ -4,6 +4,7 @@ import finance.idem.core.TenantId
 import finance.idem.core.WorkflowPlanId
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -79,5 +80,36 @@ class AgentAuditEventTest {
         val e1 = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, null)
         val e2 = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, null)
         assert(e1.id != e2.id)
+    }
+
+    @Test
+    fun `computeHmac produces a 44-character Base64-encoded SHA-256 signature`() {
+        val event = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, "offramp")
+        assertEquals(44, event.computeHmac("test-secret").length)
+    }
+
+    @Test
+    fun `computeHmac changes when any covered field changes`() {
+        val event = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, "offramp")
+        assertNotEquals(event.computeHmac("secret"), event.copy(intent = "onramp").computeHmac("secret"))
+    }
+
+    @Test
+    fun `computeHmac distinguishes null intent from the literal string null`() {
+        val base = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, null)
+        val withLiteralNull = base.copy(intent = "null")
+        assertNotEquals(base.computeHmac("secret"), withLiteralNull.computeHmac("secret"))
+    }
+
+    @Test
+    fun `computeHmac is deterministic for same event and secret`() {
+        val event = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, "offramp")
+        assertEquals(event.computeHmac("secret-1"), event.computeHmac("secret-1"))
+    }
+
+    @Test
+    fun `computeHmac produces different signatures for different secrets`() {
+        val event = AgentAuditEvent.pending(workflowPlanId, tenantId, agentContext, "offramp")
+        assertNotEquals(event.computeHmac("secret-A"), event.computeHmac("secret-B"))
     }
 }

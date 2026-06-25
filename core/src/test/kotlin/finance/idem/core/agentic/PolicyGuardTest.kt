@@ -144,6 +144,16 @@ class PolicyGuardTest {
         approved(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
     }
 
+    @Test
+    fun `MaxDebitPerSession - explicit zero prior session total does not inflate the running sum`() {
+        val rule = PolicyRule.MaxDebitPerSession(MonetaryAmount.of("100"))
+        val intent = LedgerIntent(
+            lines = listOf(fiatDebitLine("100")),
+            priorSessionDebitTotal = MonetaryAmount.of("0"),
+        )
+        approved(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
+    }
+
     // ── MaxDebitPerHour ──────────────────────────────────────────────────────
 
     @Test
@@ -239,6 +249,23 @@ class PolicyGuardTest {
             ),
         )
         approved(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
+    }
+
+    @Test
+    fun `ForbiddenAccountPair - same account as both debit and credit is denied`() {
+        val sharedAccount = AccountId.generate()
+        val rule = PolicyRule.ForbiddenAccountPair(
+            debitAccount = sharedAccount,
+            creditAccount = sharedAccount,
+        )
+        val intent = LedgerIntent(
+            lines = listOf(
+                fiatDebitLine("100", accountId = sharedAccount),
+                fiatCreditLine("100", accountId = sharedAccount),
+            ),
+        )
+        val result = denied(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
+        assertEquals(1, result.violations.size)
     }
 
     // ── RequireHumanApprovalAbove ────────────────────────────────────────────

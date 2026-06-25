@@ -1,5 +1,6 @@
 package finance.idem.core.agentic
 
+import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
@@ -7,6 +8,7 @@ import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -170,6 +172,59 @@ class WorkflowPlanTest {
         assertEquals("compliance", plan.rollbackReason)
         assertEquals(stepId, plan.steps[0].stepId)
         assertEquals(StepStatus.ROLLED_BACK, plan.steps[0].status)
+    }
+
+    @Test
+    fun `withStatus throws when transitioning from ROLLED_BACK`() {
+        val plan = planWithSteps().withStatus(WorkflowStatus.ROLLED_BACK)
+        assertFailsWith<LedgerInvariantViolation> {
+            plan.withStatus(WorkflowStatus.EXECUTING)
+        }
+    }
+
+    @Test
+    fun `withStatus throws when transitioning from FAILED`() {
+        val plan = planWithSteps().withStatus(WorkflowStatus.FAILED)
+        assertFailsWith<LedgerInvariantViolation> {
+            plan.withStatus(WorkflowStatus.PLANNED)
+        }
+    }
+
+    @Test
+    fun `withStepExecuted throws when plan is COMMITTED`() {
+        val plan = planWithSteps()
+            .withStatus(WorkflowStatus.EXECUTING)
+            .withStatus(WorkflowStatus.COMMITTED)
+        assertFailsWith<LedgerInvariantViolation> {
+            plan.withStepExecuted(0, TransactionId.generate())
+        }
+    }
+
+    @Test
+    fun `withStepFailed throws when plan is ROLLED_BACK`() {
+        val plan = planWithSteps().withStatus(WorkflowStatus.ROLLED_BACK)
+        assertFailsWith<LedgerInvariantViolation> {
+            plan.withStepFailed(0)
+        }
+    }
+
+    @Test
+    fun `withStatus throws when transitioning from COMMITTED to non-rollback status`() {
+        val plan = planWithSteps()
+            .withStatus(WorkflowStatus.EXECUTING)
+            .withStatus(WorkflowStatus.COMMITTED)
+        assertFailsWith<LedgerInvariantViolation> {
+            plan.withStatus(WorkflowStatus.EXECUTING)
+        }
+    }
+
+    @Test
+    fun `withStatus allows COMMITTED to ROLLED_BACK for saga compensation`() {
+        val plan = planWithSteps()
+            .withStatus(WorkflowStatus.EXECUTING)
+            .withStatus(WorkflowStatus.COMMITTED)
+        val rolledBack = plan.withStatus(WorkflowStatus.ROLLED_BACK)
+        assertEquals(WorkflowStatus.ROLLED_BACK, rolledBack.status)
     }
 
     private fun planWithSteps() = WorkflowPlan.create(
