@@ -20,7 +20,10 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.DriverManager
 import java.sql.SQLException
+import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @DataJpaTest
@@ -159,6 +162,90 @@ class AgentAuditRepositoryAdapterTest {
 
         assertEquals(1L, countA, "Tenant A should see exactly its own 1 row")
         assertEquals(1L, countB, "Tenant B should see exactly its own 1 row")
+    }
+
+    @Test
+    fun `findByFilter returns events matching sessionId`() {
+        val planId = WorkflowPlanId.generate()
+        val ctxA = AgentContext(agentId = "agent-1", sessionId = "sess-find", workflowPlanId = planId)
+        val ctxB = AgentContext(agentId = "agent-2", sessionId = "sess-other", workflowPlanId = planId)
+
+        adapter.save(AgentAuditEvent.pending(planId, tenantA, ctxA, "intent-a"))
+        adapter.save(AgentAuditEvent.pending(planId, tenantA, ctxB, "intent-b"))
+        entityManager.flush()
+        entityManager.clear()
+
+        val results = adapter.findByFilter(tenantId = tenantA, sessionId = "sess-find", limit = 10)
+
+        assertEquals(1, results.size)
+        assertEquals("sess-find", results[0].sessionId)
+        assertEquals("agent-1", results[0].agentId)
+        assertEquals("intent-a", results[0].intentPayload)
+    }
+
+    @Test
+    fun `findByFilter toView — PENDING maps eventType and null completedAt`() {
+        val planId = WorkflowPlanId.generate()
+        val ctx = agentContext(planId)
+        val event = AgentAuditEvent.pending(planId, tenantA, ctx, "test-intent")
+
+        adapter.save(event)
+        entityManager.flush()
+        entityManager.clear()
+
+        val results = adapter.findByFilter(tenantId = tenantA, limit = 10)
+
+        val view = results.first { it.id == event.id }
+        assertEquals("AGENT_ACTION_STARTED", view.eventType)
+        assertEquals("PENDING", view.status)
+        assertNull(view.completedAt)
+        assertNotNull(view.hmacSignature)
+        assertTrue(view.hmacSignature.isNotBlank())
+    }
+
+    @Test
+    fun `findByFilter toView — COMPLETED maps eventType and completedAt`() {
+        val planId = WorkflowPlanId.generate()
+        val ctx = agentContext(planId)
+        val event = AgentAuditEvent.completed(planId, tenantA, ctx, "done")
+
+        adapter.save(event)
+        entityManager.flush()
+        entityManager.clear()
+
+        val results = adapter.findByFilter(tenantId = tenantA, limit = 10)
+
+        val view = results.first { it.id == event.id }
+        assertEquals("AGENT_ACTION_COMPLETED", view.eventType)
+        assertEquals("COMPLETED", view.status)
+        assertNotNull(view.completedAt)
+    }
+
+    @Test
+    fun `findByFilter respects limit`() {
+        val planId = WorkflowPlanId.generate()
+        val ctx = agentContext(planId)
+        repeat(5) { adapter.save(AgentAuditEvent.pending(WorkflowPlanId.generate(), tenantA, ctx, null)) }
+        entityManager.flush()
+        entityManager.clear()
+
+        val results = adapter.findByFilter(tenantId = tenantA, limit = 2)
+        assertEquals(2, results.size)
+    }
+
+    @Test
+    fun `findByFilter with no filters returns all events for tenant ordered desc`() {
+        val before = Instant.now().minusSeconds(5)
+        val planId = WorkflowPlanId.generate()
+        val ctx = agentContext(planId)
+        adapter.save(AgentAuditEvent.pending(planId, tenantA, ctx, null))
+        adapter.save(AgentAuditEvent.completed(planId, tenantA, ctx, "done"))
+        entityManager.flush()
+        entityManager.clear()
+
+        val results = adapter.findByFilter(tenantId = tenantA, from = before, limit = 10)
+        assertTrue(results.size >= 2)
+        assertTrue(results[0].occurredAt >= results[1].occurredAt)
     }
 
     @Test

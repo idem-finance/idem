@@ -1,6 +1,8 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.agentic.CompensatedStepSummary
 import finance.idem.application.agentic.RollbackWorkflowCommand
+import finance.idem.application.agentic.RollbackWorkflowSummary
 import finance.idem.application.agentic.RollbackWorkflowUseCase
 import finance.idem.application.agentic.WorkflowPlanNotFound
 import finance.idem.application.ledger.JournalLineRequest
@@ -28,7 +30,7 @@ class RollbackWorkflowService(
     private val postTransactionUseCase: PostTransactionUseCase,
 ) : RollbackWorkflowUseCase {
 
-    override fun execute(cmd: RollbackWorkflowCommand): Result<Unit> {
+    override fun execute(cmd: RollbackWorkflowCommand): Result<RollbackWorkflowSummary> {
         val plan = workflowPlanRepository.findById(cmd.workflowPlanId, cmd.tenantId)
             ?: return Result.failure(WorkflowPlanNotFound(cmd.workflowPlanId))
 
@@ -53,8 +55,11 @@ class RollbackWorkflowService(
         // regardless of the current policy configuration (e.g. AllowedTokens, RequireHumanApproval).
         var updatedPlan = plan
         plan.executedSteps().sortedByDescending { it.stepOrder }.forEach { step ->
-            val originalTxId = step.transactionId ?: return@forEach
-            val originalTx = transactionRepository.findById(originalTxId, cmd.tenantId) ?: return@forEach
+            val originalTxId = checkNotNull(step.transactionId) {
+                "Executed step ${step.stepOrder} of plan ${cmd.workflowPlanId.value} has null transactionId — data integrity violation"
+            }
+            val originalTx = transactionRepository.findById(originalTxId, cmd.tenantId)
+                ?: error("Original transaction $originalTxId not found for step ${step.stepOrder} — cannot compensate")
 
             val compensatingLines = originalTx.lines.map { line ->
                 JournalLineRequest(
@@ -106,6 +111,10 @@ class RollbackWorkflowService(
 
         webhookOutboxRepository.save(WebhookOutboxEntry.workflowRolledBack(rolledBackPlan))
 
-        return Result.success(Unit)
+        val compensated = rolledBackPlan.steps
+            .filter { it.compensatingTransactionId != null }
+            .sortedBy { it.stepOrder }
+            .map { CompensatedStepSummary(it.stepOrder, it.description, it.compensatingTransactionId) }
+        return Result.success(RollbackWorkflowSummary(cmd.workflowPlanId, compensated, "ROLLED_BACK"))
     }
 }

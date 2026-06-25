@@ -2,6 +2,10 @@ package finance.idem.mcp
 
 import finance.idem.application.agentic.ExecuteWorkflowCommand
 import finance.idem.application.agentic.ExecuteWorkflowUseCase
+import finance.idem.application.agentic.GetAgentAuditLogQuery
+import finance.idem.application.agentic.GetAgentAuditLogUseCase
+import finance.idem.application.agentic.RollbackWorkflowCommand
+import finance.idem.application.agentic.RollbackWorkflowUseCase
 import finance.idem.application.agentic.WorkflowStepCommand
 import finance.idem.application.ledger.DescribeAccountQuery
 import finance.idem.application.ledger.DescribeAccountUseCase
@@ -10,6 +14,8 @@ import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.application.ledger.JournalLineRequest
+import finance.idem.application.reconciliation.ReconcileEntriesCommand
+import finance.idem.application.reconciliation.ReconcileEntriesUseCase
 import finance.idem.core.AccountId
 import finance.idem.core.ChainId
 import finance.idem.core.EntryType
@@ -18,10 +24,12 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
+import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentContext
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
+import java.util.UUID
 import org.slf4j.LoggerFactory
 import org.springframework.ai.tool.annotation.Tool
 import org.springframework.ai.tool.annotation.ToolParam
@@ -38,6 +46,9 @@ class IdemMcpServer(
     private val getBalanceUseCase: GetBalanceUseCase,
     private val getEntriesUseCase: GetEntriesUseCase,
     private val describeAccountUseCase: DescribeAccountUseCase,
+    private val rollbackWorkflowUseCase: RollbackWorkflowUseCase,
+    private val reconcileEntriesUseCase: ReconcileEntriesUseCase,
+    private val getAgentAuditLogUseCase: GetAgentAuditLogUseCase,
 ) {
     private val log = LoggerFactory.getLogger(IdemMcpServer::class.java)
 
@@ -168,6 +179,97 @@ class IdemMcpServer(
             },
             onFailure = { handleFailure(it) },
         )
+    }
+
+    @PreAuthorize("hasAuthority('AGENTS_ROLLBACK')")
+    @Tool(description = "Roll back a committed or executing workflow using compensating transactions (saga pattern). Each executed step is reversed in reverse order. Requires AGENTS_ROLLBACK scope.")
+    fun rollbackWorkflow(
+        @ToolParam(description = "WorkflowPlan UUID to roll back") workflowPlanId: String,
+        @ToolParam(description = "Human-readable reason for the rollback, recorded in the audit log") reason: String,
+        @ToolParam(description = "Agent identifier from the calling agent's credentials") agentId: String,
+        @ToolParam(description = "Session identifier grouping related agent actions") sessionId: String,
+    ): RollbackWorkflowResult {
+        val apiKeyPrefix = SecurityContextHolder.getContext().authentication?.name
+        val cmd = RollbackWorkflowCommand(
+            tenantId = tenantId(),
+            agentContext = AgentContext(agentId = agentId, sessionId = sessionId, apiKeyPrefix = apiKeyPrefix),
+            workflowPlanId = WorkflowPlanId(UUID.fromString(workflowPlanId)),
+            reason = reason,
+            createdBy = agentId,
+        )
+        return rollbackWorkflowUseCase.execute(cmd).fold(
+            onSuccess = { summary ->
+                RollbackWorkflowResult(
+                    rollbackId = summary.workflowPlanId.value.toString(),
+                    compensatedSteps = summary.compensatedSteps.map {
+                        CompensatedStepItem(it.stepOrder, it.description, it.compensatingTransactionId?.value?.toString())
+                    },
+                    status = summary.status,
+                )
+            },
+            onFailure = { handleFailure(it) },
+        )
+    }
+
+    @PreAuthorize("hasAuthority('AGENTS_EXECUTE')")
+    @Tool(description = "Run a reconciliation sweep over on-chain settlements within a time window. Matches UNMATCHED chain entries against PENDING journal lines by amount. Requires AGENTS_EXECUTE scope.")
+    fun reconcileBatch(
+        @ToolParam(description = "Optional account UUID to scope the reconciliation") accountId: String?,
+        @ToolParam(description = "Inclusive lower bound on settlement timestamp (ISO-8601)") from: String,
+        @ToolParam(description = "Inclusive upper bound on settlement timestamp (ISO-8601)") to: String,
+        @ToolParam(description = "Optional per-call amount tolerance percentage, overrides the server default") tolerancePercent: Double?,
+    ): ReconcileBatchResult {
+        val cmd = ReconcileEntriesCommand(
+            tenantId = tenantId(),
+            accountId = accountId?.let { AccountId.of(it) },
+            from = parseInstant(from, "from"),
+            to = parseInstant(to, "to"),
+            tolerancePercent = tolerancePercent?.let { java.math.BigDecimal(it.toString()) },
+        )
+        return reconcileEntriesUseCase.execute(cmd).fold(
+            onSuccess = { result ->
+                ReconcileBatchResult(
+                    matched = result.matched,
+                    unmatched = result.unmatched,
+                    exceptions = result.exceptions.map { "${it.txHash ?: it.settlementId}: ${it.reason}" },
+                    settlementIds = result.settlementIds,
+                )
+            },
+            onFailure = { handleFailure(it) },
+        )
+    }
+
+    @PreAuthorize("hasAuthority('AGENTS_AUDIT_READ')")
+    @Tool(description = "Retrieve HMAC-signed audit events for agent actions. Filterable by session, time range, and count. Each event includes hmacSignature for integrity verification. Requires AGENTS_AUDIT_READ scope.")
+    fun getAgentAuditLog(
+        @ToolParam(description = "Optional session identifier to filter events") sessionId: String?,
+        @ToolParam(description = "Optional lower bound on event timestamp (ISO-8601)") from: String?,
+        @ToolParam(description = "Optional upper bound on event timestamp (ISO-8601)") to: String?,
+        @ToolParam(description = "Max events to return (1-200, default 50)") limit: Int?,
+    ): AuditLogResult {
+        val query = GetAgentAuditLogQuery(
+            tenantId = tenantId(),
+            sessionId = sessionId,
+            from = from?.let { parseInstant(it, "from") },
+            to = to?.let { parseInstant(it, "to") },
+            limit = (limit ?: 50).coerceIn(1, 200),
+        )
+        val items = getAgentAuditLogUseCase.execute(query).map {
+            AuditEventItem(
+                id = it.id.toString(),
+                workflowPlanId = it.workflowPlanId.toString(),
+                agentId = it.agentId,
+                model = null,
+                sessionId = it.sessionId,
+                eventType = it.eventType,
+                intentPayload = it.intentPayload,
+                status = it.status,
+                occurredAt = it.occurredAt.toString(),
+                completedAt = it.completedAt?.toString(),
+                hmacSignature = it.hmacSignature,
+            )
+        }
+        return AuditLogResult(auditEvents = items, total = items.size)
     }
 
     private fun tenantId(): TenantId =

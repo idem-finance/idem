@@ -8,15 +8,18 @@ import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
 import finance.idem.core.TenantId
+import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentContext
 import finance.idem.core.agentic.WorkflowPlan
 import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.Test
 import java.time.Instant
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class WorkflowModelsTest {
 
@@ -111,6 +114,34 @@ class WorkflowModelsTest {
         assertEquals(planId, error.workflowPlanId)
         assertIs<WorkflowError>(error)
         assertNotNull(error.message)
+    }
+
+    // ── RollbackWorkflowSummary ───────────────────────────────────────────────
+
+    @Test
+    fun `RollbackWorkflowSummary holds all fields`() {
+        val txId = TransactionId(UUID.randomUUID())
+        val step = CompensatedStepSummary(stepOrder = 0, description = "Transfer", compensatingTransactionId = txId)
+        val summary = RollbackWorkflowSummary(
+            workflowPlanId = planId,
+            compensatedSteps = listOf(step),
+            status = "ROLLED_BACK",
+        )
+
+        assertEquals(planId, summary.workflowPlanId)
+        assertEquals("ROLLED_BACK", summary.status)
+        assertEquals(1, summary.compensatedSteps.size)
+        assertEquals(0, summary.compensatedSteps[0].stepOrder)
+        assertEquals("Transfer", summary.compensatedSteps[0].description)
+        assertEquals(txId, summary.compensatedSteps[0].compensatingTransactionId)
+    }
+
+    @Test
+    fun `CompensatedStepSummary allows null compensatingTransactionId`() {
+        val step = CompensatedStepSummary(stepOrder = 1, description = "Rollback step", compensatingTransactionId = null)
+
+        assertEquals(1, step.stepOrder)
+        assertNull(step.compensatingTransactionId)
     }
 
     // ── WebhookOutboxEntry workflow factory methods ───────────────────────────
