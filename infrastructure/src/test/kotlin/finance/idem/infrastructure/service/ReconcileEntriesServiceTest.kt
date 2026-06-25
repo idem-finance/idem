@@ -23,7 +23,6 @@ import finance.idem.infrastructure.persistence.TransactionRepositoryAdapter
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxJpaRepository
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
-import jakarta.persistence.EntityManager
 import java.math.BigDecimal
 import org.springframework.transaction.PlatformTransactionManager
 import org.junit.jupiter.api.BeforeEach
@@ -32,11 +31,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -44,7 +38,6 @@ import kotlin.test.assertTrue
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(
     ReconcileEntriesService::class,
     SettlementRepositoryAdapter::class,
@@ -53,23 +46,7 @@ import kotlin.test.assertTrue
     TransactionRepositoryAdapter::class,
     PersistenceTestConfig::class,
 )
-class ReconcileEntriesServiceTest {
-
-    companion object {
-        @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
+class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
 
     @Autowired lateinit var service: ReconcileEntriesService
     @Autowired lateinit var settlementAdapter: SettlementRepositoryAdapter
@@ -78,7 +55,6 @@ class ReconcileEntriesServiceTest {
     @Autowired lateinit var webhookOutboxRepository: WebhookOutboxRepository
     @Autowired lateinit var txManager: PlatformTransactionManager
     @Autowired lateinit var outboxJpaRepository: WebhookOutboxJpaRepository
-    @Autowired lateinit var entityManager: EntityManager
 
     private val tenantA = TenantId.generate()
     private val tenantB = TenantId.generate()
@@ -184,11 +160,6 @@ class ReconcileEntriesServiceTest {
         from: Instant = now.minusSeconds(3600),
         to: Instant = now.plusSeconds(3600),
     ) = ReconcileEntriesCommand(tenantId = tenantId, accountId = accountId, from = from, to = to)
-
-    private fun outboxCount(eventType: String): Long =
-        (entityManager.createNativeQuery("SELECT COUNT(*) FROM webhook_outbox WHERE event_type = ?")
-            .setParameter(1, eventType)
-            .singleResult as Number).toLong()
 
     private fun settlementStatus(id: UUID): String =
         entityManager.createNativeQuery("SELECT status FROM settlements WHERE id = ?::uuid")

@@ -104,7 +104,7 @@ class RollbackWorkflowService(
             AgentAuditEvent.completed(
                 workflowPlanId = cmd.workflowPlanId,
                 tenantId = cmd.tenantId,
-                agentContext = cmd.agentContext,
+                agentContext = cmd.agentContext.copy(intent = "ROLLBACK"),
                 outcome = "Rollback completed. Reason: ${cmd.reason}",
             )
         )

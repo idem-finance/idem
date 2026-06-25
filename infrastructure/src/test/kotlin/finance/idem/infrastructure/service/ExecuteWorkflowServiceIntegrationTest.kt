@@ -24,11 +24,9 @@ import finance.idem.infrastructure.persistence.audit.AgentAuditRepositoryAdapter
 import finance.idem.infrastructure.persistence.audit.AuditConfig
 import finance.idem.infrastructure.persistence.audit.AuditRepositoryAdapter
 import finance.idem.infrastructure.persistence.idempotency.PostgresIdempotencyStore
-import finance.idem.infrastructure.persistence.outbox.WebhookOutboxJpaRepository
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
 import finance.idem.infrastructure.persistence.workflow.WorkflowPlanRepositoryAdapter
-import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -40,11 +38,6 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -52,7 +45,6 @@ import kotlin.test.assertTrue
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(
     ExecuteWorkflowService::class,
     PostTransactionService::class,
@@ -68,31 +60,13 @@ import kotlin.test.assertTrue
     SettlementRepositoryAdapter::class,
     PersistenceTestConfig::class,
 )
-class ExecuteWorkflowServiceIntegrationTest {
-
-    companion object {
-        @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
+class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase() {
 
     @Autowired lateinit var executeService: ExecuteWorkflowService
     @Autowired lateinit var accountAdapter: AccountRepositoryAdapter
     @Autowired lateinit var workflowPlanAdapter: WorkflowPlanRepositoryAdapter
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
-    @Autowired lateinit var outboxJpaRepo: WebhookOutboxJpaRepository
     @Autowired lateinit var txManager: PlatformTransactionManager
-    @Autowired lateinit var entityManager: EntityManager
 
     private val tenantId = TenantId.generate()
     private val agentCtx = AgentContext(agentId = "agent-it", sessionId = "sess-it", intent = "test")
@@ -135,11 +109,6 @@ class ExecuteWorkflowServiceIntegrationTest {
         policyRules = policyRules,
         createdBy = "integration-test",
     )
-
-    private fun outboxCount(eventType: String): Long =
-        (entityManager.createNativeQuery("SELECT COUNT(*) FROM webhook_outbox WHERE event_type = ?")
-            .setParameter(1, eventType)
-            .singleResult as Number).toLong()
 
     private fun auditCount(planId: WorkflowPlanId, status: String): Long =
         (entityManager.createNativeQuery(
@@ -189,20 +158,20 @@ class ExecuteWorkflowServiceIntegrationTest {
         assertTrue(txId0 != txId1, "Each step must create a distinct transaction")
 
         assertEquals(1L, outboxCount("workflow.committed"))
+        assertEquals(1L, auditCount(planId, "PENDING"))
+        assertEquals(1L, auditCount(planId, "COMPLETED"))
     }
 
     // ── policy denial ─────────────────────────────────────────────────────────
 
     @Test
     fun `PolicyGuard denial — workflow never created`() {
-        // MaxDebitPerSession(ZERO) rejects any debit amount > 0
         val rules = listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("0")))
 
         assertThrows<PolicyViolationException> {
             executeService.execute(buildCmd(listOf(buildStep("denied-0")), policyRules = rules))
         }
         // PolicyGuard throws before workflowPlanRepository.insert() — no rows expected
-        entityManager.flush()
         val planCount = (entityManager
             .createNativeQuery("SELECT COUNT(*) FROM workflow_plans WHERE tenant_id = ?::uuid")
             .setParameter(1, tenantId.value.toString())
@@ -252,11 +221,13 @@ class ExecuteWorkflowServiceIntegrationTest {
         }!!
         assertEquals(0L, txCount)
 
-        // Cleanup accounts committed by setup (outside test transaction scope)
+        // Cleanup: localTenantId accounts from setup tx AND this.tenantId accounts from @BeforeEach
         txTemplate.execute {
             entityManager.createNativeQuery(
-                "DELETE FROM accounts WHERE tenant_id = ?::uuid"
-            ).setParameter(1, localTenantId.value.toString()).executeUpdate()
+                "DELETE FROM accounts WHERE tenant_id = ?::uuid OR tenant_id = ?::uuid"
+            ).setParameter(1, localTenantId.value.toString())
+             .setParameter(2, tenantId.value.toString())
+             .executeUpdate()
         }
     }
 
@@ -274,7 +245,13 @@ class ExecuteWorkflowServiceIntegrationTest {
         val txId2 = workflowPlanAdapter.findById(planId2, tenantId)!!.steps[0].transactionId!!
 
         assertEquals(txId1, txId2, "Same idempotencyKey must yield the same transactionId")
-        // Two distinct plans were created, but both reference the same underlying transaction
         assertTrue(planId1 != planId2, "Each execute() call produces a distinct plan")
+
+        // Each plan execution writes its own audit pair and outbox entry
+        assertEquals(1L, auditCount(planId1, "PENDING"))
+        assertEquals(1L, auditCount(planId1, "COMPLETED"))
+        assertEquals(1L, auditCount(planId2, "PENDING"))
+        assertEquals(1L, auditCount(planId2, "COMPLETED"))
+        assertEquals(2L, outboxCount("workflow.committed"))
     }
 }

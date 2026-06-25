@@ -12,6 +12,7 @@ import finance.idem.core.PaymentRail
 import finance.idem.core.TenantId
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.agentic.StepStatus
 import finance.idem.core.agentic.WorkflowStatus
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountType
@@ -27,18 +28,12 @@ import finance.idem.infrastructure.persistence.outbox.WebhookOutboxJpaRepository
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
 import finance.idem.infrastructure.persistence.workflow.WorkflowPlanRepositoryAdapter
-import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -46,7 +41,6 @@ import kotlin.test.assertNull
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(
     ExecuteWorkflowService::class,
     RollbackWorkflowService::class,
@@ -63,23 +57,7 @@ import kotlin.test.assertNull
     SettlementRepositoryAdapter::class,
     PersistenceTestConfig::class,
 )
-class RollbackWorkflowServiceIntegrationTest {
-
-    companion object {
-        @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
+class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase() {
 
     @Autowired lateinit var executeService: ExecuteWorkflowService
     @Autowired lateinit var rollbackService: RollbackWorkflowService
@@ -87,7 +65,6 @@ class RollbackWorkflowServiceIntegrationTest {
     @Autowired lateinit var workflowPlanAdapter: WorkflowPlanRepositoryAdapter
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
     @Autowired lateinit var outboxJpaRepo: WebhookOutboxJpaRepository
-    @Autowired lateinit var entityManager: EntityManager
 
     private val tenantId = TenantId.generate()
     private val agentCtx = AgentContext(agentId = "agent-it", sessionId = "sess-it", intent = "test")
@@ -133,11 +110,6 @@ class RollbackWorkflowServiceIntegrationTest {
         return result
     }
 
-    private fun outboxCount(eventType: String): Long =
-        (entityManager.createNativeQuery("SELECT COUNT(*) FROM webhook_outbox WHERE event_type = ?")
-            .setParameter(1, eventType)
-            .singleResult as Number).toLong()
-
     // ── reverse-order rollback ────────────────────────────────────────────────
 
     @Test
@@ -158,7 +130,7 @@ class RollbackWorkflowServiceIntegrationTest {
 
         // Both steps marked ROLLED_BACK with compensating transaction IDs set
         rolledBack.steps.forEach { step ->
-            assertEquals(finance.idem.core.agentic.StepStatus.ROLLED_BACK, step.status)
+            assertEquals(StepStatus.ROLLED_BACK, step.status)
             assertNotNull(step.compensatingTransactionId)
         }
 
@@ -199,7 +171,7 @@ class RollbackWorkflowServiceIntegrationTest {
         entityManager.flush()
 
         // execute() writes: PENDING + COMPLETED (2 events)
-        // rollback() writes: PENDING (intent=ROLLBACK) + COMPLETED (2 more events)
+        // rollback() writes: PENDING (intent=ROLLBACK) + COMPLETED (intent=ROLLBACK) (2 more events)
         @Suppress("UNCHECKED_CAST")
         val rows = entityManager.createNativeQuery(
             "SELECT status, intent FROM agent_audit_events WHERE workflow_plan_id = ?::uuid ORDER BY occurred_at"
@@ -209,8 +181,9 @@ class RollbackWorkflowServiceIntegrationTest {
         assertEquals("PENDING",   rows[0][0])
         assertEquals("COMPLETED", rows[1][0])
         assertEquals("PENDING",   rows[2][0])
-        assertEquals("ROLLBACK",  rows[2][1], "Rollback audit event must have intent=ROLLBACK")
+        assertEquals("ROLLBACK",  rows[2][1], "Rollback PENDING audit event must have intent=ROLLBACK")
         assertEquals("COMPLETED", rows[3][0])
+        assertEquals("ROLLBACK",  rows[3][1], "Rollback COMPLETED audit event must have intent=ROLLBACK")
     }
 
     // ── outbox entry ──────────────────────────────────────────────────────────
