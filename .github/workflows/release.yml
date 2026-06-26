@@ -68,6 +68,11 @@ jobs:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
+      - name: Set release version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
       - name: Publish idem-sdk-kotlin to Maven Central
         run: ./mvnw --no-transfer-progress -P release deploy -pl sdk-kotlin -DskipTests
         env:
