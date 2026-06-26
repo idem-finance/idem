@@ -90,6 +90,30 @@
             <id>release</id>
             <build>
                 <plugins>
+                    <!--
+                      Produces a self-contained .flattened-pom.xml that resolves all parent
+                      inheritance (licenses, developers, scm) and BOM-managed dependency
+                      versions into explicit values. Maven Central requires a standalone pom —
+                      it cannot resolve the parent (finance.idem:idem) because it is not
+                      published to Central.
+                      Must run before package/sign so the flattened pom is what gets deployed.
+                    -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>flatten-maven-plugin</artifactId>
+                        <version>1.7.0</version>
+                        <configuration>
+                            <updatePomFile>true</updatePomFile>
+                            <flattenMode>ossrh</flattenMode>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>flatten</id>
+                                <phase>process-resources</phase>
+                                <goals><goal>flatten</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
