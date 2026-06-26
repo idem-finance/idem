@@ -4,6 +4,7 @@ import finance.idem.core.ChainId
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
+import finance.idem.core.compliance.TravelRuleData
 
 data class OnChainEntry(
     override val amount: MonetaryAmount,
@@ -14,6 +15,7 @@ data class OnChainEntry(
     val walletAddress: String,
     val tokenContract: String,
     val fromAddress: String? = null,
+    val travelRuleData: TravelRuleData? = null,
 ) : MonetaryEntry() {
     init {
         if (!amount.isPositive()) throw LedgerInvariantViolation(
