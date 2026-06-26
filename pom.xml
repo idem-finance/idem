@@ -227,6 +227,14 @@
                                           no application logic; never executed directly.
                                         -->
                                         <exclude>*.DefaultImpls</exclude>
+                                        <!--
+                                          Kotlin companion object holding a const val — the compiler accesses
+                                          companion val properties via a static bridge method on the outer
+                                          class, so the Companion class getter is never invoked directly.
+                                          Coverage is provided by tests that use DEFAULT_THRESHOLD;
+                                          the 0% report is a JaCoCo + Kotlin bytecode artifact.
+                                        -->
+                                        <exclude>finance.idem.core.compliance.TravelRuleData.Companion</exclude>
                                     </excludes>
                                     <limits>
                                         <limit>

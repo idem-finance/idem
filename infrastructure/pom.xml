@@ -191,6 +191,11 @@
                         <!-- SecurityContextAccessor — ThreadLocalAccessor plumbing: getValue/setValue/reset
                              delegate unconditionally to SecurityContextHolder; not the right layer to test -->
                         <exclude>finance/idem/infrastructure/security/SecurityContextAccessor*</exclude>
+                        <!-- TravelRuleDataDataModel — JPA no-arg constructor synthetic branches -->
+                        <exclude>finance/idem/infrastructure/compliance/TravelRuleDataDataModel*</exclude>
+                        <!-- TravelRuleRepositoryAdapter inner private data classes (PartyJson, NaturalPersonJson,
+                             LegalPersonJson) — Kotlin-generated copy$default synthetic branches -->
+                        <exclude>finance/idem/infrastructure/compliance/TravelRuleRepositoryAdapter$*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
