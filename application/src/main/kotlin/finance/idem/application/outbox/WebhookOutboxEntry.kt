@@ -86,5 +86,14 @@ data class WebhookOutboxEntry(
                 transactionId = TransactionId(plan.id.value),
                 occurredAt = Instant.now(),
             )
+
+        fun travelRuleRequired(tx: Transaction): WebhookOutboxEntry =
+            WebhookOutboxEntry(
+                id = UUID.randomUUID(),
+                tenantId = tx.tenantId,
+                eventType = "compliance.travel_rule_required",
+                transactionId = tx.id,
+                occurredAt = Instant.now(),
+            )
     }
 }

@@ -1,6 +1,8 @@
 package finance.idem.infrastructure.service
 
 import finance.idem.application.audit.AuditEntry
+import finance.idem.application.compliance.TravelRuleValidationResult
+import finance.idem.application.compliance.TravelRuleValidator
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.IdempotencyConflict
@@ -9,15 +11,18 @@ import finance.idem.application.ledger.PostTransactionError
 import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AuditRepository
+import finance.idem.application.port.ComplianceQueueRepository
 import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.BasicReconciliationUseCase
 import finance.idem.application.reconciliation.ReconciliationResult
 import finance.idem.core.AccountId
+import finance.idem.core.ChainId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
+import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.ledger.AccountRepository
@@ -26,12 +31,14 @@ import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.ledger.TransactionStatus
 import finance.idem.core.monetary.FiatEntry
+import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.never
@@ -53,6 +60,8 @@ class PostTransactionServiceTest {
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
     @Mock lateinit var idempotencyStore: IdempotencyStore
     @Mock lateinit var reconciliationService: BasicReconciliationUseCase
+    @Mock lateinit var travelRuleValidator: TravelRuleValidator
+    @Mock lateinit var complianceQueueRepository: ComplianceQueueRepository
 
     private lateinit var service: PostTransactionService
 
@@ -69,6 +78,8 @@ class PostTransactionServiceTest {
             webhookOutboxRepository,
             idempotencyStore,
             reconciliationService,
+            travelRuleValidator,
+            complianceQueueRepository,
         )
     }
 
@@ -374,5 +385,98 @@ class PostTransactionServiceTest {
         order.verify(transactionRepository).save(any())
         order.verify(webhookOutboxRepository).save(any())
         order.verify(reconciliationService).reconcile(any())
+    }
+
+    // ── Travel Rule compliance ────────────────────────────────────────────────
+
+    private fun onChainLine(
+        accountId: AccountId,
+        entryType: EntryType,
+        amount: String = "1500.00",
+    ) = JournalLineRequest(
+        accountId = accountId,
+        entryType = entryType,
+        monetaryEntry = OnChainEntry(
+            amount = MonetaryAmount.of(amount),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.EVM,
+            txHash = "0xabc123",
+            blockNumber = 100L,
+            walletAddress = "0xwallet",
+            tokenContract = "0xcontract",
+        ),
+    )
+
+    @Test
+    fun `FiatEntry lines skip travel rule validation entirely`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        stubAccountsExist()
+        stubSave()
+
+        service.execute(command())
+
+        verify(travelRuleValidator, never()).validate(any(), anyOrNull())
+        verify(complianceQueueRepository, never()).enqueue(any(), any())
+    }
+
+    @Test
+    fun `OnChainEntry below threshold does not write to compliance queue`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any()))
+            .thenReturn(setOf(debitAccountId, creditAccountId))
+        stubSave()
+
+        val debitLine = onChainLine(debitAccountId, EntryType.DEBIT, "500.00")
+        val creditLine = onChainLine(creditAccountId, EntryType.CREDIT, "500.00")
+        whenever(travelRuleValidator.validate(any(), anyOrNull()))
+            .thenReturn(TravelRuleValidationResult.Exempt)
+
+        val result = service.execute(command(lines = listOf(debitLine, creditLine)))
+
+        assertTrue(result.isSuccess)
+        verify(complianceQueueRepository, never()).enqueue(any(), any())
+    }
+
+    @Test
+    fun `OnChainEntry with MissingData writes to compliance queue and fires webhook`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any()))
+            .thenReturn(setOf(debitAccountId, creditAccountId))
+        stubSave()
+
+        val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
+        val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
+        val missingResult = TravelRuleValidationResult.MissingData(
+            entry = debitLine.monetaryEntry as OnChainEntry,
+            reason = "Travel rule data required for transfers >= 1000",
+        )
+        whenever(travelRuleValidator.validate(any(), anyOrNull()))
+            .thenReturn(missingResult)
+            .thenReturn(TravelRuleValidationResult.Exempt)
+
+        val result = service.execute(command(lines = listOf(debitLine, creditLine)))
+
+        assertTrue(result.isSuccess)
+        verify(complianceQueueRepository).enqueue(any(), any())
+        // Two webhooks: transaction.committed + compliance.travel_rule_required
+        verify(webhookOutboxRepository, org.mockito.kotlin.times(2)).save(any())
+    }
+
+    @Test
+    fun `OnChainEntry with Valid travelRuleData does not write to compliance queue`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any()))
+            .thenReturn(setOf(debitAccountId, creditAccountId))
+        stubSave()
+
+        val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
+        val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
+        whenever(travelRuleValidator.validate(any(), anyOrNull()))
+            .thenReturn(TravelRuleValidationResult.Exempt)
+
+        val result = service.execute(command(lines = listOf(debitLine, creditLine)))
+
+        assertTrue(result.isSuccess)
+        verify(complianceQueueRepository, never()).enqueue(any(), any())
     }
 }

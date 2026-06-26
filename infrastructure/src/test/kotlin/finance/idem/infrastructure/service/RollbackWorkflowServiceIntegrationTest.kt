@@ -17,6 +17,8 @@ import finance.idem.core.agentic.WorkflowStatus
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountType
 import finance.idem.core.monetary.FiatEntry
+import finance.idem.infrastructure.compliance.ComplianceConfig
+import finance.idem.infrastructure.compliance.ComplianceQueueRepositoryAdapter
 import finance.idem.infrastructure.persistence.AccountRepositoryAdapter
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import finance.idem.infrastructure.persistence.TransactionRepositoryAdapter
@@ -56,6 +58,8 @@ import kotlin.test.assertNull
     PostgresIdempotencyStore::class,
     SettlementRepositoryAdapter::class,
     PersistenceTestConfig::class,
+    ComplianceConfig::class,
+    ComplianceQueueRepositoryAdapter::class,
 )
 class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase() {
 
