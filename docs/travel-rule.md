@@ -4,7 +4,7 @@
 > **FATF Travel Rule pre-flight check on every `OnChainEntry` above the USD 1,000 threshold.**
 > Non-blocking by design: flagged transfers are queued for compliance review — the transaction
 > is never rejected at the ledger level. The originating Tenant (VASP, if applicable) is responsible for
-> resolving the gap before settlement is considered final.
+> resolving the gap under their own compliance program.
 
 ---
 
@@ -53,7 +53,6 @@ graph TD
         VTP["VaspTransferParty\n──────────────────────\nnaturalPerson?: NaturalPerson\nlegalPerson?: LegalPerson\naccountNumber: String\nvaspDid: String"]
         NP["NaturalPerson\n──────────────────────\nfirstName: String\nlastName: String\ndateOfBirth: LocalDate\nnationalId?: String\ncountry: String (ISO 3166-1 α2)"]
         LP["LegalPerson\n──────────────────────\nname: String\nregistrationNumber: String\ncountry: String (ISO 3166-1 α2)"]
-        REPO["TravelRuleRepository «interface»\n──────────────────────\nsave(data, tenantId)\nfindByTransferId(transferId, tenantId)"]
     end
 
     subgraph application.compliance

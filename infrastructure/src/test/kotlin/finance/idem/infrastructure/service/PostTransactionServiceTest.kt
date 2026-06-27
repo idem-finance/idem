@@ -30,6 +30,9 @@ import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.ledger.TransactionStatus
+import finance.idem.core.compliance.LegalPerson
+import finance.idem.core.compliance.TravelRuleData
+import finance.idem.core.compliance.VaspTransferParty
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.BeforeEach
@@ -501,8 +504,21 @@ class PostTransactionServiceTest {
 
         val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
         val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
+        val party = VaspTransferParty(
+            legalPerson = LegalPerson(name = "Acme Corp", registrationNumber = "123", country = "US"),
+            accountNumber = "0xabc",
+            vaspDid = "did:example:acme",
+        )
+        val validData = TravelRuleData(
+            transferId = "tx-valid-001",
+            originator = party,
+            beneficiary = party,
+            transferAmount = MonetaryAmount.of("1500.00"),
+            transferAsset = StablecoinToken.USDC,
+            threshold = TravelRuleData.defaultThresholdFor(StablecoinToken.USDC),
+        )
         whenever(travelRuleValidator.validate(any(), anyOrNull()))
-            .thenReturn(TravelRuleValidationResult.Exempt)
+            .thenReturn(TravelRuleValidationResult.Valid(validData))
 
         val result = service.execute(command(lines = listOf(debitLine, creditLine)))
 
