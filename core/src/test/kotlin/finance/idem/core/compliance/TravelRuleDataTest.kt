@@ -5,6 +5,7 @@ import finance.idem.core.StablecoinToken
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.LocalDate
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -68,6 +69,44 @@ class TravelRuleDataTest {
             threshold = MonetaryAmount.of("200"),
         )
         assertTrue(data.isAboveThreshold())
+    }
+
+    @Test
+    fun `BRZ default threshold is 5500 — not 1000 — so 1001 BRZ does not incorrectly trigger`() {
+        val data = TravelRuleData(
+            transferId = "tx-brz-001",
+            originator = party,
+            beneficiary = party,
+            transferAmount = MonetaryAmount.of("1001"),
+            transferAsset = StablecoinToken.BRZ,
+        )
+        // 1001 BRZ ~$182 USD — must NOT trigger the $1,000 equivalent threshold
+        assertFalse(data.isAboveThreshold())
+        assertEquals(MonetaryAmount.of("5500"), data.threshold)
+    }
+
+    @Test
+    fun `BRZ transfer above 5500 triggers threshold`() {
+        val data = TravelRuleData(
+            transferId = "tx-brz-002",
+            originator = party,
+            beneficiary = party,
+            transferAmount = MonetaryAmount.of("5500"),
+            transferAsset = StablecoinToken.BRZ,
+        )
+        assertTrue(data.isAboveThreshold())
+    }
+
+    @Test
+    fun `defaultThresholdFor returns 1000 for USD-pegged tokens`() {
+        assertEquals(MonetaryAmount.of("1000"), TravelRuleData.defaultThresholdFor(StablecoinToken.USDC))
+        assertEquals(MonetaryAmount.of("1000"), TravelRuleData.defaultThresholdFor(StablecoinToken.USDT))
+        assertEquals(MonetaryAmount.of("1000"), TravelRuleData.defaultThresholdFor(StablecoinToken.PYUSD))
+    }
+
+    @Test
+    fun `defaultThresholdFor returns 5500 for BRZ`() {
+        assertEquals(MonetaryAmount.of("5500"), TravelRuleData.defaultThresholdFor(StablecoinToken.BRZ))
     }
 
     @Test

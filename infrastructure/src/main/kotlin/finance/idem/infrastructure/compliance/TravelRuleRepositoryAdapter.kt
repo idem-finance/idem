@@ -31,6 +31,8 @@ class TravelRuleRepositoryAdapter(
     @Transactional
     override fun save(data: TravelRuleData, tenantId: TenantId): TravelRuleData {
         setTenantId(tenantId)
+        val existing = jpaRepository.findByTransferIdAndTenantId(data.transferId, tenantId.value)
+        if (existing != null) return existing.toDomain()
         jpaRepository.save(
             TravelRuleDataDataModel(
                 id = UUID.randomUUID(),
@@ -47,7 +49,7 @@ class TravelRuleRepositoryAdapter(
         return data
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     override fun findByTransferId(transferId: String, tenantId: TenantId): TravelRuleData? {
         setTenantId(tenantId)
         return jpaRepository.findByTransferIdAndTenantId(transferId, tenantId.value)?.toDomain()
