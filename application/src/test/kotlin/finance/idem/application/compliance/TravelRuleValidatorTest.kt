@@ -54,7 +54,7 @@ class TravelRuleValidatorTest {
         transferId: String = "tx-001",
         orig: VaspTransferParty = originator,
         bene: VaspTransferParty = beneficiary,
-        threshold: MonetaryAmount = TravelRuleData.DEFAULT_THRESHOLD,
+        threshold: MonetaryAmount = TravelRuleData.defaultThresholdFor(StablecoinToken.USDC),
     ) = TravelRuleData(
         transferId = transferId,
         originator = orig,

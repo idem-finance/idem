@@ -6,7 +6,7 @@ import finance.idem.core.monetary.OnChainEntry
 class TravelRuleValidator {
 
     fun validate(entry: OnChainEntry, travelRuleData: TravelRuleData?): TravelRuleValidationResult {
-        val threshold = travelRuleData?.threshold ?: TravelRuleData.DEFAULT_THRESHOLD
+        val threshold = travelRuleData?.threshold ?: TravelRuleData.defaultThresholdFor(entry.token)
 
         if (entry.amount < threshold) return TravelRuleValidationResult.Exempt
 
