@@ -20,21 +20,15 @@ class JournalLineRepositoryAdapter(
     private val objectMapper: ObjectMapper,
 ) : JournalLineRepository {
 
-    private fun setTenantId(tenantId: TenantId) {
-        // UUID contains only hex digits and dashes — safe to interpolate without binding
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            .executeUpdate()
-    }
-
     @Transactional(readOnly = true)
     override fun countByAccountId(accountId: AccountId, tenantId: TenantId): Long {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.countByAccountAndTenant(accountId.value, tenantId.value)
     }
 
     @Transactional(readOnly = true)
     override fun findMostRecentEntry(accountId: AccountId, tenantId: TenantId): JournalLine? {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findLatest(accountId.value, tenantId.value)?.toDomain(tenantId, objectMapper)
     }
 
@@ -48,7 +42,7 @@ class JournalLineRepositoryAdapter(
         afterId: UUID?,
         limit: Int,
     ): List<JournalLine> {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findPage(
             accountId = accountId.value,
             tenantId = tenantId.value,

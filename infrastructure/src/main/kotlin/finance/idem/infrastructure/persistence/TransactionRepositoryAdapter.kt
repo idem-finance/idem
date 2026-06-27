@@ -24,21 +24,15 @@ class TransactionRepositoryAdapter(
     private val objectMapper: ObjectMapper,
 ) : TransactionRepository {
 
-    private fun setTenantId(tenantId: TenantId) {
-        // UUID contains only hex digits and dashes — safe to interpolate without binding
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            .executeUpdate()
-    }
-
     @Transactional(readOnly = true)
     override fun findById(id: TransactionId, tenantId: TenantId): Transaction? {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByIdAndTenantId(id.value, tenantId.value)?.toDomain(objectMapper)
     }
 
     @Transactional
     override fun save(transaction: Transaction): Transaction {
-        setTenantId(transaction.tenantId)
+        entityManager.setRlsTenantId(transaction.tenantId)
         val entity = transaction.toEntity(objectMapper)
         jpaRepository.save(entity)
         return transaction
@@ -46,13 +40,13 @@ class TransactionRepositoryAdapter(
 
     @Transactional(readOnly = true)
     override fun findByIdempotencyKey(key: String, tenantId: TenantId): Transaction? {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByIdempotencyKeyAndTenantId(key, tenantId.value)?.toDomain(objectMapper)
     }
 
     @Transactional(readOnly = true)
     override fun findByAccountId(accountId: AccountId, tenantId: TenantId): List<Transaction> {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByAccountIdAndTenantId(accountId.value, tenantId.value)
             .map { it.toDomain(objectMapper) }
     }
