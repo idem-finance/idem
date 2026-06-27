@@ -10,12 +10,10 @@ import finance.idem.core.compliance.VaspTransferParty
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.hibernate.exception.ConstraintViolationException
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
@@ -100,7 +98,7 @@ class TravelRuleRepositoryAdapterTest {
         assertEquals("tx-001", found.transferId)
         assertEquals(MonetaryAmount.of("1500"), found.transferAmount)
         assertEquals(StablecoinToken.USDC, found.transferAsset)
-        assertEquals(TravelRuleData.DEFAULT_THRESHOLD, found.threshold)
+        assertEquals(TravelRuleData.defaultThresholdFor(StablecoinToken.USDC), found.threshold)
 
         // originator — naturalPerson subtree
         assertNotNull(found.originator.naturalPerson)
@@ -124,14 +122,15 @@ class TravelRuleRepositoryAdapterTest {
     }
 
     @Test
-    fun `duplicate transferId for same tenant violates unique constraint`() {
-        adapter.save(travelRuleData("tx-dup"), tenantA)
+    fun `duplicate transferId for same tenant is idempotent — returns existing record`() {
+        val first = adapter.save(travelRuleData("tx-dup"), tenantA)
         entityManager.flush()
+        entityManager.clear()
 
-        assertThrows<ConstraintViolationException> {
-            adapter.save(travelRuleData("tx-dup"), tenantA)
-            entityManager.flush()
-        }
+        val second = adapter.save(travelRuleData("tx-dup"), tenantA)
+
+        assertEquals(first.transferId, second.transferId)
+        assertEquals(first.transferAmount, second.transferAmount)
     }
 
     @Test

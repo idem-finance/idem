@@ -1,5 +1,6 @@
 package finance.idem.infrastructure.persistence
 
+import finance.idem.core.StablecoinToken
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Test
 import org.testcontainers.containers.PostgreSQLContainer
@@ -27,10 +28,10 @@ class FlywayMigrationTest {
         .load()
 
     @Test
-    fun `all 21 migrations apply cleanly`() {
+    fun `all 22 migrations apply cleanly`() {
         flyway().migrate()
         val applied = flyway().info().applied()
-        assertEquals(21, applied.size)
+        assertEquals(22, applied.size)
         assertTrue(applied.none { it.state.isFailed() }, "No migration should be in failed state")
     }
 
@@ -135,6 +136,40 @@ class FlywayMigrationTest {
             )
             rs.next()
             assertEquals(2, rs.getInt(1), "Owner role should see PENDING rows across tenants without app.tenant_id set")
+        }
+    }
+
+    @Test
+    fun `travel_rule_data transfer_asset CHECK constraint matches StablecoinToken enum`() {
+        flyway().migrate()
+
+        val enumValues = StablecoinToken.values().map { it.name }.toSet()
+
+        postgres.createConnection("").use { conn ->
+            // pg_get_constraintdef returns e.g. "CHECK ((transfer_asset = ANY (ARRAY['USDC'::text, ...])))".
+            // Extract the quoted token names from that string.
+            val rs = conn.prepareStatement(
+                """
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conrelid = 'travel_rule_data'::regclass
+                  AND contype = 'c'
+                  AND pg_get_constraintdef(oid) LIKE '%transfer_asset%'
+                """.trimIndent()
+            ).executeQuery()
+            assertTrue(rs.next(), "travel_rule_data should have a CHECK constraint on transfer_asset")
+            val constraintDef = rs.getString(1)
+
+            // Pull out every single-quoted literal from the constraint definition.
+            val constraintValues = Regex("'([^']+)'").findAll(constraintDef)
+                .map { it.groupValues[1] }
+                .toSet()
+
+            assertEquals(
+                enumValues,
+                constraintValues,
+                "transfer_asset CHECK constraint must list exactly the same values as StablecoinToken",
+            )
         }
     }
 
