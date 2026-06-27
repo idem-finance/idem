@@ -416,7 +416,7 @@ class PostTransactionServiceTest {
         service.execute(command())
 
         verify(travelRuleValidator, never()).validate(any(), anyOrNull())
-        verify(complianceQueueRepository, never()).enqueue(any(), any())
+        verify(complianceQueueRepository, never()).enqueue(any())
     }
 
     @Test
@@ -434,7 +434,7 @@ class PostTransactionServiceTest {
         val result = service.execute(command(lines = listOf(debitLine, creditLine)))
 
         assertTrue(result.isSuccess)
-        verify(complianceQueueRepository, never()).enqueue(any(), any())
+        verify(complianceQueueRepository, never()).enqueue(any())
     }
 
     @Test
@@ -457,8 +457,38 @@ class PostTransactionServiceTest {
         val result = service.execute(command(lines = listOf(debitLine, creditLine)))
 
         assertTrue(result.isSuccess)
-        verify(complianceQueueRepository).enqueue(any(), any())
+        verify(complianceQueueRepository).enqueue(any())
         // Two webhooks: transaction.committed + compliance.travel_rule_required
+        verify(webhookOutboxRepository, org.mockito.kotlin.times(2)).save(any())
+    }
+
+    @Test
+    fun `two flagged OnChainEntry lines enqueue both items but fire only one compliance webhook`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any()))
+            .thenReturn(setOf(debitAccountId, creditAccountId))
+        stubSave()
+
+        val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
+        val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
+        val missingDebit = TravelRuleValidationResult.MissingData(
+            entry = debitLine.monetaryEntry as OnChainEntry,
+            reason = "Travel rule data required for transfers >= 1000",
+        )
+        val missingCredit = TravelRuleValidationResult.MissingData(
+            entry = creditLine.monetaryEntry as OnChainEntry,
+            reason = "Travel rule data required for transfers >= 1000",
+        )
+        whenever(travelRuleValidator.validate(any(), anyOrNull()))
+            .thenReturn(missingDebit)
+            .thenReturn(missingCredit)
+
+        val result = service.execute(command(lines = listOf(debitLine, creditLine)))
+
+        assertTrue(result.isSuccess)
+        // Both flagged entries written to compliance queue
+        verify(complianceQueueRepository, org.mockito.kotlin.times(2)).enqueue(any())
+        // Exactly two outbox rows: transactionCommitted + one travelRuleRequired (not two)
         verify(webhookOutboxRepository, org.mockito.kotlin.times(2)).save(any())
     }
 
@@ -477,6 +507,6 @@ class PostTransactionServiceTest {
         val result = service.execute(command(lines = listOf(debitLine, creditLine)))
 
         assertTrue(result.isSuccess)
-        verify(complianceQueueRepository, never()).enqueue(any(), any())
+        verify(complianceQueueRepository, never()).enqueue(any())
     }
 }

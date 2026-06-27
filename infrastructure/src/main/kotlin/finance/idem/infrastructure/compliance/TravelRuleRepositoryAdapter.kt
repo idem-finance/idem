@@ -9,6 +9,7 @@ import finance.idem.core.compliance.NaturalPerson
 import finance.idem.core.compliance.TravelRuleData
 import finance.idem.core.compliance.TravelRuleRepository
 import finance.idem.core.compliance.VaspTransferParty
+import finance.idem.infrastructure.persistence.setRlsTenantId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -23,14 +24,9 @@ class TravelRuleRepositoryAdapter(
     private val objectMapper: ObjectMapper,
 ) : TravelRuleRepository {
 
-    private fun setTenantId(tenantId: TenantId) {
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            .executeUpdate()
-    }
-
     @Transactional
     override fun save(data: TravelRuleData, tenantId: TenantId): TravelRuleData {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         val existing = jpaRepository.findByTransferIdAndTenantId(data.transferId, tenantId.value)
         if (existing != null) return existing.toDomain()
         jpaRepository.save(
@@ -51,7 +47,7 @@ class TravelRuleRepositoryAdapter(
 
     @Transactional
     override fun findByTransferId(transferId: String, tenantId: TenantId): TravelRuleData? {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByTransferIdAndTenantId(transferId, tenantId.value)?.toDomain()
     }
 

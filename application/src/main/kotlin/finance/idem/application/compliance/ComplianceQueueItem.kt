@@ -12,7 +12,7 @@ data class ComplianceQueueItem(
     val txHash: String,
     val chainId: ChainId,
     val entryAmount: MonetaryAmount,
-    val reason: String,
+    val reason: ComplianceReason,
     val missingFields: List<String>,
     val enqueuedAt: Instant,
 ) {
@@ -24,7 +24,7 @@ data class ComplianceQueueItem(
                 txHash = result.entry.txHash,
                 chainId = result.entry.chainId,
                 entryAmount = result.entry.amount,
-                reason = "MISSING_DATA",
+                reason = ComplianceReason.MISSING_DATA,
                 missingFields = emptyList(),
                 enqueuedAt = Instant.now(),
             )
@@ -36,7 +36,7 @@ data class ComplianceQueueItem(
                 txHash = result.entry.txHash,
                 chainId = result.entry.chainId,
                 entryAmount = result.entry.amount,
-                reason = "INCOMPLETE_DATA",
+                reason = ComplianceReason.INCOMPLETE_DATA,
                 missingFields = result.missingFields,
                 enqueuedAt = Instant.now(),
             )

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import finance.idem.application.audit.AuditEntry
 import finance.idem.application.port.AuditRepository
 import finance.idem.core.TenantId
+import finance.idem.infrastructure.persistence.setRlsTenantId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -19,14 +20,9 @@ class AuditRepositoryAdapter(
     private val auditProperties: AuditProperties,
 ) : AuditRepository {
 
-    private fun setTenantId(tenantId: TenantId) {
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            .executeUpdate()
-    }
-
     @Transactional
     override fun save(entry: AuditEntry) {
-        setTenantId(entry.tenantId)
+        entityManager.setRlsTenantId(entry.tenantId)
         val payload = objectMapper.writeValueAsString(mapOf(
             "transactionId" to entry.transactionId.value.toString(),
             "action" to entry.action,

@@ -9,6 +9,7 @@ import finance.idem.core.agentic.WorkflowPlan
 import finance.idem.core.agentic.WorkflowPlanRepository
 import finance.idem.core.agentic.WorkflowStatus
 import finance.idem.core.agentic.WorkflowStep
+import finance.idem.infrastructure.persistence.setRlsTenantId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -21,14 +22,9 @@ class WorkflowPlanRepositoryAdapter(
     private val entityManager: EntityManager,
 ) : WorkflowPlanRepository {
 
-    private fun setTenantId(tenantId: TenantId) {
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            .executeUpdate()
-    }
-
     @Transactional
     override fun insert(plan: WorkflowPlan) {
-        setTenantId(plan.tenantId)
+        entityManager.setRlsTenantId(plan.tenantId)
         jpaRepository.save(plan.toEntity())
     }
 
@@ -41,7 +37,7 @@ class WorkflowPlanRepositoryAdapter(
         rolledBackAt: Instant?,
         rollbackReason: String?,
     ) {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         val setParts = mutableListOf("status = '${status.name}'")
         if (completedAt != null) setParts += "completed_at = '$completedAt'"
         if (rolledBackAt != null) setParts += "rolled_back_at = '$rolledBackAt'"
@@ -52,7 +48,7 @@ class WorkflowPlanRepositoryAdapter(
 
     @Transactional
     override fun updateStep(id: WorkflowPlanId, tenantId: TenantId, step: WorkflowStep) {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         val txIdSql = step.transactionId?.let { "'${it.value}'" } ?: "NULL"
         val executedAtSql = step.executedAt?.let { "'$it'" } ?: "NULL"
         val compensatingTxIdSql = step.compensatingTransactionId?.let { "'${it.value}'" } ?: "NULL"
@@ -63,7 +59,7 @@ class WorkflowPlanRepositoryAdapter(
 
     @Transactional(readOnly = true)
     override fun findById(id: WorkflowPlanId, tenantId: TenantId): WorkflowPlan? {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByIdAndTenantId(id.value, tenantId.value)?.toDomain()
     }
 }

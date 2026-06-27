@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import finance.idem.application.compliance.ComplianceQueueItem
 import finance.idem.application.port.ComplianceQueueRepository
 import finance.idem.core.TenantId
+import finance.idem.infrastructure.persistence.setRlsTenantId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -15,22 +16,17 @@ class ComplianceQueueRepositoryAdapter(
     private val objectMapper: ObjectMapper,
 ) : ComplianceQueueRepository {
 
-    private fun setTenantId(tenantId: TenantId) {
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            .executeUpdate()
-    }
-
     @Transactional
-    override fun enqueue(item: ComplianceQueueItem, tenantId: TenantId) {
-        setTenantId(tenantId)
+    override fun enqueue(item: ComplianceQueueItem) {
+        entityManager.setRlsTenantId(item.tenantId)
         jpaRepository.save(
             ComplianceQueueDataModel(
                 id = item.id,
-                tenantId = tenantId.value,
+                tenantId = item.tenantId.value,
                 txHash = item.txHash,
                 chainId = item.chainId.name,
                 entryAmount = item.entryAmount.value,
-                reason = item.reason,
+                reason = item.reason.name,
                 missingFields = objectMapper.writeValueAsString(item.missingFields),
                 status = "PENDING",
                 createdAt = item.enqueuedAt,

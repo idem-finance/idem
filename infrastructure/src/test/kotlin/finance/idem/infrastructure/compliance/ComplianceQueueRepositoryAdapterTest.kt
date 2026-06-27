@@ -88,7 +88,7 @@ class ComplianceQueueRepositoryAdapterTest {
     @Test
     fun `enqueue MISSING_DATA item persists all fields correctly`() {
         val item = missingDataItem(tenantA)
-        adapter.enqueue(item, tenantA)
+        adapter.enqueue(item)
         entityManager.flush()
         entityManager.clear()
 
@@ -104,7 +104,7 @@ class ComplianceQueueRepositoryAdapterTest {
     @Test
     fun `enqueue INCOMPLETE_DATA item persists missingFields as JSONB list`() {
         val item = incompleteDataItem(tenantA)
-        adapter.enqueue(item, tenantA)
+        adapter.enqueue(item)
         entityManager.flush()
         entityManager.clear()
 
@@ -120,7 +120,7 @@ class ComplianceQueueRepositoryAdapterTest {
     @Test
     fun `enqueue stores the correct tenant_id for data isolation`() {
         val item = missingDataItem(tenantA, txHash = "0xtenant-check")
-        adapter.enqueue(item, tenantA)
+        adapter.enqueue(item)
         entityManager.flush()
         entityManager.clear()
 

@@ -9,6 +9,7 @@ import finance.idem.core.TransactionId
 import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.ledger.Settlement
 import finance.idem.core.ledger.SettlementRepository
+import finance.idem.infrastructure.persistence.setRlsTenantId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -21,20 +22,15 @@ class SettlementRepositoryAdapter(
     private val entityManager: EntityManager,
 ) : SettlementRepository {
 
-    private fun setTenantId(tenantId: TenantId) {
-        // UUID contains only hex digits and dashes — safe to interpolate without binding
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'").executeUpdate()
-    }
-
     @Transactional
     override fun save(settlement: Settlement): Settlement {
-        setTenantId(settlement.tenantId)
+        entityManager.setRlsTenantId(settlement.tenantId)
         return jpaRepository.save(settlement.toEntity()).toDomain()
     }
 
     @Transactional(readOnly = true)
     override fun findById(id: UUID, tenantId: TenantId): Settlement? {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findById(id).orElse(null)?.toDomain()
     }
 
@@ -49,7 +45,7 @@ class SettlementRepositoryAdapter(
         walletAddress: String,
         since: Instant,
     ): List<Settlement> {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findPendingCandidates(
             tenantId.value, accountIds.map { it.value }.toSet(),
             token.name, chainId.name, walletAddress, since,
@@ -64,7 +60,7 @@ class SettlementRepositoryAdapter(
         from: Instant,
         to: Instant,
     ): List<Settlement> {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findUnmatchedInWindow(
             tenantId.value, accountId?.value, from, to,
         ).map { it.toDomain() }

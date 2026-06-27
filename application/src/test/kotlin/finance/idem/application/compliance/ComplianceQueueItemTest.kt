@@ -34,7 +34,7 @@ class ComplianceQueueItemTest {
         assertEquals("0xabc123", item.txHash)
         assertEquals(ChainId.EVM, item.chainId)
         assertEquals(MonetaryAmount.of("1500"), item.entryAmount)
-        assertEquals("MISSING_DATA", item.reason)
+        assertEquals(ComplianceReason.MISSING_DATA, item.reason)
         assertTrue(item.missingFields.isEmpty())
         assertNotNull(item.enqueuedAt)
     }
@@ -49,7 +49,7 @@ class ComplianceQueueItemTest {
         assertEquals(tenantId, item.tenantId)
         assertEquals("0xabc123", item.txHash)
         assertEquals(ChainId.EVM, item.chainId)
-        assertEquals("INCOMPLETE_DATA", item.reason)
+        assertEquals(ComplianceReason.INCOMPLETE_DATA, item.reason)
         assertEquals(fields, item.missingFields)
     }
 

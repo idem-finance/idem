@@ -5,6 +5,7 @@ import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.AgentAuditView
 import finance.idem.core.TenantId
 import finance.idem.core.agentic.AgentAuditEvent
+import finance.idem.infrastructure.persistence.setRlsTenantId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -18,14 +19,9 @@ class AgentAuditRepositoryAdapter(
     private val auditProperties: AuditProperties,
 ) : AgentAuditRepository {
 
-    private fun setTenantId(tenantId: TenantId) {
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            .executeUpdate()
-    }
-
     @Transactional
     override fun save(event: AgentAuditEvent) {
-        setTenantId(event.tenantId)
+        entityManager.setRlsTenantId(event.tenantId)
         val payload = objectMapper.writeValueAsString(mapOf(
             "tenantId" to event.tenantId.value.toString(),
             "workflowPlanId" to event.workflowPlanId.value.toString(),
@@ -61,7 +57,7 @@ class AgentAuditRepositoryAdapter(
         to: Instant?,
         limit: Int,
     ): List<AgentAuditView> {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         val effectiveLimit = limit.coerceIn(1, 200)
         // Build query dynamically to avoid PostgreSQL NULL type inference errors
         // that occur when passing typed null parameters in native SQL prepared statements.

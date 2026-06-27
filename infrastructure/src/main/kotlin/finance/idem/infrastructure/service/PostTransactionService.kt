@@ -107,21 +107,18 @@ class PostTransactionService(
         webhookOutboxRepository.save(WebhookOutboxEntry.transactionCommitted(transaction))
         reconciliationService.reconcile(transaction)
 
-        lines.forEach { line ->
-            val entry = line.monetaryEntry
-            if (entry is OnChainEntry) {
-                when (val result = travelRuleValidator.validate(entry, entry.travelRuleData)) {
-                    is TravelRuleValidationResult.MissingData -> {
-                        complianceQueueRepository.enqueue(ComplianceQueueItem.from(result, cmd.tenantId), cmd.tenantId)
-                        webhookOutboxRepository.save(WebhookOutboxEntry.travelRuleRequired(transaction))
-                    }
-                    is TravelRuleValidationResult.IncompleteData -> {
-                        complianceQueueRepository.enqueue(ComplianceQueueItem.from(result, cmd.tenantId), cmd.tenantId)
-                        webhookOutboxRepository.save(WebhookOutboxEntry.travelRuleRequired(transaction))
-                    }
-                    else -> {}
-                }
+        val flaggedItems = lines.mapNotNull { line ->
+            val entry = line.monetaryEntry as? OnChainEntry ?: return@mapNotNull null
+            when (val result = travelRuleValidator.validate(entry, entry.travelRuleData)) {
+                is TravelRuleValidationResult.MissingData    -> ComplianceQueueItem.from(result, cmd.tenantId)
+                is TravelRuleValidationResult.IncompleteData -> ComplianceQueueItem.from(result, cmd.tenantId)
+                is TravelRuleValidationResult.Exempt,
+                is TravelRuleValidationResult.Valid          -> null
             }
+        }
+        flaggedItems.forEach { complianceQueueRepository.enqueue(it) }
+        if (flaggedItems.isNotEmpty()) {
+            webhookOutboxRepository.save(WebhookOutboxEntry.travelRuleRequired(transaction))
         }
 
         return Result.success(transaction.id)

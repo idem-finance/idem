@@ -17,15 +17,9 @@ class AccountRepositoryAdapter(
     private val entityManager: EntityManager,
 ) : AccountRepository {
 
-    private fun setTenantId(tenantId: TenantId) {
-        // UUID contains only hex digits and dashes — safe to interpolate without binding
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            .executeUpdate()
-    }
-
     @Transactional(readOnly = true)
     override fun findById(id: AccountId, tenantId: TenantId): Account? {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findById(id.value).orElse(null)
             ?.takeIf { it.tenantId == tenantId.value }
             ?.toDomain()
@@ -33,27 +27,27 @@ class AccountRepositoryAdapter(
 
     @Transactional
     override fun save(account: Account): Account {
-        setTenantId(account.tenantId)
+        entityManager.setRlsTenantId(account.tenantId)
         jpaRepository.save(account.toEntity())
         return account
     }
 
     @Transactional(readOnly = true)
     override fun findAllByTenantId(tenantId: TenantId): List<Account> {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findAllByTenantId(tenantId.value).map { it.toDomain() }
     }
 
     @Transactional(readOnly = true)
     override fun existsById(id: AccountId, tenantId: TenantId): Boolean {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findById(id.value).map { it.tenantId == tenantId.value }.orElse(false)
     }
 
     @Transactional(readOnly = true)
     override fun findExistingIds(ids: Set<AccountId>, tenantId: TenantId): Set<AccountId> {
         if (ids.isEmpty()) return emptySet()
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findExistingIds(ids.map { it.value }, tenantId.value)
             .map { AccountId(it) }
             .toSet()

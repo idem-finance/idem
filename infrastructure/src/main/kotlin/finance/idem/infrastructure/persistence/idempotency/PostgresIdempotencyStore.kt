@@ -3,6 +3,7 @@ package finance.idem.infrastructure.persistence.idempotency
 import finance.idem.application.port.IdempotencyStore
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
+import finance.idem.infrastructure.persistence.setRlsTenantId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -13,14 +14,9 @@ class PostgresIdempotencyStore(
     private val entityManager: EntityManager,
 ) : IdempotencyStore {
 
-    private fun setTenantId(tenantId: TenantId) {
-        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            .executeUpdate()
-    }
-
     @Transactional(readOnly = true)
     override fun find(key: String, tenantId: TenantId): TransactionId? {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
 
         return jpaRepository.findActiveByKeyAndTenantId(key, tenantId.value)
             ?.transactionId?.let { TransactionId(it) }
@@ -28,7 +24,7 @@ class PostgresIdempotencyStore(
 
     @Transactional
     override fun tryRecord(key: String, tenantId: TenantId, transactionId: TransactionId): Boolean {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         val affected = entityManager.createNativeQuery("""
             INSERT INTO idempotency_keys (tenant_id, key, transaction_id, expires_at)
             VALUES (CAST(:tenantId AS uuid), :key, CAST(:transactionId AS uuid), now() + interval '24 hours')
@@ -43,7 +39,7 @@ class PostgresIdempotencyStore(
 
     @Transactional
     override fun release(key: String, tenantId: TenantId) {
-        setTenantId(tenantId)
+        entityManager.setRlsTenantId(tenantId)
         jpaRepository.deleteByKeyAndTenantId(key, tenantId.value)
     }
 }
