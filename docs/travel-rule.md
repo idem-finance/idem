@@ -119,7 +119,7 @@ flowchart TD
 
     CMP -->|"false\n(at or above threshold)"| NULL{travelRuleData\n== null?}
 
-    NULL -->|"null\n(no IVMS 101 payload)"| MISSING(["return MissingData(\n  entry = entry,\n  reason = "Travel rule data required\n           for transfers >= &dollar;{threshold}"\n)"])
+    NULL -->|"null\n(no IVMS 101 payload)"| MISSING(["return MissingData(\n  entry = entry,\n  reason = Travel rule data required\n           for transfers >= threshold\n)"])
 
     NULL -->|"non-null\n(payload present)"| VALID(["return Valid(\n  travelRuleData = travelRuleData\n)"])
 
