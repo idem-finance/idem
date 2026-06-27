@@ -3,17 +3,32 @@
 > Modules: `core.compliance`, `application.compliance`, `infrastructure.compliance`
 > **FATF Travel Rule pre-flight check on every `OnChainEntry` above the USD 1,000 threshold.**
 > Non-blocking by design: flagged transfers are queued for compliance review — the transaction
-> is never rejected at the ledger level. The originating VASP (Idem) is responsible for
+> is never rejected at the ledger level. The originating Tenant (VASP, if applicable) is responsible for
 > resolving the gap before settlement is considered final.
 
 ---
 
 ## Role
 
-The **FATF Travel Rule** (FATF Recommendation 16, updated 2019) requires Virtual Asset
-Service Providers (VASPs) to exchange originator and beneficiary information for any
-virtual asset transfer above a jurisdictional threshold — USD 1,000 in most markets.
-The messaging standard is **IVMS 101** (Inter-VASP Messaging Standard 101).
+The **FATF Travel Rule** (FATF Recommendation 16, updated 2019) requires Virtual
+Asset Service Providers (VASPs) to exchange originator and beneficiary information
+for any virtual asset transfer above a jurisdictional threshold — USD 1,000 in most
+markets. The messaging standard is **IVMS 101** (Inter-VASP Messaging Standard 101).
+
+**Idem is ledger infrastructure, not a VASP.** Idem never custodies assets, executes
+transfers, or provides a financial service to end customers — and therefore has no
+FATF Travel Rule obligation of its own. The obligation belongs to **the tenant**
+operating on Idem (the PSP or fintech that onboards customers and moves value on
+their behalf), if and when that tenant qualifies as a VASP under their jurisdiction's
+rules.
+
+Idem's role is to **detect** the gap and **notify** the tenant — never to resolve it
+on the tenant's behalf. Every `OnChainEntry` above threshold without an attached
+IVMS 101 payload is flagged into a `compliance_queue` row and surfaced via webhook.
+Resolving the gap — exchanging IVMS 101 data with the counterparty VASP, deciding
+whether an exemption applies, determining how it affects settlement finality under
+their own compliance program — is the tenant's responsibility, using their own
+compliance process or Idem Enterprise's Notabene integration.
 
 | Without Travel Rule enforcement | With Idem's Travel Rule check |
 |---|---|
@@ -331,7 +346,7 @@ No application code can accidentally read another tenant's compliance queue rows
 
 ```mermaid
 flowchart TD
-    subgraph "Originating VASP (Idem)"
+    subgraph "Idem (ledger infrastructure — detection only)"
         API(["POST /api/v1/transactions\n(Idempotency-Key + OnChainEntry\nwith or without TravelRuleData)"])
         SVC["PostTransactionService\n@Transactional"]
         TR["TravelRuleValidator\n(pure Kotlin)"]
