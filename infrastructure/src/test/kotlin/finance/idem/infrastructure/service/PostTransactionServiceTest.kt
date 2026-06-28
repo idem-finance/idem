@@ -13,6 +13,7 @@ import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AuditRepository
 import finance.idem.application.port.ComplianceQueueRepository
 import finance.idem.application.port.IdempotencyStore
+import finance.idem.application.port.LgpdRetentionRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.BasicReconciliationUseCase
 import finance.idem.application.reconciliation.ReconciliationResult
@@ -65,6 +66,7 @@ class PostTransactionServiceTest {
     @Mock lateinit var reconciliationService: BasicReconciliationUseCase
     @Mock lateinit var travelRuleValidator: TravelRuleValidator
     @Mock lateinit var complianceQueueRepository: ComplianceQueueRepository
+    @Mock lateinit var lgpdRetentionRepository: LgpdRetentionRepository
 
     private lateinit var service: PostTransactionService
 
@@ -83,6 +85,7 @@ class PostTransactionServiceTest {
             reconciliationService,
             travelRuleValidator,
             complianceQueueRepository,
+            lgpdRetentionRepository,
         )
     }
 
@@ -524,5 +527,85 @@ class PostTransactionServiceTest {
 
         assertTrue(result.isSuccess)
         verify(complianceQueueRepository, never()).enqueue(any())
+    }
+
+    // ── LGPD retention scheduling ─────────────────────────────────────────────
+
+    @Test
+    fun `Valid TravelRule result schedules LGPD retention for each OnChain entry`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any()))
+            .thenReturn(setOf(debitAccountId, creditAccountId))
+        stubSave()
+
+        val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
+        val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
+        val party = VaspTransferParty(
+            legalPerson = LegalPerson(name = "Acme Corp", registrationNumber = "123", country = "US"),
+            accountNumber = "0xabc",
+            vaspDid = "did:example:acme",
+        )
+        val validData = TravelRuleData(
+            transferId = "tx-lgpd-001",
+            originator = party,
+            beneficiary = party,
+            transferAmount = MonetaryAmount.of("1500.00"),
+            transferAsset = StablecoinToken.USDC,
+            threshold = TravelRuleData.defaultThresholdFor(StablecoinToken.USDC),
+        )
+        whenever(travelRuleValidator.validate(any(), anyOrNull()))
+            .thenReturn(TravelRuleValidationResult.Valid(validData))
+
+        val result = service.execute(command(lines = listOf(debitLine, creditLine)))
+
+        assertTrue(result.isSuccess)
+        // Both OnChain lines are Valid — one schedule() call per line
+        val entityTypeCaptor = argumentCaptor<String>()
+        val entityIdCaptor = argumentCaptor<String>()
+        verify(lgpdRetentionRepository, org.mockito.kotlin.times(2))
+            .schedule(any(), entityTypeCaptor.capture(), entityIdCaptor.capture(), any())
+        entityTypeCaptor.allValues.forEach { assertEquals("TravelRuleData", it) }
+        entityIdCaptor.allValues.forEach { assertEquals("tx-lgpd-001", it) }
+    }
+
+    @Test
+    fun `Exempt TravelRule result does not schedule LGPD retention`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any()))
+            .thenReturn(setOf(debitAccountId, creditAccountId))
+        stubSave()
+
+        val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
+        val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
+        whenever(travelRuleValidator.validate(any(), anyOrNull()))
+            .thenReturn(TravelRuleValidationResult.Exempt)
+
+        val result = service.execute(command(lines = listOf(debitLine, creditLine)))
+
+        assertTrue(result.isSuccess)
+        verify(lgpdRetentionRepository, never()).schedule(any(), any(), any(), any())
+    }
+
+    @Test
+    fun `MissingData TravelRule result does not schedule LGPD retention`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        whenever(accountRepository.findExistingIds(any(), any()))
+            .thenReturn(setOf(debitAccountId, creditAccountId))
+        stubSave()
+
+        val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
+        val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
+        val missingResult = TravelRuleValidationResult.MissingData(
+            entry = debitLine.monetaryEntry as OnChainEntry,
+            reason = "Travel rule data required",
+        )
+        whenever(travelRuleValidator.validate(any(), anyOrNull()))
+            .thenReturn(missingResult)
+            .thenReturn(TravelRuleValidationResult.Exempt)
+
+        val result = service.execute(command(lines = listOf(debitLine, creditLine)))
+
+        assertTrue(result.isSuccess)
+        verify(lgpdRetentionRepository, never()).schedule(any(), any(), any(), any())
     }
 }

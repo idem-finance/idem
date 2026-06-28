@@ -63,6 +63,7 @@ import kotlin.test.assertTrue
     PersistenceTestConfig::class,
     ComplianceConfig::class,
     ComplianceQueueRepositoryAdapter::class,
+    finance.idem.infrastructure.compliance.LgpdRetentionRepositoryAdapter::class,
 )
 class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase() {
 
