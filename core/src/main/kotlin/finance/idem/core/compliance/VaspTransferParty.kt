@@ -3,7 +3,7 @@ package finance.idem.core.compliance
 data class VaspTransferParty(
     val naturalPerson: NaturalPerson? = null,
     val legalPerson: LegalPerson? = null,
-    val accountNumber: String,
+    @PiiField(PiiCategory.FINANCIAL_DATA) val accountNumber: String,
     val vaspDid: String,
 ) {
     init {

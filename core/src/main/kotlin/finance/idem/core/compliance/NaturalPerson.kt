@@ -3,10 +3,10 @@ package finance.idem.core.compliance
 import java.time.LocalDate
 
 data class NaturalPerson(
-    val firstName: String,
-    val lastName: String,
-    val dateOfBirth: LocalDate,
-    val nationalId: String? = null,
+    @PiiField(PiiCategory.FULL_NAME)       val firstName: String,
+    @PiiField(PiiCategory.FULL_NAME)       val lastName: String,
+    @PiiField(PiiCategory.DATE_OF_BIRTH)   val dateOfBirth: LocalDate,
+    @PiiField(PiiCategory.DOCUMENT_NUMBER) val nationalId: String? = null,
     val country: String,
 ) {
     init {

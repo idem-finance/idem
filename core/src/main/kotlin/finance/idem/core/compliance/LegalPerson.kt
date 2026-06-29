@@ -1,8 +1,8 @@
 package finance.idem.core.compliance
 
 data class LegalPerson(
-    val name: String,
-    val registrationNumber: String,
+    @PiiField(PiiCategory.FULL_NAME)        val name: String,
+    @PiiField(PiiCategory.DOCUMENT_NUMBER)  val registrationNumber: String,
     val country: String,
 ) {
     init {

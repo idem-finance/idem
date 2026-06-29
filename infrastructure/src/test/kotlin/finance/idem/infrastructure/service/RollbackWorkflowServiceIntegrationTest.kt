@@ -60,6 +60,7 @@ import kotlin.test.assertNull
     PersistenceTestConfig::class,
     ComplianceConfig::class,
     ComplianceQueueRepositoryAdapter::class,
+    finance.idem.infrastructure.compliance.LgpdRetentionRepositoryAdapter::class,
 )
 class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase() {
 

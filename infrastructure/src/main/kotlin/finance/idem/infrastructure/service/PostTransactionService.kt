@@ -15,8 +15,10 @@ import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AuditRepository
 import finance.idem.application.port.ComplianceQueueRepository
 import finance.idem.application.port.IdempotencyStore
+import finance.idem.application.port.LgpdRetentionRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.BasicReconciliationUseCase
+import finance.idem.core.compliance.TravelRuleData
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TransactionId
 import finance.idem.core.ledger.AccountRepository
@@ -41,6 +43,7 @@ class PostTransactionService(
     private val reconciliationService: BasicReconciliationUseCase,
     private val travelRuleValidator: TravelRuleValidator,
     private val complianceQueueRepository: ComplianceQueueRepository,
+    private val lgpdRetentionRepository: LgpdRetentionRepository,
 ) : PostTransactionUseCase {
 
     override fun execute(cmd: PostTransactionCommand): Result<TransactionId> {
@@ -112,8 +115,11 @@ class PostTransactionService(
             when (val result = travelRuleValidator.validate(entry, entry.travelRuleData)) {
                 is TravelRuleValidationResult.MissingData    -> ComplianceQueueItem.from(result, cmd.tenantId)
                 is TravelRuleValidationResult.IncompleteData -> ComplianceQueueItem.from(result, cmd.tenantId)
-                is TravelRuleValidationResult.Exempt,
-                is TravelRuleValidationResult.Valid          -> null
+                is TravelRuleValidationResult.Valid          -> {
+                    lgpdRetentionRepository.schedule(cmd.tenantId, TravelRuleData::class.simpleName!!, result.travelRuleData.transferId, LGPD_RETENTION_YEARS)
+                    null
+                }
+                is TravelRuleValidationResult.Exempt         -> null
             }
         }
         flaggedItems.forEach { complianceQueueRepository.enqueue(it) }
@@ -122,5 +128,9 @@ class PostTransactionService(
         }
 
         return Result.success(transaction.id)
+    }
+
+    private companion object {
+        private const val LGPD_RETENTION_YEARS = 7
     }
 }
