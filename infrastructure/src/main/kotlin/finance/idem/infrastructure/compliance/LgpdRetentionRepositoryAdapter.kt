@@ -7,7 +7,7 @@ import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
-import java.time.temporal.ChronoUnit
+import java.time.ZoneOffset
 import java.util.UUID
 
 @Component
@@ -28,7 +28,7 @@ class LgpdRetentionRepositoryAdapter(
                 entityId = entityId,
                 retentionYears = retentionYears,
                 scheduledAt = now,
-                deletionDueAt = now.plus(retentionYears * 365L, ChronoUnit.DAYS),
+                deletionDueAt = now.atOffset(ZoneOffset.UTC).plusYears(retentionYears.toLong()).toInstant(),
             )
         )
     }

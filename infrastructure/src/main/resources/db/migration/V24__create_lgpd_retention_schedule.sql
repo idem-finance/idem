@@ -13,7 +13,7 @@ CREATE TABLE lgpd_retention_schedule (
 ALTER TABLE lgpd_retention_schedule ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON lgpd_retention_schedule
-    USING (tenant_id = current_setting('app.tenant_id')::uuid);
+    USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
 
 CREATE INDEX lgpd_retention_schedule_due_idx
     ON lgpd_retention_schedule (deletion_due_at)

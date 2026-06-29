@@ -14,6 +14,7 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -76,8 +77,8 @@ class LgpdRetentionServiceTest {
         assertEquals("transfer-abc", row.entityId)
         assertEquals(7, row.retentionYears)
         assertNull(row.processedAt)
-        // deletion_due_at should be approximately 7 years from now
-        val sevenYearsFromNow = Instant.now().plus(7 * 365L, ChronoUnit.DAYS)
+        // deletion_due_at should be approximately 7 calendar years from now
+        val sevenYearsFromNow = Instant.now().atOffset(ZoneOffset.UTC).plusYears(7).toInstant()
         assert(row.deletionDueAt.isAfter(Instant.now())) { "deletionDueAt must be in the future" }
         assert(row.deletionDueAt.isBefore(sevenYearsFromNow.plusSeconds(60))) { "deletionDueAt must be ~7 years out" }
     }
@@ -159,5 +160,25 @@ class LgpdRetentionServiceTest {
 
         val row = scheduleRepo.findAll().first()
         assertEquals(alreadyProcessedAt, row.processedAt, "processedAt must not be changed for already-processed entries")
+    }
+
+    @Test
+    fun `processExpiredData skips unknown entityType without marking it as processed`() {
+        scheduleRepo.save(
+            LgpdRetentionScheduleDataModel(
+                id = UUID.randomUUID(),
+                tenantId = TenantId.generate().value,
+                entityType = "UnknownFutureType",
+                entityId = "entity-001",
+                retentionYears = 7,
+                scheduledAt = Instant.now().minus(8 * 365L, ChronoUnit.DAYS),
+                deletionDueAt = Instant.now().minus(1, ChronoUnit.DAYS),
+            )
+        )
+
+        service.processExpiredData()
+
+        val row = scheduleRepo.findAll().first()
+        assertNull(row.processedAt, "Unknown entityType must not be marked as processed — deletion obligation must be preserved")
     }
 }

@@ -18,6 +18,7 @@ import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.LgpdRetentionRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.BasicReconciliationUseCase
+import finance.idem.core.compliance.TravelRuleData
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TransactionId
 import finance.idem.core.ledger.AccountRepository
@@ -115,7 +116,7 @@ class PostTransactionService(
                 is TravelRuleValidationResult.MissingData    -> ComplianceQueueItem.from(result, cmd.tenantId)
                 is TravelRuleValidationResult.IncompleteData -> ComplianceQueueItem.from(result, cmd.tenantId)
                 is TravelRuleValidationResult.Valid          -> {
-                    lgpdRetentionRepository.schedule(cmd.tenantId, "TravelRuleData", result.travelRuleData.transferId, 7)
+                    lgpdRetentionRepository.schedule(cmd.tenantId, TravelRuleData::class.simpleName!!, result.travelRuleData.transferId, LGPD_RETENTION_YEARS)
                     null
                 }
                 is TravelRuleValidationResult.Exempt         -> null
@@ -127,5 +128,9 @@ class PostTransactionService(
         }
 
         return Result.success(transaction.id)
+    }
+
+    private companion object {
+        private const val LGPD_RETENTION_YEARS = 7
     }
 }
