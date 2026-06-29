@@ -213,34 +213,58 @@ sequenceDiagram
 ## Monthly deletion sweep
 
 `LgpdRetentionService.processExpiredData()` runs on a cron schedule (`0 0 2 1 * *` —
-02:00 on the 1st of each month). It operates across all tenants in a single transaction
-(the DB owner role bypasses non-FORCE RLS, giving it cross-tenant visibility for system jobs).
+02:00 on the 1st of each month). It is guarded by:
+
+```
+@SchedulerLock(name = "lgpdRetentionSweep", lockAtMostFor = "30m", lockAtLeastFor = "1m")
+```
+
+This lock is backed by the `shedlock` table (V16 migration) via `SchedulerLockConfig`, which
+is active only when `IDEM_SCHEDULING_DISTRIBUTED_LOCK_ENABLED=true` (off by default for
+single-instance deployments; required in GKE). When the lock is active, at most one replica
+runs the sweep per fire — others skip silently. `lockAtLeastFor = "1m"` prevents a second
+replica from starting if the sweep finishes in under a minute; `lockAtMostFor = "30m"` releases
+the lock if the process dies mid-sweep.
+
+The sweep sets `app.tenant_id` via `entityManager.setRlsTenantId` **per entry** before
+deleting — it does not bypass RLS. Unknown `entityType` values are logged at ERROR level and
+skipped so a misconfigured row cannot halt the entire sweep.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant CRON  as Spring @Scheduled\n(cron: 02:00 on 1st of month)
-    participant SVC   as LgpdRetentionService\n(@Transactional)
+    participant SHED  as ShedLock\n(shedlock table)
+    participant SVC   as LgpdRetentionService\n(@SchedulerLock + @Transactional)
     participant SCHJ  as LgpdRetentionScheduleJpaRepository
     participant TRJR  as TravelRuleDataJpaRepository
     participant DB    as PostgreSQL
 
-    CRON->>SVC: processExpiredData()
-    SVC->>SCHJ: findByDeletionDueAtBeforeAndProcessedAtIsNull(now)
-    SCHJ->>DB: SELECT * FROM lgpd_retention_schedule\nWHERE deletion_due_at < now()\nAND processed_at IS NULL
-    DB-->>SCHJ: List<LgpdRetentionScheduleDataModel>
-    SCHJ-->>SVC: expired entries
+    CRON->>SHED: acquire lock "lgpdRetentionSweep"
+    alt lock acquired (no other replica holds it)
+        SHED-->>CRON: lock granted (held for at least 1m, at most 30m)
+        CRON->>SVC: processExpiredData()
+        SVC->>SCHJ: findByDeletionDueAtBeforeAndProcessedAtIsNull(now)
+        SCHJ->>DB: SELECT * FROM lgpd_retention_schedule\nWHERE deletion_due_at < now()\nAND processed_at IS NULL
+        DB-->>SCHJ: List<LgpdRetentionScheduleDataModel>
+        SCHJ-->>SVC: expired entries
 
-    loop for each expired entry
-        alt entityType == "TravelRuleData"
-            SVC->>TRJR: deleteByTransferIdAndTenantId(entityId, tenantId)
-            TRJR->>DB: DELETE FROM travel_rule_data\nWHERE transfer_id = ?\nAND tenant_id = ?
+        loop for each expired entry
+            alt entityType == "TravelRuleData"
+                SVC->>DB: SET LOCAL app.tenant_id = entry.tenantId
+                SVC->>TRJR: deleteByTransferIdAndTenantId(entityId, tenantId)
+                TRJR->>DB: DELETE FROM travel_rule_data\nWHERE transfer_id = ?\nAND tenant_id = ?
+                SVC->>SCHJ: save(entry.processedAt = now)
+            else unknown entityType
+                Note over SVC: log.error — skip row, continue loop
+            end
         end
-        SVC->>SCHJ: save(entry.processedAt = now)
-        SCHJ->>DB: UPDATE lgpd_retention_schedule\nSET processed_at = now()\nWHERE id = ?
-    end
 
-    Note over SVC,DB: All deletes + updates commit in one @Transactional
+        Note over SVC,DB: All deletes + updates commit in one @Transactional
+        CRON->>SHED: release lock (after lockAtLeastFor elapses)
+    else lock held by another replica
+        SHED-->>CRON: skip — another instance is running the sweep
+    end
 ```
 
 ---
@@ -297,8 +321,9 @@ CREATE INDEX lgpd_retention_schedule_due_idx
 ```
 
 **RLS**: tenant-scoped API reads (e.g., a future compliance export endpoint) are automatically
-filtered. The monthly sweep runs as the DB owner role which bypasses non-FORCE RLS — this is
-intentional, since the sweep must process all tenants in one pass.
+filtered. The monthly sweep calls `entityManager.setRlsTenantId(TenantId(entry.tenantId))` per
+entry before deleting, so every delete is also RLS-scoped to the correct tenant — the sweep
+does not bypass RLS.
 
 **`entity_type`**: currently only `'TravelRuleData'` is supported. The column is a plain `TEXT`
 string (not a CHECK-constrained enum) so new entity types (e.g., `'AuditEntry'`, `'ApiKey'`)
@@ -347,7 +372,7 @@ flowchart TD
     end
 
     subgraph "Monthly sweep (async)"
-        CRON["LgpdRetentionService\n@Scheduled — 02:00 on 1st of month"]
+        CRON["LgpdRetentionService\n@Scheduled + @SchedulerLock\n02:00 on 1st of month\n(ShedLock: at most one replica)"]
         TRDB[("travel_rule_data\n← deleted")]
         MARK[("lgpd_retention_schedule\nprocessed_at = sweep timestamp")]
     end
@@ -396,6 +421,13 @@ data processing activities.
 (e.g., manually, or by a previous failed-and-retried sweep run). The sweep then still sets
 `processed_at` on the schedule entry. Running the sweep twice causes no harm.
 
+### ShedLock prevents duplicate sweeps in multi-replica deployments
+`@SchedulerLock(name = "lgpdRetentionSweep", lockAtMostFor = "30m", lockAtLeastFor = "1m")`
+ensures that when multiple GKE replicas fire the cron simultaneously, only one executes.
+The lock is backed by the `shedlock` table using DB-time comparison (`usingDbTime()`) to
+avoid clock-skew across pods. ShedLock is inactive for single-instance deployments (the
+`IDEM_SCHEDULING_DISTRIBUTED_LOCK_ENABLED=true` env var must be set explicitly).
+
 ### `@PiiField` is runtime-readable
 `@Retention(RUNTIME)` is the only framework contract. Any code that can call
 `field.getAnnotation(PiiField::class.java)` can discover the PII inventory. No Spring
@@ -407,7 +439,6 @@ context is required to read the annotations.
 
 | Gap | Description |
 |---|---|
-| ShedLock guard on sweep | Monthly `processExpiredData()` is not guarded by `@SchedulerLock`. Add when multi-replica locking is required for the sweep (ticket separate from issue #174). |
 | Other entity types | Only `TravelRuleData` is deleted. Future: `AuditEntry` PII fields, `ApiKey` metadata, etc. |
 | Field-level encryption | `@PiiField` is a tag; it does not encrypt the annotated fields. Encryption at rest (column-level or application-level) is out of scope for #174. |
 | Consent management | LGPD articles 7–11 (legal bases, consent records, withdrawal). Out of scope — Idem processes data under legitimate interest for FATF compliance, not consent. |
@@ -440,7 +471,8 @@ rtk test mvn test -pl core,infrastructure
 - `core/compliance/VaspTransferParty.kt` — annotated `accountNumber`
 - `application/port/LgpdRetentionRepository.kt` — port interface
 - `infrastructure/compliance/LgpdRetentionRepositoryAdapter.kt` — writes schedule row with RLS
-- `infrastructure/compliance/LgpdRetentionService.kt` — monthly sweep
+- `infrastructure/compliance/LgpdRetentionService.kt` — monthly sweep (`@SchedulerLock`)
+- `infrastructure/scheduling/SchedulerLockConfig.kt` — ShedLock wiring; active when `IDEM_SCHEDULING_DISTRIBUTED_LOCK_ENABLED=true`
 - `infrastructure/compliance/LgpdRetentionScheduleDataModel.kt` — JPA entity
 - `V24__create_lgpd_retention_schedule.sql` — schema + RLS + index
 - Issue [#174](https://github.com/idem-finance/idem/issues/174) — implementation
