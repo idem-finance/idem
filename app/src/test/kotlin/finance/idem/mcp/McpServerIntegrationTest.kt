@@ -9,11 +9,13 @@ import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
+import finance.idem.infrastructure.persistence.policy.PolicyRepositoryAdapter
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.AgentAuditStatus
 import finance.idem.core.agentic.AgentContext
 import finance.idem.core.TransactionId
+import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountType
@@ -26,7 +28,6 @@ import finance.idem.infrastructure.security.ApiKeyAuthentication
 import finance.idem.infrastructure.security.ApiKeyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.ai.tool.ToolCallbackProvider
@@ -58,6 +59,7 @@ class McpServerIntegrationTest {
     @Autowired lateinit var apiKeyService: ApiKeyService
     @Autowired lateinit var accountRepository: AccountRepositoryAdapter
     @Autowired lateinit var settlementRepository: SettlementRepositoryAdapter
+    @Autowired lateinit var policyRepository: PolicyRepositoryAdapter
     @Autowired lateinit var dataSource: DataSource
 
     private val objectMapper = jacksonObjectMapper()
@@ -89,6 +91,8 @@ class McpServerIntegrationTest {
         val (readKey, _) = apiKeyService.generate(tenantId, readScopes)
 
         fixture = Fixture(tenantId, debitId, creditId, agentKey, agentScopes, readKey, readScopes)
+        // Seed a permissive rule so PolicyGuard allows debits in all happy-path tests
+        policyRepository.save(tenantId, null, PolicyRule.MaxDebitPerSession(MonetaryAmount.of("9999999")))
     }
 
     // ── 1. postTransaction valid ──────────────────────────────────────────────
@@ -118,22 +122,30 @@ class McpServerIntegrationTest {
     // ── 2. postTransaction policy violation (blocked by #200) ─────────────────
 
     @Test
-    @Disabled("Blocked by #200 — policyRules = emptyList() in IdemMcpServer.postTransaction(); un-disable once PolicyRepository is wired")
     fun `postTransaction policy violation throws PolicyViolationException`() {
-        // When #200 is done: a MaxDebitPerSession rule with limit=0 configured for the
-        // test tenant via PolicyRepository will cause any debit to be denied.
-        withAuth(fixture.agentRawKey, fixture.agentScopes) {
-            assertThrows<PolicyViolationException> {
+        // Create a fresh tenant with no policy rules → default deny-all kicks in
+        val denyTenantId = TenantId.generate()
+        val denyDebitId = AccountId.generate()
+        val denyCreditId = AccountId.generate()
+        val now = Instant.now()
+        accountRepository.save(Account.create(denyDebitId, denyTenantId, "Asset", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
+        accountRepository.save(Account.create(denyCreditId, denyTenantId, "Liability", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
+        val (denyKey, _) = apiKeyService.generate(denyTenantId, setOf(ApiScope.AGENTS_EXECUTE))
+        // No policy rules seeded for denyTenantId → MaxDebitPerSession(ZERO) default blocks all debits
+
+        withAuth(denyTenantId, denyKey, setOf(ApiScope.AGENTS_EXECUTE)) {
+            val ex = assertThrows<ToolExecutionException> {
                 callTool(
                     "postTransaction",
                     mapOf(
-                        "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
+                        "entries" to brlEntries(denyDebitId, denyCreditId),
                         "idempotencyKey" to "denied-policy-001",
                         "agentId" to "agent-it",
                         "sessionId" to "session-denied-001",
                     ),
                 )
             }
+            assertThat(ex.cause).isInstanceOf(PolicyViolationException::class.java)
         }
     }
 
@@ -466,9 +478,12 @@ class McpServerIntegrationTest {
     // Sets a real ApiKeyAuthentication on the calling thread and clears it in finally.
     // Spring AI's MethodToolCallbackProvider invokes @Tool methods synchronously on the
     // same thread, so @PreAuthorize and tenantId() both see this SecurityContext.
-    private fun withAuth(rawKey: String, scopes: Set<ApiScope>, block: () -> Unit) {
+    private fun withAuth(rawKey: String, scopes: Set<ApiScope>, block: () -> Unit) =
+        withAuth(fixture.tenantId, rawKey, scopes, block)
+
+    private fun withAuth(tenantId: TenantId, rawKey: String, scopes: Set<ApiScope>, block: () -> Unit) {
         val auth = ApiKeyAuthentication(
-            tenantId = fixture.tenantId,
+            tenantId = tenantId,
             keyPrefix = rawKey.take(12),
             authorities = scopes.map { SimpleGrantedAuthority(it.name) }.toSet(),
         )

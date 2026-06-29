@@ -2,17 +2,21 @@ package finance.idem.infrastructure.service
 
 import finance.idem.application.agentic.ExecuteWorkflowCommand
 import finance.idem.application.agentic.ExecuteWorkflowUseCase
+import finance.idem.application.agentic.SessionDebitPort
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.port.WebhookOutboxRepository
+import finance.idem.core.MonetaryAmount
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.LedgerIntent
 import finance.idem.core.agentic.LedgerIntentLine
 import finance.idem.core.agentic.PolicyEvaluationResult
 import finance.idem.core.agentic.PolicyGuard
+import finance.idem.core.agentic.PolicyRepository
+import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.agentic.WorkflowPlan
 import finance.idem.core.agentic.WorkflowPlanRepository
@@ -28,18 +32,13 @@ class ExecuteWorkflowService(
     private val agentAuditRepository: AgentAuditRepository,
     private val webhookOutboxRepository: WebhookOutboxRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
+    private val policyRepository: PolicyRepository,
+    private val sessionDebitPort: SessionDebitPort,
 ) : ExecuteWorkflowUseCase {
 
     override fun execute(cmd: ExecuteWorkflowCommand): Result<WorkflowPlanId> {
-        // SECURITY: cmd.policyRules defaults to emptyList(). PolicyGuard.evaluate() returns Approved
-        // unconditionally when the list is empty — there is no default policy fallback. Callers (MCP
-        // tools, future REST controllers) MUST populate policyRules from the tenant's configured rule
-        // set before invoking this use case.
-        //
-        // TODO: pre-compute priorSessionDebitTotal and priorHourlyDebitTotal from
-        //  historical journal data before constructing LedgerIntent so that
-        //  MaxDebitPerSession and MaxDebitPerHour rules evaluate cumulative totals,
-        //  not just this workflow's lines. Tracked in issue #200.
+        val priorSession = sessionDebitPort.sumDebitsForSession(cmd.tenantId, cmd.agentContext.sessionId)
+        val priorHour = sessionDebitPort.sumDebitsLastHour(cmd.tenantId)
         val ledgerIntent = LedgerIntent(
             lines = cmd.steps.flatMap { step ->
                 step.lines.map { line ->
@@ -49,10 +48,16 @@ class ExecuteWorkflowService(
                         monetaryEntry = line.monetaryEntry,
                     )
                 }
-            }
+            },
+            priorSessionDebitTotal = priorSession,
+            priorHourlyDebitTotal = priorHour,
         )
 
-        val policyResult = PolicyGuard.evaluate(cmd.agentContext, ledgerIntent, cmd.policyRules)
+        val rules = policyRepository.findEffective(cmd.tenantId, cmd.agentContext.apiKeyPrefix)
+        // Default deny-all: if a tenant has no configured rules every agent debit is blocked
+        // until an admin explicitly sets a permissive rule via POST /api/v1/admin/policy-rules.
+        val effectiveRules = rules.ifEmpty { listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.ZERO)) }
+        val policyResult = PolicyGuard.evaluate(cmd.agentContext, ledgerIntent, effectiveRules)
         if (policyResult is PolicyEvaluationResult.Denied) {
             throw PolicyViolationException(policyResult.violations)
         }

@@ -80,7 +80,6 @@ class IdemMcpServer(
                     lines = entries.map { it.toJournalLineRequest() },
                 ),
             ),
-            policyRules = emptyList(), // TODO(#200): load from PolicyRepository once implemented
             createdBy = agentId,
         )
         return executeWorkflowUseCase.execute(cmd).fold(

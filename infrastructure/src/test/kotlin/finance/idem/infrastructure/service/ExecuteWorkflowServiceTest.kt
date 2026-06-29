@@ -16,7 +16,9 @@ import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.AgentAuditStatus
+import finance.idem.application.agentic.SessionDebitPort
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.agentic.PolicyRepository
 import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.agentic.StepStatus
@@ -30,6 +32,8 @@ import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
@@ -42,12 +46,15 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class ExecuteWorkflowServiceTest {
 
     @Mock lateinit var workflowPlanRepository: WorkflowPlanRepository
     @Mock lateinit var agentAuditRepository: AgentAuditRepository
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
     @Mock lateinit var postTransactionUseCase: PostTransactionUseCase
+    @Mock lateinit var policyRepository: PolicyRepository
+    @Mock lateinit var sessionDebitPort: SessionDebitPort
 
     private lateinit var service: ExecuteWorkflowService
 
@@ -63,7 +70,13 @@ class ExecuteWorkflowServiceTest {
             agentAuditRepository,
             webhookOutboxRepository,
             postTransactionUseCase,
+            policyRepository,
+            sessionDebitPort,
         )
+        whenever(policyRepository.findEffective(any(), anyOrNull()))
+            .thenReturn(listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("99999"))))
+        whenever(sessionDebitPort.sumDebitsForSession(any(), any())).thenReturn(MonetaryAmount.ZERO)
+        whenever(sessionDebitPort.sumDebitsLastHour(any())).thenReturn(MonetaryAmount.ZERO)
     }
 
     private fun brlLine(accountId: AccountId, type: EntryType) = JournalLineRequest(
@@ -72,14 +85,13 @@ class ExecuteWorkflowServiceTest {
         monetaryEntry = FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
     )
 
-    private fun twoStepCommand(policyRules: List<PolicyRule> = emptyList()) = ExecuteWorkflowCommand(
+    private fun twoStepCommand() = ExecuteWorkflowCommand(
         tenantId = tenantId,
         agentContext = agentContext,
         steps = listOf(
             WorkflowStepCommand("step-0-idem", lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
             WorkflowStepCommand("step-1-idem", lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
         ),
-        policyRules = policyRules,
         createdBy = "sk_agent_test",
     )
 
@@ -114,10 +126,11 @@ class ExecuteWorkflowServiceTest {
 
     @Test
     fun `PolicyViolationException thrown when rules are Denied — no plan created`() {
-        val rules = listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.ZERO))
+        whenever(policyRepository.findEffective(any(), anyOrNull()))
+            .thenReturn(listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.ZERO)))
 
         assertThrows<PolicyViolationException> {
-            service.execute(twoStepCommand(policyRules = rules))
+            service.execute(twoStepCommand())
         }
 
         verify(workflowPlanRepository, times(0)).insert(any())

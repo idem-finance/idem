@@ -85,7 +85,6 @@ class WorkflowModelsTest {
         assertEquals(tenantId, cmd.tenantId)
         assertEquals(agentContext, cmd.agentContext)
         assertEquals(1, cmd.steps.size)
-        assertEquals(emptyList(), cmd.policyRules)
         assertEquals("sk_agent_test", cmd.createdBy)
     }
 
