@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 @RestController
 @RequestMapping("/api/v1/compliance")
@@ -30,6 +32,11 @@ class ComplianceController(
     private val exportAuditLogUseCase: ExportAuditLogUseCase,
     private val objectMapper: ObjectMapper,
 ) {
+
+    companion object {
+        private val NDJSON = MediaType("application", "x-ndjson")
+        private val FILENAME_FMT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+    }
 
     @GetMapping("/audit-export")
     @PreAuthorize("hasAuthority('COMPLIANCE_EXPORT')")
@@ -43,7 +50,7 @@ class ComplianceController(
     fun exportAudit(
         @Parameter(description = "Inclusive lower bound (ISO-8601 instant)", required = true)
         @RequestParam(required = false) from: Instant?,
-        @Parameter(description = "Inclusive upper bound (ISO-8601 instant)", required = true)
+        @Parameter(description = "Exclusive upper bound (ISO-8601 instant)", required = true)
         @RequestParam(required = false) to: Instant?,
         @Parameter(description = "Filter by entry type: HUMAN, AGENT, or ALL (default)")
         @RequestParam(defaultValue = "ALL") type: AuditEntryType,
@@ -62,11 +69,11 @@ class ComplianceController(
         }
 
         val records = exportAuditLogUseCase.export(ExportAuditLogQuery(tenantId, from, to, type))
-        val filename = "audit-${from}-${to}.ndjson"
-        val ndjson = records.joinToString("\n") { objectMapper.writeValueAsString(it) }
+        val filename = "audit-${FILENAME_FMT.format(from)}-${FILENAME_FMT.format(to)}.ndjson"
+        val ndjson = buildString { records.forEach { append(objectMapper.writeValueAsString(it)).append('\n') } }
 
         return ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType("application/x-ndjson"))
+            .contentType(NDJSON)
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
             .body(ndjson)
     }
