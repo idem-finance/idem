@@ -88,7 +88,7 @@ sealed class MonetaryEntry
   ├── FiatEntry(amount: MonetaryAmount, currency: FiatCurrency, bankReference: String?, rail: PaymentRail)
   └── OnChainEntry(amount: MonetaryAmount, token: StablecoinToken, chainId: ChainId, txHash: String,
                    blockNumber: Long, walletAddress: String, tokenContract: String,
-                   fromAddress: String? = null)
+                   fromAddress: String? = null, travelRuleData: TravelRuleData? = null)
 ```
 
 The compiler forces every `when` expression to handle both cases — no forgotten branch, no
@@ -99,6 +99,11 @@ Both flow through the same `JournalLine → Transaction` path.
 Alchemy webhook receiver (from the ERC-20 `Transfer` event's `topics[1]` / `from_address`);
 `null` for Solana, which doesn't parse the sender from raw JSON-RPC yet. `BasicReconciliationService`
 uses it as a preferred, non-exclusive match signal — see `docs/reconciliation.md`.
+
+`travelRuleData` is the optional IVMS 101 payload for FATF Travel Rule compliance. Callers
+supply it on `OnChainEntry` lines that carry counterparty identity data; `PostTransactionService`
+passes it to `TravelRuleValidator` and queues a `ComplianceQueueItem` when it is `null` or
+incomplete on a transfer above the per-asset threshold. See `docs/travel-rule.md`.
 
 **Invariants enforced in `init` (throws `LedgerInvariantViolation`):**
 - `amount > 0` — zero or negative amounts are a programming error
@@ -270,6 +275,7 @@ implicitly grant other scopes — callers must check each scope explicitly.
 | `ACCOUNTS_READ` | Read account metadata and balances |
 | `ACCOUNTS_WRITE` | Create and update accounts |
 | `AGENTS_EXECUTE` | Trigger agentic workflows |
+| `AGENTS_ROLLBACK` | Trigger compensating (rollback) workflows — privilege-separated from `AGENTS_EXECUTE` so rollback rights can be granted independently |
 | `AGENTS_AUDIT_READ` | Read agent execution audit trail |
 | `RECONCILIATION_READ` | Read reconciliation reports |
 | `RECONCILIATION_WRITE` | Write reconciliation adjustments |
@@ -358,6 +364,100 @@ interface ChainCheckpointRepository {
 
 `save()` is an upsert — calling it twice for the same `chainKey` overwrites `lastBlock` and
 refreshes `updatedAt`.
+
+---
+
+## Agentic domain — WorkflowPlan
+
+**Package:** `finance.idem.core.agentic`
+
+Tracks multi-step agentic workflows submitted via the MCP server. Each `WorkflowPlan`
+owns an ordered list of `WorkflowStep`s. The domain enforces saga semantics: a committed
+plan can be compensated (rolled back), but terminal failure and rolled-back plans are frozen.
+
+### WorkflowStatus
+
+```
+PLANNED → EXECUTING → COMMITTED → ROLLED_BACK   (saga compensation path)
+                    ↘ FAILED                    (execution error)
+```
+
+| Value | Meaning |
+|---|---|
+| `PLANNED` | Plan created; no step has started executing |
+| `EXECUTING` | At least one step is in flight |
+| `COMMITTED` | All steps executed successfully |
+| `ROLLED_BACK` | Compensating transactions applied for all executed steps |
+| `FAILED` | A step failed; plan halted without rollback |
+
+Transition rules enforced by `withStatus()`:
+- `ROLLED_BACK` and `FAILED` are terminal — no further transitions allowed
+- From `COMMITTED`, only `→ ROLLED_BACK` is permitted (saga compensation); any other target throws `LedgerInvariantViolation`
+
+### WorkflowPlan
+
+```
+WorkflowPlan(
+    id: WorkflowPlanId, tenantId: TenantId, agentContext: AgentContext,
+    status: WorkflowStatus, steps: List<WorkflowStep>,
+    createdAt: Instant, completedAt: Instant?,
+    rolledBackAt: Instant?, rollbackReason: String?
+)
+```
+
+`WorkflowPlan.create()` is the factory — it initialises `status = PLANNED` and constructs
+one `WorkflowStep` per entry in `stepDescriptions`, each starting at `StepStatus.PENDING`.
+The primary constructor is `internal`; `reconstitute()` is used by the persistence adapter.
+
+`rolledBackAt` and `rollbackReason` are `null` until `RollbackWorkflowService` completes
+the compensation loop and transitions the plan to `ROLLED_BACK`.
+
+### StepStatus
+
+| Value | Meaning |
+|---|---|
+| `PENDING` | Step not yet started |
+| `EXECUTED` | Step's transaction committed successfully |
+| `ROLLED_BACK` | Compensating transaction applied for this step |
+| `FAILED` | Step's transaction failed; plan transitions to `FAILED` |
+
+### WorkflowStep
+
+```
+WorkflowStep(
+    stepId: UUID, stepOrder: Int, description: String,
+    transactionId: TransactionId?,
+    status: StepStatus, executedAt: Instant?,
+    compensatingTransactionId: TransactionId?
+)
+```
+
+`transactionId` is populated by `withStepExecuted()` when the step's transaction commits.
+`compensatingTransactionId` is populated by `withStepRolledBack()` when a compensating
+transaction commits during rollback. Both are `null` until the respective mutation fires.
+
+Step mutations (`withStepExecuted`, `withStepFailed`, `withStepRolledBack`) are blocked
+when the plan is in a terminal status (`COMMITTED`, `ROLLED_BACK`, `FAILED`).
+
+### WorkflowPlanRepository
+
+```kotlin
+interface WorkflowPlanRepository {
+    fun insert(plan: WorkflowPlan)
+    fun updateStatus(
+        id: WorkflowPlanId, tenantId: TenantId, status: WorkflowStatus,
+        completedAt: Instant? = null,
+        rolledBackAt: Instant? = null,
+        rollbackReason: String? = null,
+    )
+    fun updateStep(id: WorkflowPlanId, tenantId: TenantId, step: WorkflowStep)
+    fun findById(id: WorkflowPlanId, tenantId: TenantId): WorkflowPlan?
+}
+```
+
+Lives in `core/agentic` (not `application/port`) — consistent with `AccountRepository` and
+`TransactionRepository`. `updateStatus` and `updateStep` issue targeted UPDATE statements
+rather than full-aggregate saves to avoid losing concurrent step mutations.
 
 ---
 
