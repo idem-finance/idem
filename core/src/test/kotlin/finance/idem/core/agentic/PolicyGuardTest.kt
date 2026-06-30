@@ -340,10 +340,12 @@ class PolicyGuardTest {
     }
 
     @Test
-    fun `AllowedTokens - fiat lines are ignored even when token set is restrictive`() {
+    fun `AllowedTokens - fiat-only intent is denied when a token allowlist is active`() {
         val rule = PolicyRule.AllowedTokens(setOf(StablecoinToken.USDC))
         val intent = LedgerIntent(lines = listOf(fiatDebitLine("500")))
-        approved(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
+        val result = denied(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
+        assertEquals(1, result.violations.size)
+        assertEquals(rule, result.violations.first().rule)
     }
 
     @Test
@@ -385,10 +387,12 @@ class PolicyGuardTest {
     }
 
     @Test
-    fun `AllowedChains - fiat lines are ignored`() {
+    fun `AllowedChains - fiat-only intent is denied when a chain allowlist is active`() {
         val rule = PolicyRule.AllowedChains(setOf(ChainId.EVM))
         val intent = LedgerIntent(lines = listOf(fiatDebitLine("500")))
-        approved(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
+        val result = denied(PolicyGuard.evaluate(ctx, intent, listOf(rule)))
+        assertEquals(1, result.violations.size)
+        assertEquals(rule, result.violations.first().rule)
     }
 
     @Test

@@ -63,7 +63,7 @@ class ExecuteWorkflowServicePolicyTest {
             sessionDebitPort,
         )
         whenever(sessionDebitPort.sumDebitsForSession(any(), any())).thenReturn(MonetaryAmount.ZERO)
-        whenever(sessionDebitPort.sumDebitsLastHour(any())).thenReturn(MonetaryAmount.ZERO)
+        whenever(sessionDebitPort.sumDebitsLastHour(any(), anyOrNull())).thenReturn(MonetaryAmount.ZERO)
     }
 
     private fun cmd() = ExecuteWorkflowCommand(

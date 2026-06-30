@@ -31,12 +31,16 @@ data class CreatePolicyRuleRequest(
             debitAccount = AccountId.of(require("debitAccountId", debitAccountId)),
             creditAccount = AccountId.of(require("creditAccountId", creditAccountId)),
         )
-        "ALLOWED_TOKENS" -> PolicyRule.AllowedTokens(
-            tokens = require("tokens", tokens).map { StablecoinToken.valueOf(it.uppercase()) }.toSet(),
-        )
-        "ALLOWED_CHAINS" -> PolicyRule.AllowedChains(
-            chains = require("chains", chains).map { ChainId.valueOf(it.uppercase()) }.toSet(),
-        )
+        "ALLOWED_TOKENS" -> {
+            val list = require("tokens", tokens)
+            require(list.isNotEmpty()) { "Field 'tokens' must not be empty for rule type '$type'" }
+            PolicyRule.AllowedTokens(tokens = list.map { StablecoinToken.valueOf(it.uppercase()) }.toSet())
+        }
+        "ALLOWED_CHAINS" -> {
+            val list = require("chains", chains)
+            require(list.isNotEmpty()) { "Field 'chains' must not be empty for rule type '$type'" }
+            PolicyRule.AllowedChains(chains = list.map { ChainId.valueOf(it.uppercase()) }.toSet())
+        }
         else -> throw IllegalArgumentException("Unknown policy rule type: $type")
     }
 
@@ -55,29 +59,8 @@ data class PolicyRuleResponse(
 fun PolicyRuleRecord.toResponse(): PolicyRuleResponse =
     PolicyRuleResponse(
         id = id.value.toString(),
-        type = rule.toTypeName(),
+        type = rule.typeName(),
         agentKeyPrefix = agentKeyPrefix,
-        params = rule.toParamMap(),
+        params = rule.params(),
         createdAt = createdAt,
     )
-
-private fun PolicyRule.toTypeName(): String = when (this) {
-    is PolicyRule.MaxDebitPerSession -> "MAX_DEBIT_PER_SESSION"
-    is PolicyRule.MaxDebitPerHour -> "MAX_DEBIT_PER_HOUR"
-    is PolicyRule.RequireHumanApprovalAbove -> "REQUIRE_HUMAN_APPROVAL_ABOVE"
-    is PolicyRule.ForbiddenAccountPair -> "FORBIDDEN_ACCOUNT_PAIR"
-    is PolicyRule.AllowedTokens -> "ALLOWED_TOKENS"
-    is PolicyRule.AllowedChains -> "ALLOWED_CHAINS"
-}
-
-private fun PolicyRule.toParamMap(): Map<String, Any> = when (this) {
-    is PolicyRule.MaxDebitPerSession -> mapOf("amount" to limit.value.toPlainString())
-    is PolicyRule.MaxDebitPerHour -> mapOf("amount" to limit.value.toPlainString())
-    is PolicyRule.RequireHumanApprovalAbove -> mapOf("amount" to threshold.value.toPlainString())
-    is PolicyRule.ForbiddenAccountPair -> mapOf(
-        "debitAccountId" to debitAccount.value.toString(),
-        "creditAccountId" to creditAccount.value.toString(),
-    )
-    is PolicyRule.AllowedTokens -> mapOf("tokens" to tokens.map { it.name })
-    is PolicyRule.AllowedChains -> mapOf("chains" to chains.map { it.name })
-}

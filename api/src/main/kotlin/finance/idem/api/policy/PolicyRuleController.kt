@@ -1,8 +1,8 @@
 package finance.idem.api.policy
 
 import finance.idem.api.ledger.ErrorResponse
+import finance.idem.application.agentic.ManagePolicyRulesUseCase
 import finance.idem.core.TenantId
-import finance.idem.core.agentic.PolicyRepository
 import finance.idem.core.agentic.PolicyRuleId
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -25,7 +25,7 @@ import java.util.UUID
 @RequestMapping("/api/v1/admin/policy-rules")
 @Tag(name = "Policy Rules", description = "Agent policy rule management — configure what agent-originated transactions are permitted")
 class PolicyRuleController(
-    private val policyRepository: PolicyRepository,
+    private val managePolicyRulesUseCase: ManagePolicyRulesUseCase,
 ) {
 
     @PostMapping
@@ -41,7 +41,7 @@ class PolicyRuleController(
         val tenantId = tenantId()
         return try {
             val rule = request.toRule()
-            val record = policyRepository.save(tenantId, request.agentKeyPrefix, rule)
+            val record = managePolicyRulesUseCase.create(tenantId, request.agentKeyPrefix, rule)
             ResponseEntity.status(HttpStatus.CREATED).body(record.toResponse())
         } catch (e: IllegalArgumentException) {
             ResponseEntity.badRequest().body(ErrorResponse("INVALID_RULE", e.message ?: ""))
@@ -56,9 +56,8 @@ class PolicyRuleController(
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "403", description = "Requires ADMIN scope"),
     )
-    fun list(): ResponseEntity<Any> {
-        return ResponseEntity.ok(policyRepository.findAll(tenantId()).map { it.toResponse() })
-    }
+    fun list(): ResponseEntity<List<PolicyRuleResponse>> =
+        ResponseEntity.ok(managePolicyRulesUseCase.findAll(tenantId()).map { it.toResponse() })
 
     @DeleteMapping("/{ruleId}")
     @PreAuthorize("hasAuthority('ADMIN')")
@@ -70,7 +69,7 @@ class PolicyRuleController(
         ApiResponse(responseCode = "403", description = "Requires ADMIN scope"),
     )
     fun delete(@PathVariable ruleId: UUID): ResponseEntity<Any> {
-        val deleted = policyRepository.delete(tenantId(), PolicyRuleId(ruleId))
+        val deleted = managePolicyRulesUseCase.delete(tenantId(), PolicyRuleId(ruleId))
         return if (deleted) {
             ResponseEntity.noContent().build()
         } else {

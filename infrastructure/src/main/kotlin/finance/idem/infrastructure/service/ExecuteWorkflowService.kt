@@ -38,7 +38,7 @@ class ExecuteWorkflowService(
 
     override fun execute(cmd: ExecuteWorkflowCommand): Result<WorkflowPlanId> {
         val priorSession = sessionDebitPort.sumDebitsForSession(cmd.tenantId, cmd.agentContext.sessionId)
-        val priorHour = sessionDebitPort.sumDebitsLastHour(cmd.tenantId)
+        val priorHour = sessionDebitPort.sumDebitsLastHour(cmd.tenantId, cmd.agentContext.apiKeyPrefix)
         val ledgerIntent = LedgerIntent(
             lines = cmd.steps.flatMap { step ->
                 step.lines.map { line ->

@@ -16,6 +16,7 @@ interface SessionDebitPort {
     /** Sum of all DEBIT amounts on journal lines belonging to the given session. */
     fun sumDebitsForSession(tenantId: TenantId, sessionId: String): MonetaryAmount
 
-    /** Sum of all DEBIT amounts on journal lines created in the last hour for this tenant. */
-    fun sumDebitsLastHour(tenantId: TenantId): MonetaryAmount
+    /** Sum of all DEBIT amounts on journal lines in the last hour for this tenant and agent key.
+     *  Pass null to aggregate across all agents (no agent filter applied). */
+    fun sumDebitsLastHour(tenantId: TenantId, agentKeyPrefix: String?): MonetaryAmount
 }

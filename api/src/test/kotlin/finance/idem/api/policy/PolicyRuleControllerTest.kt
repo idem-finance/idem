@@ -1,12 +1,12 @@
 package finance.idem.api.policy
 
 import finance.idem.api.security.TestSecurityConfig
+import finance.idem.application.agentic.ManagePolicyRulesUseCase
 import finance.idem.core.AccountId
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
-import finance.idem.core.agentic.PolicyRepository
 import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyRuleId
 import finance.idem.core.agentic.PolicyRuleRecord
@@ -36,7 +36,7 @@ class PolicyRuleControllerTest {
     lateinit var mockMvc: MockMvc
 
     @MockitoBean
-    lateinit var policyRepository: PolicyRepository
+    lateinit var managePolicyRulesUseCase: ManagePolicyRulesUseCase
 
     private val tenantId = TenantId(UUID.randomUUID())
     private val ruleId = PolicyRuleId(UUID.randomUUID())
@@ -51,7 +51,7 @@ class PolicyRuleControllerTest {
 
     @Test
     fun `POST creates rule and returns 201`() {
-        whenever(policyRepository.save(any(), anyOrNull(), any()))
+        whenever(managePolicyRulesUseCase.create(any(), anyOrNull(), any()))
             .thenReturn(record(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("500"))))
 
         mockMvc.post("/api/v1/admin/policy-rules") {
@@ -89,7 +89,7 @@ class PolicyRuleControllerTest {
 
     @Test
     fun `GET returns rule list`() {
-        whenever(policyRepository.findAll(any()))
+        whenever(managePolicyRulesUseCase.findAll(any()))
             .thenReturn(listOf(record(PolicyRule.MaxDebitPerHour(MonetaryAmount.of("1000")))))
 
         mockMvc.get("/api/v1/admin/policy-rules") {
@@ -102,7 +102,7 @@ class PolicyRuleControllerTest {
 
     @Test
     fun `DELETE existing rule returns 204`() {
-        whenever(policyRepository.delete(any(), any())).thenReturn(true)
+        whenever(managePolicyRulesUseCase.delete(any(), any())).thenReturn(true)
 
         mockMvc.delete("/api/v1/admin/policy-rules/${ruleId.value}") {
             with(authentication(adminAuth()))
@@ -113,7 +113,7 @@ class PolicyRuleControllerTest {
 
     @Test
     fun `DELETE non-existent rule returns 404`() {
-        whenever(policyRepository.delete(any(), any())).thenReturn(false)
+        whenever(managePolicyRulesUseCase.delete(any(), any())).thenReturn(false)
 
         mockMvc.delete("/api/v1/admin/policy-rules/${UUID.randomUUID()}") {
             with(authentication(adminAuth()))
@@ -124,7 +124,7 @@ class PolicyRuleControllerTest {
 
     @Test
     fun `POST MAX_DEBIT_PER_HOUR creates rule`() {
-        whenever(policyRepository.save(any(), anyOrNull(), any()))
+        whenever(managePolicyRulesUseCase.create(any(), anyOrNull(), any()))
             .thenReturn(record(PolicyRule.MaxDebitPerHour(MonetaryAmount.of("1000"))))
 
         mockMvc.post("/api/v1/admin/policy-rules") {
@@ -139,7 +139,7 @@ class PolicyRuleControllerTest {
 
     @Test
     fun `POST REQUIRE_HUMAN_APPROVAL_ABOVE creates rule`() {
-        whenever(policyRepository.save(any(), anyOrNull(), any()))
+        whenever(managePolicyRulesUseCase.create(any(), anyOrNull(), any()))
             .thenReturn(record(PolicyRule.RequireHumanApprovalAbove(MonetaryAmount.of("5000"))))
 
         mockMvc.post("/api/v1/admin/policy-rules") {
@@ -156,7 +156,7 @@ class PolicyRuleControllerTest {
     fun `POST FORBIDDEN_ACCOUNT_PAIR creates rule`() {
         val d = AccountId.generate()
         val c = AccountId.generate()
-        whenever(policyRepository.save(any(), anyOrNull(), any()))
+        whenever(managePolicyRulesUseCase.create(any(), anyOrNull(), any()))
             .thenReturn(record(PolicyRule.ForbiddenAccountPair(d, c)))
 
         mockMvc.post("/api/v1/admin/policy-rules") {
@@ -172,7 +172,7 @@ class PolicyRuleControllerTest {
 
     @Test
     fun `POST ALLOWED_TOKENS creates rule`() {
-        whenever(policyRepository.save(any(), anyOrNull(), any()))
+        whenever(managePolicyRulesUseCase.create(any(), anyOrNull(), any()))
             .thenReturn(record(PolicyRule.AllowedTokens(setOf(StablecoinToken.USDC))))
 
         mockMvc.post("/api/v1/admin/policy-rules") {
@@ -187,7 +187,7 @@ class PolicyRuleControllerTest {
 
     @Test
     fun `POST ALLOWED_CHAINS creates rule`() {
-        whenever(policyRepository.save(any(), anyOrNull(), any()))
+        whenever(managePolicyRulesUseCase.create(any(), anyOrNull(), any()))
             .thenReturn(record(PolicyRule.AllowedChains(setOf(ChainId.EVM))))
 
         mockMvc.post("/api/v1/admin/policy-rules") {
@@ -212,10 +212,32 @@ class PolicyRuleControllerTest {
     }
 
     @Test
+    fun `POST ALLOWED_TOKENS with empty array returns 400`() {
+        mockMvc.post("/api/v1/admin/policy-rules") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"type":"ALLOWED_TOKENS","tokens":[]}"""
+            with(authentication(adminAuth()))
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
+    fun `POST ALLOWED_CHAINS with empty array returns 400`() {
+        mockMvc.post("/api/v1/admin/policy-rules") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"type":"ALLOWED_CHAINS","chains":[]}"""
+            with(authentication(adminAuth()))
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
     fun `GET returns multiple rules with all types in response`() {
         val d = AccountId.generate()
         val c = AccountId.generate()
-        whenever(policyRepository.findAll(any())).thenReturn(
+        whenever(managePolicyRulesUseCase.findAll(any())).thenReturn(
             listOf(
                 record(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("100"))),
                 record(PolicyRule.ForbiddenAccountPair(d, c)),

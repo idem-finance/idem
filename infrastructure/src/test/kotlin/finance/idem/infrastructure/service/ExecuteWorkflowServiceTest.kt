@@ -76,7 +76,7 @@ class ExecuteWorkflowServiceTest {
         whenever(policyRepository.findEffective(any(), anyOrNull()))
             .thenReturn(listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("99999"))))
         whenever(sessionDebitPort.sumDebitsForSession(any(), any())).thenReturn(MonetaryAmount.ZERO)
-        whenever(sessionDebitPort.sumDebitsLastHour(any())).thenReturn(MonetaryAmount.ZERO)
+        whenever(sessionDebitPort.sumDebitsLastHour(any(), anyOrNull())).thenReturn(MonetaryAmount.ZERO)
     }
 
     private fun brlLine(accountId: AccountId, type: EntryType) = JournalLineRequest(

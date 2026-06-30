@@ -59,8 +59,8 @@ class PolicyRepositoryAdapter(
                 id = id,
                 tenantId = tenantId.value,
                 agentKeyPrefix = agentKeyPrefix,
-                ruleType = rule.toRuleType(),
-                params = objectMapper.writeValueAsString(rule.toParams()),
+                ruleType = rule.typeName(),
+                params = objectMapper.writeValueAsString(rule.params()),
                 enabled = true,
                 createdAt = now,
                 updatedAt = now,
@@ -108,23 +108,3 @@ class PolicyRepositoryAdapter(
     }
 }
 
-private fun PolicyRule.toRuleType(): String = when (this) {
-    is PolicyRule.MaxDebitPerSession -> "MAX_DEBIT_PER_SESSION"
-    is PolicyRule.MaxDebitPerHour -> "MAX_DEBIT_PER_HOUR"
-    is PolicyRule.RequireHumanApprovalAbove -> "REQUIRE_HUMAN_APPROVAL_ABOVE"
-    is PolicyRule.ForbiddenAccountPair -> "FORBIDDEN_ACCOUNT_PAIR"
-    is PolicyRule.AllowedTokens -> "ALLOWED_TOKENS"
-    is PolicyRule.AllowedChains -> "ALLOWED_CHAINS"
-}
-
-private fun PolicyRule.toParams(): Map<String, Any> = when (this) {
-    is PolicyRule.MaxDebitPerSession -> mapOf("amount" to limit.value.toPlainString())
-    is PolicyRule.MaxDebitPerHour -> mapOf("amount" to limit.value.toPlainString())
-    is PolicyRule.RequireHumanApprovalAbove -> mapOf("amount" to threshold.value.toPlainString())
-    is PolicyRule.ForbiddenAccountPair -> mapOf(
-        "debitAccountId" to debitAccount.value.toString(),
-        "creditAccountId" to creditAccount.value.toString(),
-    )
-    is PolicyRule.AllowedTokens -> mapOf("tokens" to tokens.map { it.name })
-    is PolicyRule.AllowedChains -> mapOf("chains" to chains.map { it.name })
-}
