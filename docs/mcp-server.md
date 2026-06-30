@@ -21,7 +21,7 @@ Spring Security (@PreAuthorize → AGENTS_EXECUTE scope required)
     │
 IdemMcpServer (@Tool methods)
     │
-PolicyGuard.evaluate()  ← policy rules (issue #200: from PolicyRepository)
+PolicyGuard.evaluate()  ← policy rules loaded from PolicyRepository (per-tenant + per-agent)
     │
 ExecuteWorkflowUseCase / GetBalanceUseCase / GetEntriesUseCase / DescribeAccountUseCase
     │
@@ -89,7 +89,7 @@ post_transaction(
 | `walletAddress` | ON_CHAIN only | Receiving wallet address |
 | `tokenContract` | ON_CHAIN only | ERC-20 / token contract address |
 
-**Policy guard**: `PolicyGuard.evaluate()` fires before any write. Currently called with `policyRules = emptyList()` — real per-tenant rules will be loaded from `PolicyRepository` once issue #200 is implemented.
+**Policy guard**: `PolicyGuard.evaluate()` fires before any write. Effective rules are loaded from `PolicyRepository` for the current tenant and agent key prefix. If no rules are configured, the default deny-all (`MaxDebitPerSession(ZERO)`) blocks every debit until an admin configures at least one permissive rule via `POST /api/v1/admin/policy-rules`.
 
 **Audit log**: the authenticated API key prefix (`Authentication.getName()`) is captured from `SecurityContextHolder` and stored in `AgentContext.apiKeyPrefix` for an agent-originated trace in the audit log.
 
@@ -280,7 +280,7 @@ infrastructure/src/main/kotlin/finance/idem/infrastructure/security/
 
 | Tool | Depends on | Issue |
 |---|---|---|
-| `rollback_workflow` | RollbackService | #200 area |
+| `rollback_workflow` | RollbackService | — |
 | `reconcile_batch` | ReconcileEntriesUseCase (exists) + MCP wiring | — |
 | `get_agent_audit_log` | AgentAuditEvent (issue #160) | — |
 
@@ -288,7 +288,6 @@ infrastructure/src/main/kotlin/finance/idem/infrastructure/security/
 
 ## Known limitations
 
-- **Policy rules**: `post_transaction` calls PolicyGuard with `policyRules = emptyList()` until `PolicyRepository` is implemented (issue #200). All transactions are approved by the policy layer today.
 - **Session store**: `McpSseSessionAuthStore` is in-process only. In multi-replica GKE deployments, configure sticky sessions (e.g., GCP Cloud Load Balancing session affinity) so that GET /sse and subsequent POST /mcp/messages reach the same pod.
 - **Session cleanup**: Sessions are not currently removed from the store on SSE disconnect. In long-running deployments this is a small bounded memory leak (one `Authentication` object per historical session). A future cleanup on SSE close event is straightforward.
 
@@ -301,4 +300,4 @@ infrastructure/src/main/kotlin/finance/idem/infrastructure/security/
 - `infrastructure/security/McpSseAuthBridgeFilter.kt` — SSE session auth bridge
 - `infrastructure/security/McpReactorSecurityConfig.kt` — Reactor context propagation
 - Issue [#166](https://github.com/idem-finance/idem/issues/166) — MCP tools implementation
-- Issue [#200](https://github.com/idem-finance/idem/issues/200) — PolicyRepository wiring
+- Issue [#200](https://github.com/idem-finance/idem/issues/200) — PolicyRepository + `POST/GET/DELETE /api/v1/admin/policy-rules`
