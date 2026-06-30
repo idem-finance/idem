@@ -25,6 +25,7 @@ class RegisterSettlementUseCaseTest {
         walletAddress = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS",
         expectedFromAddress = expectedFromAddress,
         createdBy = "api-user",
+        idempotencyKey = "idem-key-001",
     )
 
     @Test
@@ -38,6 +39,7 @@ class RegisterSettlementUseCaseTest {
         assertEquals("5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS", c.walletAddress)
         assertNull(c.expectedFromAddress)
         assertEquals("api-user", c.createdBy)
+        assertEquals("idem-key-001", c.idempotencyKey)
     }
 
     @Test

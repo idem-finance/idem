@@ -85,4 +85,14 @@ class SettlementModelsTest {
         assertEquals(tenantId, cmd.tenantId)
         assertEquals(cmd, cmd.copy())
     }
+
+    @Test
+    fun `SettlementIdempotencyConflict carries key and message`() {
+        val error = SettlementIdempotencyConflict("key-xyz")
+        assertEquals("key-xyz", error.key)
+        assertEquals(
+            "Idempotency conflict — a request with key 'key-xyz' is already in progress",
+            error.message,
+        )
+    }
 }

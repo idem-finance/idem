@@ -28,7 +28,4 @@ data class RegisterSettlementRequest(
 
     @Schema(description = "Optional: expected sender address for sender-confirmed matching")
     val expectedFromAddress: String? = null,
-
-    @Schema(description = "Match window in hours; if omitted the tenant default applies. Used only to compute expiresAt in the response — not persisted.")
-    val matchWindowHours: Long? = null,
 )

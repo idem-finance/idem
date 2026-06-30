@@ -10,6 +10,7 @@ import finance.idem.application.settlement.ListSettlementsUseCase
 import finance.idem.application.settlement.RegisterSettlementCommand
 import finance.idem.application.settlement.RegisterSettlementUseCase
 import finance.idem.application.settlement.SettlementAlreadyTerminal
+import finance.idem.application.settlement.SettlementIdempotencyConflict
 import finance.idem.application.settlement.SettlementNotFound
 import finance.idem.core.AccountId
 import finance.idem.core.ChainId
@@ -34,6 +35,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -58,13 +60,23 @@ class SettlementController(
     @Operation(summary = "Register a pending settlement expectation")
     @ApiResponses(
         ApiResponse(responseCode = "201", description = "Settlement registered — status PENDING, watching for on-chain transfer"),
-        ApiResponse(responseCode = "400", description = "Malformed request body or invalid token/chainId values"),
+        ApiResponse(responseCode = "400", description = "Missing/invalid Idempotency-Key, malformed request body, or invalid token/chainId values"),
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "403", description = "API key does not have the TRANSACTIONS_WRITE scope"),
+        ApiResponse(responseCode = "409", description = "Duplicate idempotency key for an in-progress registration"),
         ApiResponse(responseCode = "422", description = "Account not found for this tenant"),
     )
-    fun register(@Valid @RequestBody request: RegisterSettlementRequest): ResponseEntity<Any> {
+    fun register(
+        @Parameter(description = "Client-generated idempotency key, max 255 chars", required = true)
+        @RequestHeader("Idempotency-Key") idempotencyKey: String,
+        @Valid @RequestBody request: RegisterSettlementRequest,
+    ): ResponseEntity<Any> {
         val tenantId = tenantId() ?: return unauthorized()
+
+        if (idempotencyKey.isBlank() || idempotencyKey.length > 255) {
+            return ResponseEntity.badRequest()
+                .body(ErrorResponse("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be non-blank and at most 255 characters"))
+        }
 
         val amount = try {
             MonetaryAmount.of(request.expectedAmount)
@@ -96,20 +108,22 @@ class SettlementController(
             walletAddress = request.expectedWalletAddress,
             expectedFromAddress = request.expectedFromAddress,
             createdBy = SecurityContextHolder.getContext().authentication?.name ?: "unknown",
+            idempotencyKey = idempotencyKey,
         )
-
-        val matchWindowHours = request.matchWindowHours ?: defaultMatchWindowHours
 
         return registerSettlementUseCase.execute(cmd).fold(
             onSuccess = { settlement ->
                 ResponseEntity.status(HttpStatus.CREATED)
-                    .body(SettlementResponse.from(settlement, matchWindowHours))
+                    .body(SettlementResponse.from(settlement, defaultMatchWindowHours))
             },
             onFailure = { error ->
                 when (error) {
                     is finance.idem.application.settlement.AccountNotFoundForSettlement ->
                         ResponseEntity.unprocessableEntity()
                             .body(ErrorResponse("ACCOUNT_NOT_FOUND", error.message ?: "Account not found"))
+                    is SettlementIdempotencyConflict ->
+                        ResponseEntity.status(HttpStatus.CONFLICT)
+                            .body(ErrorResponse("IDEMPOTENCY_CONFLICT", error.message ?: ""))
                     else -> {
                         log.error("Unexpected error registering settlement", error)
                         ResponseEntity.internalServerError()
@@ -214,7 +228,9 @@ class SettlementController(
             },
             onFailure = { error ->
                 when (error) {
-                    is SettlementNotFound -> ResponseEntity.notFound().build()
+                    is SettlementNotFound ->
+                        ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body(ErrorResponse("SETTLEMENT_NOT_FOUND", error.message ?: "Settlement not found"))
                     else -> {
                         log.error("Unexpected error fetching settlement $id", error)
                         ResponseEntity.internalServerError()
@@ -246,7 +262,9 @@ class SettlementController(
             },
             onFailure = { error ->
                 when (error) {
-                    is SettlementNotFound -> ResponseEntity.notFound().build()
+                    is SettlementNotFound ->
+                        ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body(ErrorResponse("SETTLEMENT_NOT_FOUND", error.message ?: "Settlement not found"))
                     is SettlementAlreadyTerminal ->
                         ResponseEntity.status(HttpStatus.CONFLICT)
                             .body(ErrorResponse("SETTLEMENT_ALREADY_TERMINAL", error.message ?: ""))

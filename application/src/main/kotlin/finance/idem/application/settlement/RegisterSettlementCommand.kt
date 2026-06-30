@@ -15,4 +15,5 @@ data class RegisterSettlementCommand(
     val walletAddress: String,
     val expectedFromAddress: String?,
     val createdBy: String,
+    val idempotencyKey: String,
 )

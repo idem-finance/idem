@@ -11,6 +11,7 @@ import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.settlement.AccountNotFoundForSettlement
 import finance.idem.application.settlement.SettlementAlreadyTerminal
+import finance.idem.application.settlement.SettlementIdempotencyConflict
 import finance.idem.application.settlement.SettlementNotFound
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.agentic.PolicyViolationException
@@ -111,6 +112,11 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleAccountNotFoundForSettlement(ex: AccountNotFoundForSettlement): ResponseEntity<ErrorResponse> =
         ResponseEntity.unprocessableEntity()
             .body(ErrorResponse("ACCOUNT_NOT_FOUND", ex.message ?: "Account not found"))
+
+    @ExceptionHandler(SettlementIdempotencyConflict::class)
+    fun handleSettlementIdempotencyConflict(ex: SettlementIdempotencyConflict): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse("IDEMPOTENCY_CONFLICT", ex.message ?: ""))
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(ex: Exception): ResponseEntity<ErrorResponse> {

@@ -10,6 +10,7 @@ import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.settlement.AccountNotFoundForSettlement
 import finance.idem.application.settlement.SettlementAlreadyTerminal
+import finance.idem.application.settlement.SettlementIdempotencyConflict
 import finance.idem.application.settlement.SettlementNotFound
 import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.AccountId
@@ -162,6 +163,14 @@ class GlobalExceptionHandlerTest {
         }
     }
 
+    @Test
+    fun `SettlementIdempotencyConflict returns 409`() {
+        mockMvc.get("/throw?type=settlement-idempotency-conflict").andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("IDEMPOTENCY_CONFLICT") }
+        }
+    }
+
     @RestController
     class ThrowingController {
         private val accountId = AccountId(UUID.randomUUID())
@@ -185,6 +194,7 @@ class GlobalExceptionHandlerTest {
                 "settlement-not-found" -> SettlementNotFound(UUID.randomUUID())
                 "settlement-already-terminal" -> SettlementAlreadyTerminal(EntryStatus.SETTLED)
                 "account-not-found-for-settlement" -> AccountNotFoundForSettlement(finance.idem.core.AccountId(UUID.randomUUID()))
+                "settlement-idempotency-conflict" -> SettlementIdempotencyConflict("key-123")
                 else -> RuntimeException("unexpected boom")
             }
         }
