@@ -31,4 +31,17 @@ interface SettlementRepository {
         from: Instant,
         to: Instant,
     ): List<Settlement>
+
+    /** Paginated listing for a tenant, optionally filtered by status and/or time range.
+     * Keyset cursor: rows where (createdAt < afterCreatedAt) OR (createdAt == afterCreatedAt AND id < afterId).
+     * Ordered createdAt DESC, id DESC. */
+    fun findPage(
+        tenantId: TenantId,
+        status: EntryStatus?,
+        from: Instant?,
+        to: Instant?,
+        afterCreatedAt: Instant?,
+        afterId: UUID?,
+        limit: Int,
+    ): List<Settlement>
 }

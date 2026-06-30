@@ -65,6 +65,22 @@ class SettlementRepositoryAdapter(
             tenantId.value, accountId?.value, from, to,
         ).map { it.toDomain() }
     }
+
+    @Transactional(readOnly = true)
+    override fun findPage(
+        tenantId: TenantId,
+        status: EntryStatus?,
+        from: Instant?,
+        to: Instant?,
+        afterCreatedAt: Instant?,
+        afterId: UUID?,
+        limit: Int,
+    ): List<Settlement> {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository.findPage(
+            tenantId.value, status?.name, from, to, afterCreatedAt, afterId, limit,
+        ).map { it.toDomain() }
+    }
 }
 
 private fun Settlement.toEntity() = SettlementDataModel(

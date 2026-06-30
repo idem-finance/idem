@@ -444,4 +444,95 @@ class SettlementRepositoryAdapterTest {
         assertEquals(matchA, resultsA[0].id)
         assertEquals(1, resultsB.size)
     }
+
+    // ── findPage ──────────────────────────────────────────────────────────────
+
+    @Test
+    fun `findPage returns all settlements for tenant in createdAt DESC order`() {
+        val older = insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '1 hour'")
+        val newer = insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '5 seconds'")
+
+        val results = adapter.findPage(tenantA, null, null, null, null, null, 50)
+
+        assertEquals(2, results.size)
+        assertEquals(newer, results[0].id)
+        assertEquals(older, results[1].id)
+    }
+
+    @Test
+    fun `findPage filters by status`() {
+        val pending = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.PENDING)
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.SETTLED)
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED)
+
+        val results = adapter.findPage(tenantA, EntryStatus.PENDING, null, null, null, null, 50)
+
+        assertEquals(1, results.size)
+        assertEquals(pending, results[0].id)
+    }
+
+    @Test
+    fun `findPage filters by from and to range`() {
+        insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '2 hours'")
+        val inRange = insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '30 minutes'")
+
+        val from = now.minusSeconds(3600)
+        val to = now.plusSeconds(3600)
+        val results = adapter.findPage(tenantA, null, from, to, null, null, 50)
+
+        assertEquals(1, results.size)
+        assertEquals(inRange, results[0].id)
+    }
+
+    @Test
+    fun `findPage respects limit`() {
+        repeat(5) { insertSettlement(tenantId = tenantA, accountId = accountA) }
+
+        val results = adapter.findPage(tenantA, null, null, null, null, null, 3)
+
+        assertEquals(3, results.size)
+    }
+
+    @Test
+    fun `findPage keyset cursor excludes rows at or after the anchor`() {
+        val older = insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '2 hours'")
+        val middle = insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '1 hour'")
+        insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '5 seconds'")
+
+        // Fetch first page of 1 — returns the newest row
+        val firstPage = adapter.findPage(tenantA, null, null, null, null, null, 1)
+        assertEquals(1, firstPage.size)
+
+        // Fetch second page using the cursor (anchor = createdAt of newest row)
+        val anchor = firstPage[0]
+        val secondPage = adapter.findPage(tenantA, null, null, null, anchor.createdAt, anchor.id, 10)
+
+        assertEquals(2, secondPage.size)
+        assertEquals(setOf(middle, older), secondPage.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `findPage is isolated by tenant (RLS)`() {
+        val matchA = insertSettlement(tenantId = tenantA, accountId = accountA)
+        insertSettlement(tenantId = tenantB, accountId = accountB)
+
+        val resultsA = adapter.findPage(tenantA, null, null, null, null, null, 50)
+        val resultsB = adapter.findPage(tenantB, null, null, null, null, null, 50)
+
+        assertEquals(1, resultsA.size)
+        assertEquals(matchA, resultsA[0].id)
+        assertEquals(1, resultsB.size)
+    }
+
+    @Test
+    fun `findPage with no status filter returns all statuses`() {
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.PENDING)
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.SETTLED)
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED)
+        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.CANCELLED)
+
+        val results = adapter.findPage(tenantA, null, null, null, null, null, 50)
+
+        assertEquals(4, results.size)
+    }
 }
