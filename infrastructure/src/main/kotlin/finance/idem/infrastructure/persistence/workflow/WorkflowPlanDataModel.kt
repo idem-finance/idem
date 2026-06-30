@@ -25,6 +25,9 @@ class WorkflowPlanDataModel(
     @Column(name = "session_id", nullable = false)
     val sessionId: String,
 
+    @Column(name = "api_key_prefix")
+    val apiKeyPrefix: String?,
+
     val intent: String?,
 
     @Column(nullable = false)
@@ -46,6 +49,6 @@ class WorkflowPlanDataModel(
     val steps: MutableList<WorkflowStepDataModel> = mutableListOf(),
 ) {
     constructor() : this(
-        UUID.randomUUID(), UUID.randomUUID(), "", "", null, "PLANNED", Instant.now(), null, null, null,
+        UUID.randomUUID(), UUID.randomUUID(), "", "", null, null, "PLANNED", Instant.now(), null, null, null,
     )
 }

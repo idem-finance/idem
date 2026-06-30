@@ -70,8 +70,8 @@ graph LR
     PR --> H["MaxDebitPerHour\n(limit: MonetaryAmount)\n──────────────────────\npriorHourlyTotal + intentDebits\n≤ limit → Approved"]
     PR --> F["ForbiddenAccountPair\n(debitAccount, creditAccount)\n──────────────────────\nNOT (DEBIT on debitAccount\nAND CREDIT on creditAccount)"]
     PR --> A["RequireHumanApprovalAbove\n(threshold: MonetaryAmount)\n──────────────────────\nper-line: DEBIT amount\n≤ threshold → Approved"]
-    PR --> T["AllowedTokens\n(tokens: Set‹StablecoinToken›)\n──────────────────────\nOnChainEntry.token\n∈ tokens → Approved\n(FiatEntry: ignored)"]
-    PR --> C["AllowedChains\n(chains: Set‹ChainId›)\n──────────────────────\nOnChainEntry.chainId\n∈ chains → Approved\n(FiatEntry: ignored)"]
+    PR --> T["AllowedTokens\n(tokens: Set‹StablecoinToken›)\n──────────────────────\nNo on-chain entries → Violation\nOnChainEntry.token\n∉ tokens → Violation"]
+    PR --> C["AllowedChains\n(chains: Set‹ChainId›)\n──────────────────────\nNo on-chain entries → Violation\nOnChainEntry.chainId\n∉ chains → Violation"]
 ```
 
 | Rule | What it checks | Fiat lines |
@@ -80,8 +80,8 @@ graph LR
 | `MaxDebitPerHour` | Running debit total in the last hour (prior + intent) vs limit | Included |
 | `ForbiddenAccountPair` | Both the debit account AND credit account appear in the intent lines | Included |
 | `RequireHumanApprovalAbove` | Any single DEBIT line's amount exceeds the threshold | Included |
-| `AllowedTokens` | Any `OnChainEntry` uses a token not in the allowed set | **Skipped** |
-| `AllowedChains` | Any `OnChainEntry` uses a chain not in the allowed set | **Skipped** |
+| `AllowedTokens` | Any `OnChainEntry` uses a token not in the allowed set; fiat-only intent with this rule active | **Violation** |
+| `AllowedChains` | Any `OnChainEntry` uses a chain not in the allowed set; fiat-only intent with this rule active | **Violation** |
 
 ---
 
@@ -112,15 +112,19 @@ flowchart TD
     G2 -->|Yes| V1
     G2 -->|No| C
 
-    C -->|AllowedTokens| H["for each OnChainEntry line\nFiatEntry → skip"]
-    H --> H2{token ∈\nallowed set?}
-    H2 -->|No| V1
-    H2 -->|Yes| C
+    C -->|AllowedTokens| H{Any on-chain\nentries?}
+    H -->|No| V1
+    H -->|Yes| H2["for each OnChainEntry line"]
+    H2 --> H3{token ∈\nallowed set?}
+    H3 -->|No| V1
+    H3 -->|Yes| C
 
-    C -->|AllowedChains| I["for each OnChainEntry line\nFiatEntry → skip"]
-    I --> I2{chainId ∈\nallowed set?}
-    I2 -->|No| V1
-    I2 -->|Yes| C
+    C -->|AllowedChains| I{Any on-chain\nentries?}
+    I -->|No| V1
+    I -->|Yes| I2["for each OnChainEntry line"]
+    I2 --> I3{chainId ∈\nallowed set?}
+    I3 -->|No| V1
+    I3 -->|Yes| C
 
     V1 --> C
     C -->|All rules evaluated| J{violations\nempty?}
@@ -140,22 +144,22 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UC as UseCase\n(application layer)
-    participant PR as PolicyRepository\n(future — infra layer)
-    participant JR as JournalLineRepository\n(infra layer)
+    participant UC as ExecuteWorkflowService\n(infrastructure layer)
+    participant PR as PolicyRepository\n(infra adapter)
+    participant SD as SessionDebitPort\n(infra adapter)
     participant PG as PolicyGuard\n(core — stateless object)
     participant TX as TransactionEngine\n(core)
 
-    UC->>PR: findRules(tenantId, agentId)
-    PR-->>UC: List<PolicyRule>\n(MaxDebitPerSession(5000), AllowedChains({EVM}), ...)
+    UC->>PR: findEffective(tenantId, agentKeyPrefix)
+    PR-->>UC: List<PolicyRule>\n(tenant-wide + agent-specific rules)
 
-    UC->>JR: sumDebitsSince(sessionId, sessionStart)
-    JR-->>UC: priorSessionDebitTotal
+    UC->>SD: sumDebitsForSession(tenantId, sessionId)
+    SD-->>UC: priorSessionDebitTotal
 
-    UC->>JR: sumDebitsSince(agentId, now - 1h)
-    JR-->>UC: priorHourlyDebitTotal
+    UC->>SD: sumDebitsLastHour(tenantId, agentKeyPrefix)
+    SD-->>UC: priorHourlyDebitTotal
 
-    UC->>UC: intent = LedgerIntent(\n  lines = cmd.lines.map { LedgerIntentLine(...) },\n  priorSessionDebitTotal,\n  priorHourlyDebitTotal\n)
+    UC->>UC: intent = LedgerIntent(\n  lines = cmd.steps.flatMap { LedgerIntentLine(...) },\n  priorSessionDebitTotal,\n  priorHourlyDebitTotal\n)
 
     UC->>PG: evaluate(agentContext, intent, rules)
     PG-->>UC: PolicyEvaluationResult
@@ -168,10 +172,9 @@ sequenceDiagram
     end
 ```
 
-> `PolicyRepository` (step 1) does not exist yet — see
-> [Where limits come from](#where-limits-come-from) below. In the current implementation
-> the caller constructs the rule list inline (e.g., from application config). The
-> `PolicyGuard` contract is stable regardless of how that list is built.
+> `sumDebitsLastHour` is scoped to the calling agent key (`agentKeyPrefix`) when set,
+> so Agent A's debits do not count against Agent B's `MaxDebitPerHour` limit.
+> `sumDebitsForSession` is always scoped to the current `sessionId` regardless of agent key.
 
 ---
 
@@ -194,7 +197,7 @@ data class LedgerIntent(
 flowchart LR
     subgraph "Caller (UseCase) — before evaluate()"
         A["Query journal history\nfor this sessionId"] --> B["Sum DEBIT amounts\n→ priorSessionDebitTotal"]
-        C["Query journal history\nfor agentId, last 1h"] --> D["Sum DEBIT amounts\n→ priorHourlyDebitTotal"]
+        C["Query journal_lines joined to\nworkflow_plans WHERE api_key_prefix = agentKeyPrefix\nlast 1h"] --> D["Sum DEBIT amounts\n→ priorHourlyDebitTotal"]
         E["Map PostTransactionCommand.lines\nto LedgerIntentLine list"] --> F["LedgerIntent(\n  lines,\n  priorSessionDebitTotal,\n  priorHourlyDebitTotal\n)"]
         B --> F
         D --> F
@@ -242,11 +245,21 @@ of all debits. A transaction with two DEBIT lines of $600 each (total $1,200) is
 flagged at a threshold of $1,000 — *each line individually* exceeds the threshold.
 CREDIT lines are ignored regardless of their amount.
 
-### `AllowedTokens` / `AllowedChains` — on-chain only
+### `AllowedTokens` / `AllowedChains` — require at least one on-chain entry
 
-`FiatEntry` lines are silently skipped by both rules. A rule of
-`AllowedTokens({USDC})` applied to an intent that contains only ACH fiat lines
-returns `Approved` — there are no on-chain entries to evaluate.
+When either rule is active, a fiat-only intent (no `OnChainEntry` lines at all) is a
+**violation**. The rule expresses "this agent is restricted to specific tokens / chains",
+and an intent with zero on-chain entries cannot satisfy that restriction.
+
+Once the rule confirms at least one on-chain entry exists, each `OnChainEntry` is checked
+against the allowed set. `FiatEntry` lines alongside on-chain entries are ignored — only the
+on-chain portion is evaluated.
+
+```
+AllowedTokens({USDC}) + intent with only PIX fiat lines → Violation
+AllowedTokens({USDC}) + intent with USDC on-chain + PIX fiat lines → Approved
+AllowedTokens({USDC}) + intent with USDT on-chain line → Violation (wrong token)
+```
 
 ---
 
@@ -279,29 +292,67 @@ PolicyRule.MaxDebitPerSession(limit = MonetaryAmount.of("5000.00"))
 PolicyRule.AllowedChains(chains = setOf(ChainId.EVM, ChainId.SOLANA))
 ```
 
-**Today**: the calling use case constructs the rule list, with limits read from
-`application.yml` or hardcoded for development. There is no per-tenant or per-agent
-rule storage.
+Rules are persisted in the `policy_rules` table (Flyway V25) and managed via
+`POST/GET/DELETE /api/v1/admin/policy-rules` (requires `ADMIN` scope).
+`PolicyRepository` (core port) is implemented by `PolicyRepositoryAdapter` in infrastructure.
 
-**Natural next step** — a `PolicyRepository` interface in the application layer, backed
-by a DB table (`agent_policies`) in infrastructure:
-
-```kotlin
-// application layer (future)
-interface PolicyRepository {
-    fun findRules(tenantId: TenantId, agentId: String): List<PolicyRule>
-}
-```
+### policy_rules table
 
 ```
-agent_policies table (future)
-──────────────────────────────────────────────────────
-id          UUID       PK
-tenant_id   UUID       FK tenants.id
-agent_id    TEXT       nullable — null = applies to all agents for this tenant
-rule_type   TEXT       'MAX_DEBIT_PER_SESSION' | 'ALLOWED_CHAINS' | ...
-config      JSONB      {"limit": "5000.00"} | {"chains": ["EVM","SOLANA"]} | ...
-created_at  TIMESTAMPTZ
+policy_rules
+──────────────────────────────────────────────────────────
+id               UUID          PK
+tenant_id        UUID          FK tenants.id — RLS enforced
+agent_key_prefix VARCHAR(12)   nullable — null = applies to all agents for this tenant
+rule_type        TEXT          'MAX_DEBIT_PER_SESSION' | 'MAX_DEBIT_PER_HOUR' | ...
+params           JSONB         {"amount": "5000.00"} | {"chains": ["EVM","SOLANA"]} | ...
+enabled          BOOLEAN       default true
+created_at       TIMESTAMPTZ
+updated_at       TIMESTAMPTZ
+```
+
+### Rule scoping: tenant-wide vs per-agent
+
+Rules with `agent_key_prefix = null` apply to every agent key for that tenant.
+Rules with a specific prefix apply only to the agent key that matches — they are
+combined (not replaced) with any tenant-wide rules:
+
+```
+effective rules = tenant-wide rules (prefix IS NULL)
+               + agent-specific rules (prefix = current agent key prefix)
+```
+
+`ExecuteWorkflowService` loads effective rules via
+`PolicyRepository.findEffective(tenantId, agentContext.apiKeyPrefix)` before calling
+`PolicyGuard.evaluate`.
+
+### Default deny
+
+When a tenant has no configured rules at all, `ExecuteWorkflowService` defaults to
+`MaxDebitPerSession(ZERO)`, which blocks every agent debit. An admin must
+explicitly configure at least one permissive rule before agents can post transactions.
+
+### Managing rules via the API
+
+```bash
+# Create a session debit limit for all agents under this tenant
+curl -X POST http://localhost:8081/api/v1/admin/policy-rules \
+  -H "X-API-Key: $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"MAX_DEBIT_PER_SESSION","amount":"10000.00"}'
+
+# Restrict a specific agent key to EVM only
+curl -X POST http://localhost:8081/api/v1/admin/policy-rules \
+  -H "X-API-Key: $ADMIN_KEY" \
+  -d '{"type":"ALLOWED_CHAINS","agentKeyPrefix":"sk_agent_abc1","chains":["EVM"]}'
+
+# List all rules for this tenant
+curl http://localhost:8081/api/v1/admin/policy-rules \
+  -H "X-API-Key: $ADMIN_KEY"
+
+# Delete a rule
+curl -X DELETE http://localhost:8081/api/v1/admin/policy-rules/{ruleId} \
+  -H "X-API-Key: $ADMIN_KEY"
 ```
 
 `PolicyGuard` itself requires no changes — it accepts whatever `List<PolicyRule>` the
@@ -383,10 +434,14 @@ All three are reported in a single `evaluate` call.
 
 | Test class | Type |
 |---|---|
-| `PolicyGuardTest` | Unit — all 6 rule variants (boundary values at/over limit, both pass and fail), multi-rule collection (fail-fast absence), per-entry `RequireHumanApprovalAbove`, `ForbiddenAccountPair` partial-side approved, `AllowedTokens`/`AllowedChains` fiat-ignored, empty rules → Approved |
+| `PolicyGuardTest` | Unit — all 6 rule variants (boundary values at/over limit, both pass and fail), multi-rule collection (fail-fast absence), per-entry `RequireHumanApprovalAbove`, `ForbiddenAccountPair` partial-side approved, `AllowedTokens`/`AllowedChains` fiat-only → Denied, mixed fiat+on-chain → Approved, empty rules → Approved |
+| `PolicyRepositoryTypesTest` | Unit — `PolicyRuleId` generation and wrapping, `PolicyRuleRecord` field contract, `typeName()` for all 6 variants, `params()` serialization shape for all 6 variants |
+| `PolicyRepositoryAdapterTest` | Integration (Testcontainers) — save and reload all 6 rule types, `findEffective` tenant/agent scoping, delete |
+| `ExecuteWorkflowServicePolicyTest` | Unit — default deny-all, permissive rule allows, prior session debit accumulated, `findEffective` called with correct tenant + agent key prefix |
 | `PolicyEvaluationResultTest` | Unit — `Approved` singleton identity, `Denied` non-empty invariant, exhaustive `when` without `else` |
 | `LedgerIntentTest` | Unit — default ZERO totals, explicit prior totals, empty lines valid |
 | `PolicyViolationExceptionTest` | Unit — `RuntimeException`, message joining, violations accessible |
+| `PolicyRuleControllerTest` | WebMvcTest — POST/GET/DELETE happy paths, missing field → 400, empty token/chain list → 400, unknown type → 400, non-ADMIN key → 403 |
 
 ```bash
 rtk test mvn test -pl core
@@ -398,8 +453,16 @@ rtk test mvn test -pl core
 
 - `docs/domain-model.md` — `AgentContext`, `MonetaryEntry`, `Transaction`
 - `core/agentic/PolicyGuard.kt` — evaluator implementation
-- `core/agentic/PolicyRule.kt` — all rule variants
+- `core/agentic/PolicyRule.kt` — all rule variants (including `typeName()` / `params()` for serialization)
+- `core/agentic/PolicyRepository.kt` — core port interface
 - `core/agentic/LedgerIntent.kt` — intent structure
 - `core/agentic/PolicyEvaluationResult.kt` — result sealed class
-- Issue [#159](https://github.com/idem-finance/idem/issues/159) — implementation
+- `application/agentic/ManagePolicyRulesUseCase.kt` — CRUD use-case interface
+- `application/agentic/SessionDebitPort.kt` — prior-debit query port (agent-scoped)
+- `infrastructure/persistence/policy/PolicyRepositoryAdapter.kt` — DB adapter (JSONB, all 6 types)
+- `infrastructure/persistence/policy/SessionDebitAdapter.kt` — native SQL, joins workflow_plans for agent scoping
+- `infrastructure/service/ManagePolicyRulesService.kt` — use-case implementation
+- `api/policy/PolicyRuleController.kt` — REST endpoints (`POST/GET/DELETE /api/v1/admin/policy-rules`)
+- Issue [#159](https://github.com/idem-finance/idem/issues/159) — PolicyGuard implementation
+- Issue [#200](https://github.com/idem-finance/idem/issues/200) — PolicyRepository + REST endpoints
 - Issue [#160](https://github.com/idem-finance/idem/issues/160) — AgentAuditEvent (next step: audit before execution)

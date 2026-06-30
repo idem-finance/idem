@@ -75,6 +75,7 @@ private fun WorkflowPlanDataModel.toDomain(): WorkflowPlan =
             sessionId = sessionId,
             workflowPlanId = WorkflowPlanId(id),
             intent = intent,
+            apiKeyPrefix = apiKeyPrefix,
         ),
         status = WorkflowStatus.valueOf(status),
         steps = steps
@@ -105,6 +106,7 @@ private fun WorkflowPlan.toEntity(): WorkflowPlanDataModel {
         tenantId = tenantId.value,
         agentId = agentContext.agentId,
         sessionId = agentContext.sessionId,
+        apiKeyPrefix = agentContext.apiKeyPrefix,
         intent = agentContext.intent,
         status = status.name,
         createdAt = createdAt,

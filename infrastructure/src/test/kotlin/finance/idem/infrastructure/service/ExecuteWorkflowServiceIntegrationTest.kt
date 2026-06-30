@@ -14,6 +14,10 @@ import finance.idem.core.agentic.AgentContext
 import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.agentic.WorkflowStatus
+import finance.idem.infrastructure.persistence.policy.PolicyRepositoryAdapter
+import finance.idem.infrastructure.persistence.policy.PolicyRuleDataModel
+import finance.idem.infrastructure.persistence.policy.PolicyRuleJpaRepository
+import finance.idem.infrastructure.persistence.policy.SessionDebitAdapter
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountType
 import finance.idem.core.monetary.FiatEntry
@@ -64,6 +68,8 @@ import kotlin.test.assertTrue
     ComplianceConfig::class,
     ComplianceQueueRepositoryAdapter::class,
     finance.idem.infrastructure.compliance.LgpdRetentionRepositoryAdapter::class,
+    PolicyRepositoryAdapter::class,
+    SessionDebitAdapter::class,
 )
 class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase() {
 
@@ -72,6 +78,7 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
     @Autowired lateinit var workflowPlanAdapter: WorkflowPlanRepositoryAdapter
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
     @Autowired lateinit var txManager: PlatformTransactionManager
+    @Autowired lateinit var policyRepository: PolicyRepositoryAdapter
 
     private val tenantId = TenantId.generate()
     private val agentCtx = AgentContext(agentId = "agent-it", sessionId = "sess-it", intent = "test")
@@ -86,6 +93,8 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
         creditId = AccountId.generate()
         accountAdapter.save(Account.create(debitId, tenantId, "Debit-Account", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
         accountAdapter.save(Account.create(creditId, tenantId, "Credit-Account", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
+        // Seed a permissive rule so PolicyGuard allows debits in all tests
+        policyRepository.save(tenantId, null, PolicyRule.MaxDebitPerSession(MonetaryAmount.of("99999")))
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -105,13 +114,11 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
 
     private fun buildCmd(
         steps: List<WorkflowStepCommand>,
-        policyRules: List<PolicyRule> = emptyList(),
         tenantId: TenantId = this.tenantId,
     ) = ExecuteWorkflowCommand(
         tenantId = tenantId,
         agentContext = agentCtx,
         steps = steps,
-        policyRules = policyRules,
         createdBy = "integration-test",
     )
 
@@ -171,10 +178,11 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
 
     @Test
     fun `PolicyGuard denial — workflow never created`() {
-        val rules = listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("0")))
+        // Add a deny-all rule (overrides the permissive rule from setup)
+        policyRepository.save(tenantId, null, PolicyRule.MaxDebitPerSession(MonetaryAmount.of("0")))
 
         assertThrows<PolicyViolationException> {
-            executeService.execute(buildCmd(listOf(buildStep("denied-0")), policyRules = rules))
+            executeService.execute(buildCmd(listOf(buildStep("denied-0"))))
         }
         // PolicyGuard throws before workflowPlanRepository.insert() — no rows expected
         val planCount = (entityManager
@@ -194,10 +202,11 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
         val localDebit = AccountId.generate()
         val localCredit = AccountId.generate()
 
-        // Accounts must be committed before the service's own transaction starts
+        // Accounts and a permissive policy rule must be committed before the service's own transaction starts
         txTemplate.execute {
             accountAdapter.save(Account.create(localDebit, localTenantId, "d", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
             accountAdapter.save(Account.create(localCredit, localTenantId, "c", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
+            policyRepository.save(localTenantId, null, PolicyRule.MaxDebitPerSession(MonetaryAmount.of("99999")))
         }
 
         val unknownId = AccountId.generate() // never saved → TransactionAccountNotFound on step 1

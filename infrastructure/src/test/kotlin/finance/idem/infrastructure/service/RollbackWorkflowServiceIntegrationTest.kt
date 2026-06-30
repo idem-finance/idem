@@ -12,8 +12,11 @@ import finance.idem.core.PaymentRail
 import finance.idem.core.TenantId
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.StepStatus
 import finance.idem.core.agentic.WorkflowStatus
+import finance.idem.infrastructure.persistence.policy.PolicyRepositoryAdapter
+import finance.idem.infrastructure.persistence.policy.SessionDebitAdapter
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountType
 import finance.idem.core.monetary.FiatEntry
@@ -61,6 +64,8 @@ import kotlin.test.assertNull
     ComplianceConfig::class,
     ComplianceQueueRepositoryAdapter::class,
     finance.idem.infrastructure.compliance.LgpdRetentionRepositoryAdapter::class,
+    PolicyRepositoryAdapter::class,
+    SessionDebitAdapter::class,
 )
 class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase() {
 
@@ -70,6 +75,7 @@ class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBas
     @Autowired lateinit var workflowPlanAdapter: WorkflowPlanRepositoryAdapter
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
     @Autowired lateinit var outboxJpaRepo: WebhookOutboxJpaRepository
+    @Autowired lateinit var policyRepository: PolicyRepositoryAdapter
 
     private val tenantId = TenantId.generate()
     private val agentCtx = AgentContext(agentId = "agent-it", sessionId = "sess-it", intent = "test")
@@ -84,6 +90,7 @@ class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBas
         creditId = AccountId.generate()
         accountAdapter.save(Account.create(debitId, tenantId, "Debit-Account", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
         accountAdapter.save(Account.create(creditId, tenantId, "Credit-Account", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
+        policyRepository.save(tenantId, null, PolicyRule.MaxDebitPerSession(MonetaryAmount.of("99999")))
         entityManager.flush()
     }
 
@@ -103,7 +110,7 @@ class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBas
         )
 
     private fun buildCmd(steps: List<WorkflowStepCommand>) =
-        ExecuteWorkflowCommand(tenantId, agentCtx, steps, emptyList(), "integration-test")
+        ExecuteWorkflowCommand(tenantId, agentCtx, steps, "integration-test")
 
     private fun rollbackCmd(planId: WorkflowPlanId, reason: String = "test-rollback") =
         RollbackWorkflowCommand(tenantId, agentCtx, planId, reason, "integration-test")
