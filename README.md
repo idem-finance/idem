@@ -235,20 +235,13 @@ Live roadmap: [GitHub Milestones](https://github.com/idem-finance/idem/milestone
 
 ## Contributing
 
-No CONTRIBUTING.md yet — open an issue to discuss before submitting large PRs.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, module rules, code style, the PR process, and the DCO sign-off requirement.
 
-All commits require a Developer Certificate of Origin sign-off:
-
-```bash
-git commit -s -m "feat: describe the change"
-```
-
-Run tests locally:
+Quick version:
 
 ```bash
-./mvnw test                    # all modules
-./mvnw test -pl core           # single module
-./mvnw verify                  # full build + tests + JaCoCo coverage (80% minimum)
+git commit -s -m "feat: describe the change"   # DCO sign-off, required on every commit
+./mvnw verify                                   # full build + tests + JaCoCo coverage gate, required before PR
 ```
 
 Tests that touch PostgreSQL or Redis use Testcontainers — Docker must be running.
