@@ -57,6 +57,10 @@
         <wiremock.version>2.35.1</wiremock.version>
         <shedlock.version>6.6.0</shedlock.version>
         <dokka.version>1.9.20</dokka.version>
+        <ktlint.version>1.8.0</ktlint.version>
+        <detekt.version>1.23.8</detekt.version>
+        <antrun.version>3.2.0</antrun.version>
+        <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -280,6 +284,128 @@
                         <version>${kotlin.version}</version>
                     </dependency>
                 </dependencies>
+            </plugin>
+            <!--
+              Stages the ktlint and detekt CLI fat jars into target/tools/ for the
+              antrun executions below. Uses dependency:copy (not a real project
+              <dependency>) since the root <dependencies> block above is reserved
+              for the Kotlin runtime only.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>${maven-dependency-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>stage-lint-tools</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.pinterest.ktlint</groupId>
+                                    <artifactId>ktlint-cli</artifactId>
+                                    <version>${ktlint.version}</version>
+                                    <classifier>all</classifier>
+                                    <outputDirectory>${project.build.directory}/tools</outputDirectory>
+                                    <destFileName>ktlint-cli.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>io.gitlab.arturbosch.detekt</groupId>
+                                    <artifactId>detekt-cli</artifactId>
+                                    <version>${detekt.version}</version>
+                                    <classifier>all</classifier>
+                                    <outputDirectory>${project.build.directory}/tools</outputDirectory>
+                                    <destFileName>detekt-cli.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--
+              ktlint-check gates `mvn verify` (see #182) once enabled — mirrors how
+              jacoco:check above already gates verify. ktlint-format has no <phase>
+              on purpose: it must never run as part of the build, only via a direct
+              goal invocation (`mvn antrun:run@ktlint-format`) for local auto-fix.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>${antrun.version}</version>
+                <executions>
+                    <execution>
+                        <id>ktlint-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target xmlns:if="ant:if">
+                                <available file="${project.basedir}/src/main/kotlin" type="dir" property="has.kotlin.src"/>
+                                <java if:true="${has.kotlin.src}" jar="${project.build.directory}/tools/ktlint-cli.jar"
+                                      fork="true" failonerror="true" dir="${project.basedir}">
+                                    <arg value="src/main/kotlin/**/*.kt"/>
+                                    <arg value="src/test/kotlin/**/*.kt"/>
+                                </java>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>ktlint-format</id>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target xmlns:if="ant:if">
+                                <available file="${project.basedir}/src/main/kotlin" type="dir" property="has.kotlin.src"/>
+                                <java if:true="${has.kotlin.src}" jar="${project.build.directory}/tools/ktlint-cli.jar"
+                                      fork="true" failonerror="false" dir="${project.basedir}">
+                                    <arg value="-F"/>
+                                    <arg value="src/main/kotlin/**/*.kt"/>
+                                    <arg value="src/test/kotlin/**/*.kt"/>
+                                </java>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <!--
+                      detekt-check gates `mvn verify` once enabled (see #182), same as
+                      ktlint-check above. Baseline path is parameterized per-module
+                      (${project.artifactId}) so every child module gets its own
+                      detekt-baseline-<artifactId>.xml instead of overwriting a shared one;
+                      config (detekt.yml) is the single shared root file resolved via
+                      ${maven.multiModuleProjectDirectory}, which always points at the
+                      reactor root regardless of which module evaluates it.
+                    -->
+                    <execution>
+                        <id>detekt-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target xmlns:if="ant:if">
+                                <available file="${project.basedir}/src/main/kotlin" type="dir" property="has.kotlin.src"/>
+                                <java if:true="${has.kotlin.src}" jar="${project.build.directory}/tools/detekt-cli.jar"
+                                      fork="true" failonerror="true" dir="${project.basedir}">
+                                    <arg value="--input"/>
+                                    <arg value="src/main/kotlin,src/test/kotlin"/>
+                                    <arg value="--config"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/detekt.yml"/>
+                                    <arg value="--build-upon-default-config"/>
+                                    <arg value="--baseline"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/detekt-baseline-${project.artifactId}.xml"/>
+                                    <arg value="--report"/>
+                                    <arg value="html:${project.build.directory}/detekt.html"/>
+                                    <arg value="--report"/>
+                                    <arg value="sarif:${project.build.directory}/detekt.sarif"/>
+                                </java>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

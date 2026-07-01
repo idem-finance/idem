@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   build:
@@ -24,5 +25,61 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - name: ktlint check
+        run: ./mvnw initialize antrun:run@ktlint-check --no-transfer-progress
+
+      - name: Detekt check
+        run: ./mvnw initialize antrun:run@detekt-check --no-transfer-progress
+        continue-on-error: true
+
       - name: Build and test
         run: ./mvnw verify --no-transfer-progress
+
+      - name: Upload Detekt SARIF (core)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: core/target/detekt.sarif
+          category: detekt-core
+
+      - name: Upload Detekt SARIF (application)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: application/target/detekt.sarif
+          category: detekt-application
+
+      - name: Upload Detekt SARIF (infrastructure)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: infrastructure/target/detekt.sarif
+          category: detekt-infrastructure
+
+      - name: Upload Detekt SARIF (api)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: api/target/detekt.sarif
+          category: detekt-api
+
+      - name: Upload Detekt SARIF (mcp)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: mcp/target/detekt.sarif
+          category: detekt-mcp
+
+      - name: Upload Detekt SARIF (sdk-kotlin)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sdk-kotlin/target/detekt.sarif
+          category: detekt-sdk-kotlin
+
+      - name: Upload Detekt SARIF (app)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: app/target/detekt.sarif
+          category: detekt-app
