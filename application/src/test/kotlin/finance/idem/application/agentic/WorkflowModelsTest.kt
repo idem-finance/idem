@@ -22,25 +22,29 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class WorkflowModelsTest {
-
     private val tenantId = TenantId.generate()
     private val planId = WorkflowPlanId.generate()
     private val agentContext = AgentContext(agentId = "agent-1", sessionId = "sess-abc")
     private val now = Instant.now()
 
-    private fun brlLine(accountId: AccountId, type: EntryType) = JournalLineRequest(
+    private fun brlLine(
+        accountId: AccountId,
+        type: EntryType,
+    ) = JournalLineRequest(
         accountId = accountId,
         entryType = type,
         monetaryEntry = FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
     )
 
-    private fun committedPlan() = WorkflowPlan.create(
-        id = planId,
-        tenantId = tenantId,
-        agentContext = agentContext,
-        stepDescriptions = listOf("step-0"),
-        createdAt = now,
-    ).copy(completedAt = Instant.now())
+    private fun committedPlan() =
+        WorkflowPlan
+            .create(
+                id = planId,
+                tenantId = tenantId,
+                agentContext = agentContext,
+                stepDescriptions = listOf("step-0"),
+                createdAt = now,
+            ).copy(completedAt = Instant.now())
 
     // ── WorkflowStepCommand ───────────────────────────────────────────────────
 
@@ -56,11 +60,12 @@ class WorkflowModelsTest {
 
     @Test
     fun `WorkflowStepCommand accepts metadata`() {
-        val cmd = WorkflowStepCommand(
-            idempotencyKey = "k",
-            lines = emptyList(),
-            metadata = mapOf("ref" to "abc"),
-        )
+        val cmd =
+            WorkflowStepCommand(
+                idempotencyKey = "k",
+                lines = emptyList(),
+                metadata = mapOf("ref" to "abc"),
+            )
         assertEquals(mapOf("ref" to "abc"), cmd.metadata)
     }
 
@@ -75,12 +80,13 @@ class WorkflowModelsTest {
     @Test
     fun `ExecuteWorkflowCommand holds all fields`() {
         val step = WorkflowStepCommand("idem-0", lines = emptyList())
-        val cmd = ExecuteWorkflowCommand(
-            tenantId = tenantId,
-            agentContext = agentContext,
-            steps = listOf(step),
-            createdBy = "sk_agent_test",
-        )
+        val cmd =
+            ExecuteWorkflowCommand(
+                tenantId = tenantId,
+                agentContext = agentContext,
+                steps = listOf(step),
+                createdBy = "sk_agent_test",
+            )
 
         assertEquals(tenantId, cmd.tenantId)
         assertEquals(agentContext, cmd.agentContext)
@@ -92,13 +98,14 @@ class WorkflowModelsTest {
 
     @Test
     fun `RollbackWorkflowCommand holds all fields`() {
-        val cmd = RollbackWorkflowCommand(
-            tenantId = tenantId,
-            agentContext = agentContext,
-            workflowPlanId = planId,
-            reason = "compliance review",
-            createdBy = "sk_agent_test",
-        )
+        val cmd =
+            RollbackWorkflowCommand(
+                tenantId = tenantId,
+                agentContext = agentContext,
+                workflowPlanId = planId,
+                reason = "compliance review",
+                createdBy = "sk_agent_test",
+            )
 
         assertEquals(tenantId, cmd.tenantId)
         assertEquals(planId, cmd.workflowPlanId)
@@ -121,11 +128,12 @@ class WorkflowModelsTest {
     fun `RollbackWorkflowSummary holds all fields`() {
         val txId = TransactionId(UUID.randomUUID())
         val step = CompensatedStepSummary(stepOrder = 0, description = "Transfer", compensatingTransactionId = txId)
-        val summary = RollbackWorkflowSummary(
-            workflowPlanId = planId,
-            compensatedSteps = listOf(step),
-            status = "ROLLED_BACK",
-        )
+        val summary =
+            RollbackWorkflowSummary(
+                workflowPlanId = planId,
+                compensatedSteps = listOf(step),
+                status = "ROLLED_BACK",
+            )
 
         assertEquals(planId, summary.workflowPlanId)
         assertEquals("ROLLED_BACK", summary.status)

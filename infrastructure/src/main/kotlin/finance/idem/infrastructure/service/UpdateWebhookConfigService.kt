@@ -14,9 +14,11 @@ class UpdateWebhookConfigService(
     private val tenantRepository: TenantRepository,
     private val webhookUrlValidator: WebhookUrlValidator,
 ) : UpdateWebhookConfigUseCase {
-
     @Transactional
-    override fun execute(tenantId: TenantId, webhookUrl: String): Result<TenantWebhookConfig> {
+    override fun execute(
+        tenantId: TenantId,
+        webhookUrl: String,
+    ): Result<TenantWebhookConfig> {
         webhookUrlValidator.validate(webhookUrl).onFailure { return Result.failure(it) }
 
         val secret = generateSecret()

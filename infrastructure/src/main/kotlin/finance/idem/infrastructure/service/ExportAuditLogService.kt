@@ -10,7 +10,5 @@ import org.springframework.stereotype.Service
 class ExportAuditLogService(
     private val auditExportRepository: AuditExportRepository,
 ) : ExportAuditLogUseCase {
-
-    override fun export(query: ExportAuditLogQuery): List<AuditExportRecord> =
-        auditExportRepository.findForExport(query)
+    override fun export(query: ExportAuditLogQuery): List<AuditExportRecord> = auditExportRepository.findForExport(query)
 }

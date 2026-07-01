@@ -25,13 +25,13 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(FailedChainTransferRepositoryAdapter::class)
 class FailedChainTransferRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -43,6 +43,7 @@ class FailedChainTransferRepositoryAdapterTest {
     }
 
     @Autowired lateinit var adapter: FailedChainTransferRepositoryAdapter
+
     @Autowired lateinit var jpaRepository: FailedChainTransferJpaRepository
 
     private val tenantId = TenantId.generate()

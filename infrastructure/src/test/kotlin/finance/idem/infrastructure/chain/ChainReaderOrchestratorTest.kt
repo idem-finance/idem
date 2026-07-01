@@ -26,7 +26,6 @@ import java.util.UUID
 import java.util.concurrent.Executor
 
 class ChainReaderOrchestratorTest {
-
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var deadLetterRecorder: DeadLetterRecorder
@@ -47,42 +46,56 @@ class ChainReaderOrchestratorTest {
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId(UUID.randomUUID())))
         // Simulate the lock being acquired: run the recovery task synchronously.
         doAnswer { invocation -> invocation.getArgument<Runnable>(0).run() }
-            .whenever(lockingTaskExecutor).executeWithLock(any<Runnable>(), any())
+            .whenever(lockingTaskExecutor)
+            .executeWithLock(any<Runnable>(), any())
     }
 
     private fun orchestrator(readers: List<ChainReader>): ChainReaderOrchestrator =
         ChainReaderOrchestrator(
-            readers, checkpointRepository, postTransactionUseCase, deadLetterRecorder, recoveryExecutor,
+            readers,
+            checkpointRepository,
+            postTransactionUseCase,
+            deadLetterRecorder,
+            recoveryExecutor,
         ).also { it.lockingTaskExecutor = lockingTaskExecutor }
 
-    private fun fakeReader(chainKey: String, vararg transfers: DetectedTransfer): ChainReader {
+    private fun fakeReader(
+        chainKey: String,
+        vararg transfers: DetectedTransfer,
+    ): ChainReader {
         val reader = mock<ChainReader>()
         whenever(reader.chainKey).thenReturn(chainKey)
         whenever(reader.poll(any())).thenReturn(transfers.toList())
         return reader
     }
 
-    private fun transfer(chainKey: String, blockNumber: Long, txHash: String = "0xhash"): DetectedTransfer {
-        val watchedAddress = WatchedAddress(
-            chainKey = chainKey,
-            walletAddress = "0xabc",
-            tokenContract = "0xdef",
-            token = StablecoinToken.USDC,
-            tenantId = tenantId,
-            debitAccountId = debitAccountId,
-            creditAccountId = creditAccountId,
-        )
+    private fun transfer(
+        chainKey: String,
+        blockNumber: Long,
+        txHash: String = "0xhash",
+    ): DetectedTransfer {
+        val watchedAddress =
+            WatchedAddress(
+                chainKey = chainKey,
+                walletAddress = "0xabc",
+                tokenContract = "0xdef",
+                token = StablecoinToken.USDC,
+                tenantId = tenantId,
+                debitAccountId = debitAccountId,
+                creditAccountId = creditAccountId,
+            )
         return DetectedTransfer(
             idempotencyKey = "$chainKey:$txHash",
-            entry = OnChainEntry(
-                amount = MonetaryAmount.of("100.000000"),
-                token = StablecoinToken.USDC,
-                chainId = ChainId.EVM,
-                txHash = txHash,
-                blockNumber = blockNumber,
-                walletAddress = watchedAddress.walletAddress,
-                tokenContract = watchedAddress.tokenContract,
-            ),
+            entry =
+                OnChainEntry(
+                    amount = MonetaryAmount.of("100.000000"),
+                    token = StablecoinToken.USDC,
+                    chainId = ChainId.EVM,
+                    txHash = txHash,
+                    blockNumber = blockNumber,
+                    walletAddress = watchedAddress.walletAddress,
+                    tokenContract = watchedAddress.tokenContract,
+                ),
             watchedAddress = watchedAddress,
         )
     }
@@ -209,9 +222,14 @@ class ChainReaderOrchestratorTest {
         val evmReader = fakeReader("EVM_1")
         val executor = mock<Executor>()
 
-        val orchestrator = ChainReaderOrchestrator(
-            listOf(evmReader), checkpointRepository, postTransactionUseCase, deadLetterRecorder, executor,
-        ).also { it.lockingTaskExecutor = lockingTaskExecutor }
+        val orchestrator =
+            ChainReaderOrchestrator(
+                listOf(evmReader),
+                checkpointRepository,
+                postTransactionUseCase,
+                deadLetterRecorder,
+                executor,
+            ).also { it.lockingTaskExecutor = lockingTaskExecutor }
         orchestrator.onApplicationStarted()
 
         val taskCaptor = argumentCaptor<Runnable>()
@@ -239,7 +257,8 @@ class ChainReaderOrchestratorTest {
     fun `recovery sweep does not poll when the chainRecoverySweep lock is held by another replica`() {
         val evmReader = fakeReader("EVM_1")
         doAnswer { /* lock not acquired: task is never run */ }
-            .whenever(lockingTaskExecutor).executeWithLock(any<Runnable>(), any())
+            .whenever(lockingTaskExecutor)
+            .executeWithLock(any<Runnable>(), any())
 
         val orchestrator = orchestrator(listOf(evmReader))
         orchestrator.onApplicationStarted()

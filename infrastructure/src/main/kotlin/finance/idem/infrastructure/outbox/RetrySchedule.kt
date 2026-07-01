@@ -10,12 +10,13 @@ import java.time.Duration
  * further retry — the caller should mark the row DEAD instead.
  */
 object RetrySchedule {
-    private val backoff = mapOf(
-        1 to Duration.ofSeconds(5),
-        2 to Duration.ofSeconds(30),
-        3 to Duration.ofMinutes(2),
-        4 to Duration.ofMinutes(10),
-    )
+    private val backoff =
+        mapOf(
+            1 to Duration.ofSeconds(5),
+            2 to Duration.ofSeconds(30),
+            3 to Duration.ofMinutes(2),
+            4 to Duration.ofMinutes(10),
+        )
 
     /**
      * Highest valid value for `idem.webhook.max-attempts`. `backoff` defines delays
@@ -27,6 +28,8 @@ object RetrySchedule {
      */
     val MAX_SUPPORTED_ATTEMPTS = backoff.size + 1
 
-    fun nextRetryDelay(attempts: Int, maxAttempts: Int): Duration? =
-        if (attempts >= maxAttempts) null else backoff[attempts]
+    fun nextRetryDelay(
+        attempts: Int,
+        maxAttempts: Int,
+    ): Duration? = if (attempts >= maxAttempts) null else backoff[attempts]
 }

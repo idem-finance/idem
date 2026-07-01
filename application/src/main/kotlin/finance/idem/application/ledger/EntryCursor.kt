@@ -12,20 +12,25 @@ import java.util.UUID
  * [Instant.parse] with full precision, and a [UUID] never contains a colon, so the last
  * colon in the decoded string is always the separator.
  */
-data class EntryCursor(val createdAt: Instant, val id: UUID) {
-
+data class EntryCursor(
+    val createdAt: Instant,
+    val id: UUID,
+) {
     fun encode(): String =
-        Base64.getUrlEncoder().withoutPadding()
+        Base64
+            .getUrlEncoder()
+            .withoutPadding()
             .encodeToString("$createdAt:$id".toByteArray(Charsets.UTF_8))
 
     companion object {
-        fun decode(token: String): Result<EntryCursor> = runCatching {
-            val decoded = Base64.getUrlDecoder().decode(token).toString(Charsets.UTF_8)
-            val separatorIndex = decoded.lastIndexOf(':')
-            require(separatorIndex > 0) { "Malformed cursor" }
-            val createdAt = Instant.parse(decoded.substring(0, separatorIndex))
-            val id = UUID.fromString(decoded.substring(separatorIndex + 1))
-            EntryCursor(createdAt, id)
-        }
+        fun decode(token: String): Result<EntryCursor> =
+            runCatching {
+                val decoded = Base64.getUrlDecoder().decode(token).toString(Charsets.UTF_8)
+                val separatorIndex = decoded.lastIndexOf(':')
+                require(separatorIndex > 0) { "Malformed cursor" }
+                val createdAt = Instant.parse(decoded.substring(0, separatorIndex))
+                val id = UUID.fromString(decoded.substring(separatorIndex + 1))
+                EntryCursor(createdAt, id)
+            }
     }
 }

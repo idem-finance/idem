@@ -6,7 +6,6 @@ import java.time.LocalDate
 import kotlin.test.assertEquals
 
 class NaturalPersonTest {
-
     @Test
     fun `blank firstName throws IllegalArgumentException`() {
         assertThrows<IllegalArgumentException> {
@@ -37,13 +36,14 @@ class NaturalPersonTest {
 
     @Test
     fun `happy path with all fields round-trips correctly`() {
-        val person = NaturalPerson(
-            firstName = "Jane",
-            lastName = "Doe",
-            dateOfBirth = LocalDate.of(1990, 6, 15),
-            nationalId = "123456789",
-            country = "BR",
-        )
+        val person =
+            NaturalPerson(
+                firstName = "Jane",
+                lastName = "Doe",
+                dateOfBirth = LocalDate.of(1990, 6, 15),
+                nationalId = "123456789",
+                country = "BR",
+            )
         assertEquals("Jane", person.firstName)
         assertEquals("Doe", person.lastName)
         assertEquals(LocalDate.of(1990, 6, 15), person.dateOfBirth)
@@ -53,12 +53,13 @@ class NaturalPersonTest {
 
     @Test
     fun `happy path without nationalId defaults to null`() {
-        val person = NaturalPerson(
-            firstName = "John",
-            lastName = "Smith",
-            dateOfBirth = LocalDate.of(1985, 3, 20),
-            country = "US",
-        )
+        val person =
+            NaturalPerson(
+                firstName = "John",
+                lastName = "Smith",
+                dateOfBirth = LocalDate.of(1985, 3, 20),
+                country = "US",
+            )
         assertEquals(null, person.nationalId)
     }
 }

@@ -29,13 +29,13 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(PolicyRepositoryAdapter::class, PersistenceTestConfig::class)
 class PolicyRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic

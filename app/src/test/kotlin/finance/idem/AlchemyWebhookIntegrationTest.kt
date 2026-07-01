@@ -53,15 +53,20 @@ private const val SIGNING_KEY = "test-alchemy-secret"
     ],
 )
 class AlchemyWebhookIntegrationTest {
-
     @Autowired lateinit var restTemplate: TestRestTemplate
+
     @LocalServerPort var port: Int = 0
 
     @Autowired lateinit var accountRepository: AccountRepositoryAdapter
+
     @Autowired lateinit var settlementRepository: SettlementRepositoryAdapter
+
     @Autowired lateinit var webhookOutboxAdapter: WebhookOutboxRepositoryAdapter
+
     @Autowired lateinit var transactionRepository: TransactionRepositoryAdapter
+
     @Autowired lateinit var watchedAddressJpaRepository: WatchedAddressJpaRepository
+
     @Autowired lateinit var entityManager: EntityManager
 
     // ── Scenario 1: valid HMAC -> 200, transfer posted, no PENDING candidate -> UNMATCHED ──
@@ -246,10 +251,14 @@ class AlchemyWebhookIntegrationTest {
     fun `pending settlement outside the matching window is left pending and a new unmatched row is created`() {
         val f = fixture(7)
         val txHash = txHashFor(7)
-        val pending = seedPendingSettlement(
-            f.tenantId, f.creditAccountId, "1.000000", f.wallet,
-            createdAt = Instant.now().minus(25, ChronoUnit.HOURS),
-        )
+        val pending =
+            seedPendingSettlement(
+                f.tenantId,
+                f.creditAccountId,
+                "1.000000",
+                f.wallet,
+                createdAt = Instant.now().minus(25, ChronoUnit.HOURS),
+            )
         val body = buildPayload(txHash = txHash, toAddress = f.wallet, contract = f.contract)
 
         val response = postWebhook(body, computeHmac(SIGNING_KEY, body))
@@ -298,7 +307,9 @@ class AlchemyWebhookIntegrationTest {
         val debitAccountId = AccountId.generate()
         val creditAccountId = AccountId.generate()
         accountRepository.save(Account.create(debitAccountId, tenantId, "Custody-$n", FiatCurrency.USD, AccountType.ASSET, now, "test"))
-        accountRepository.save(Account.create(creditAccountId, tenantId, "Customer-$n", FiatCurrency.USD, AccountType.LIABILITY, now, "test"))
+        accountRepository.save(
+            Account.create(creditAccountId, tenantId, "Customer-$n", FiatCurrency.USD, AccountType.LIABILITY, now, "test"),
+        )
         val wallet = walletFor(n)
         val contract = contractFor(n)
         insertWatchedAddress(tenantId, wallet, contract, debitAccountId, creditAccountId)
@@ -329,7 +340,7 @@ class AlchemyWebhookIntegrationTest {
                 debitAccountId = debitAccountId.value,
                 creditAccountId = creditAccountId.value,
                 createdAt = Instant.now(),
-            )
+            ),
         )
     }
 
@@ -339,21 +350,22 @@ class AlchemyWebhookIntegrationTest {
         amount: String,
         walletAddress: String,
         createdAt: Instant = Instant.now(),
-    ): Settlement = settlementRepository.save(
-        Settlement(
-            id = UUID.randomUUID(),
-            tenantId = tenantId,
-            accountId = accountId,
-            amount = MonetaryAmount.of(amount),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.EVM,
-            walletAddress = walletAddress,
-            status = EntryStatus.PENDING,
-            expectedFromAddress = null,
-            createdAt = createdAt,
-            createdBy = "test",
+    ): Settlement =
+        settlementRepository.save(
+            Settlement(
+                id = UUID.randomUUID(),
+                tenantId = tenantId,
+                accountId = accountId,
+                amount = MonetaryAmount.of(amount),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                walletAddress = walletAddress,
+                status = EntryStatus.PENDING,
+                expectedFromAddress = null,
+                createdAt = createdAt,
+                createdBy = "test",
+            ),
         )
-    )
 
     private fun buildPayload(
         txHash: String,
@@ -364,7 +376,8 @@ class AlchemyWebhookIntegrationTest {
         logIndex: String = "0x0",
         network: String = "ETH_MAINNET",
         fromAddress: String = "0xfrom0000000000000000000000000000000000",
-    ): String = """
+    ): String =
+        """
         {
           "webhookId": "wh_test",
           "id": "whevt_test",
@@ -399,19 +412,26 @@ class AlchemyWebhookIntegrationTest {
             ]
           }
         }
-    """.trimIndent()
+        """.trimIndent()
 
-    private fun computeHmac(key: String, body: String): String {
+    private fun computeHmac(
+        key: String,
+        body: String,
+    ): String {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
         return mac.doFinal(body.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
 
-    private fun postWebhook(body: String, signature: String?): ResponseEntity<Void> {
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-            if (signature != null) set("X-Alchemy-Signature", signature)
-        }
+    private fun postWebhook(
+        body: String,
+        signature: String?,
+    ): ResponseEntity<Void> {
+        val headers =
+            HttpHeaders().apply {
+                contentType = MediaType.APPLICATION_JSON
+                if (signature != null) set("X-Alchemy-Signature", signature)
+            }
         return restTemplate.postForEntity(
             "http://localhost:$port/internal/webhooks/alchemy",
             HttpEntity(body, headers),
@@ -437,51 +457,60 @@ class AlchemyWebhookIntegrationTest {
      * query. `settlements` has FORCE RLS, so `app.tenant_id` is set manually here —
      * every other repository access in this test goes through adapters that already do this.
      */
-    private fun findUnmatchedSettlement(tenantId: TenantId, walletAddress: String): SettlementRow? {
+    private fun findUnmatchedSettlement(
+        tenantId: TenantId,
+        walletAddress: String,
+    ): SettlementRow? {
         val session = entityManager.unwrap(org.hibernate.Session::class.java)
         var row: SettlementRow? = null
         session.doWork { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            conn.prepareStatement(
-                "SELECT id, account_id, amount, status, matched_transaction_id, tx_hash, block_number, confirmed_at " +
-                    "FROM settlements WHERE tenant_id = ?::uuid AND wallet_address = ? AND status = 'UNMATCHED' " +
-                    "ORDER BY created_at DESC LIMIT 1"
-            ).use { stmt ->
-                stmt.setString(1, tenantId.value.toString())
-                stmt.setString(2, walletAddress)
-                val rs = stmt.executeQuery()
-                if (rs.next()) {
-                    row = SettlementRow(
-                        id = rs.getObject("id", UUID::class.java),
-                        accountId = rs.getObject("account_id", UUID::class.java),
-                        amount = rs.getBigDecimal("amount"),
-                        status = rs.getString("status"),
-                        matchedTransactionId = rs.getObject("matched_transaction_id", UUID::class.java),
-                        txHash = rs.getString("tx_hash"),
-                        blockNumber = rs.getObject("block_number") as Long?,
-                        confirmedAt = rs.getTimestamp("confirmed_at")?.toInstant(),
-                    )
+            conn
+                .prepareStatement(
+                    "SELECT id, account_id, amount, status, matched_transaction_id, tx_hash, block_number, confirmed_at " +
+                        "FROM settlements WHERE tenant_id = ?::uuid AND wallet_address = ? AND status = 'UNMATCHED' " +
+                        "ORDER BY created_at DESC LIMIT 1",
+                ).use { stmt ->
+                    stmt.setString(1, tenantId.value.toString())
+                    stmt.setString(2, walletAddress)
+                    val rs = stmt.executeQuery()
+                    if (rs.next()) {
+                        row =
+                            SettlementRow(
+                                id = rs.getObject("id", UUID::class.java),
+                                accountId = rs.getObject("account_id", UUID::class.java),
+                                amount = rs.getBigDecimal("amount"),
+                                status = rs.getString("status"),
+                                matchedTransactionId = rs.getObject("matched_transaction_id", UUID::class.java),
+                                txHash = rs.getString("tx_hash"),
+                                blockNumber = rs.getObject("block_number") as Long?,
+                                confirmedAt = rs.getTimestamp("confirmed_at")?.toInstant(),
+                            )
+                    }
                 }
-            }
         }
         entityManager.clear()
         return row
     }
 
-    private fun countUnmatchedSettlements(tenantId: TenantId, walletAddress: String): Long {
+    private fun countUnmatchedSettlements(
+        tenantId: TenantId,
+        walletAddress: String,
+    ): Long {
         val session = entityManager.unwrap(org.hibernate.Session::class.java)
         var count = 0L
         session.doWork { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            conn.prepareStatement(
-                "SELECT COUNT(*) FROM settlements WHERE tenant_id = ?::uuid AND wallet_address = ? AND status = 'UNMATCHED'"
-            ).use { stmt ->
-                stmt.setString(1, tenantId.value.toString())
-                stmt.setString(2, walletAddress)
-                val rs = stmt.executeQuery()
-                rs.next()
-                count = rs.getLong(1)
-            }
+            conn
+                .prepareStatement(
+                    "SELECT COUNT(*) FROM settlements WHERE tenant_id = ?::uuid AND wallet_address = ? AND status = 'UNMATCHED'",
+                ).use { stmt ->
+                    stmt.setString(1, tenantId.value.toString())
+                    stmt.setString(2, walletAddress)
+                    val rs = stmt.executeQuery()
+                    rs.next()
+                    count = rs.getLong(1)
+                }
         }
         entityManager.clear()
         return count

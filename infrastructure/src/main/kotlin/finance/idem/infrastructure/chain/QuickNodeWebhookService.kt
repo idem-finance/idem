@@ -20,7 +20,6 @@ class QuickNodeWebhookService(
     private val deadLetterRecorder: DeadLetterRecorder,
     chainReaders: List<ChainReader>,
 ) : QuickNodeWebhookUseCase {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     // SolanaChainReader is not a standalone bean — extract from the list at construction time.
@@ -28,7 +27,12 @@ class QuickNodeWebhookService(
     private val solanaReader: SolanaChainReader? =
         chainReaders.filterIsInstance<SolanaChainReader>().firstOrNull()
 
-    override fun handle(signature: String?, nonce: String?, timestamp: String?, rawBody: String): Result<Unit> {
+    override fun handle(
+        signature: String?,
+        nonce: String?,
+        timestamp: String?,
+        rawBody: String,
+    ): Result<Unit> {
         val signingKey = config.quicknodeWebhookSecret
         if (signingKey.isNotBlank()) {
             if (signature == null || nonce == null || timestamp == null ||
@@ -41,12 +45,13 @@ class QuickNodeWebhookService(
             log.warn("QuickNode webhook secret not configured — HMAC validation skipped (dev mode)")
         }
 
-        val streamPayload = runCatching {
-            objectMapper.readValue<QuickNodeStreamPayload>(rawBody)
-        }.getOrElse {
-            log.warn("QuickNode webhook: failed to parse payload: ${it.message}")
-            return Result.success(Unit)
-        }
+        val streamPayload =
+            runCatching {
+                objectMapper.readValue<QuickNodeStreamPayload>(rawBody)
+            }.getOrElse {
+                log.warn("QuickNode webhook: failed to parse payload: ${it.message}")
+                return Result.success(Unit)
+            }
 
         for (payload in streamPayload.data) {
             processPayload(payload, streamPayload.metadata.streamId)
@@ -55,16 +60,23 @@ class QuickNodeWebhookService(
         return Result.success(Unit)
     }
 
-    private fun processPayload(payload: QuickNodeWebhookPayload, streamId: String) {
-        val chainKey = networkToChainKey(payload.network) ?: run {
-            log.warn("QuickNode webhook: unrecognised network '${payload.network}' (streamId=$streamId) — ignoring")
-            return
-        }
+    private fun processPayload(
+        payload: QuickNodeWebhookPayload,
+        streamId: String,
+    ) {
+        val chainKey =
+            networkToChainKey(payload.network) ?: run {
+                log.warn("QuickNode webhook: unrecognised network '${payload.network}' (streamId=$streamId) — ignoring")
+                return
+            }
 
-        val reader = solanaReader ?: run {
-            log.warn("QuickNode webhook: no SolanaChainReader available for chainKey=$chainKey — ignoring payload sig=${payload.signature}")
-            return
-        }
+        val reader =
+            solanaReader ?: run {
+                log.warn(
+                    "QuickNode webhook: no SolanaChainReader available for chainKey=$chainKey — ignoring payload sig=${payload.signature}",
+                )
+                return
+            }
 
         val existingCheckpoint = chainCheckpointRepository.findByChainKey(chainKey)?.lastBlock ?: 0L
         val watched = watchedAddressRepository.findByChainKey(chainKey)
@@ -79,7 +91,9 @@ class QuickNodeWebhookService(
                     }
                 }
             } else {
-                log.warn("QuickNode webhook: getTransaction returned null for sig=${payload.signature} — skipping decode, still advancing checkpoint")
+                log.warn(
+                    "QuickNode webhook: getTransaction returned null for sig=${payload.signature} — skipping decode, still advancing checkpoint",
+                )
             }
         }
 
@@ -100,7 +114,13 @@ class QuickNodeWebhookService(
          * stream's security token — NOT the raw body alone. See "How to Validate Incoming
          * Streams Webhook Messages" (QuickNode docs).
          */
-        internal fun isValidSignature(secret: String, nonce: String, timestamp: String, body: String, header: String): Boolean {
+        internal fun isValidSignature(
+            secret: String,
+            nonce: String,
+            timestamp: String,
+            body: String,
+            header: String,
+        ): Boolean {
             val expected = HmacSigner.hexHmacSha256(secret, nonce + timestamp + body)
             return MessageDigest.isEqual(
                 expected.toByteArray(Charsets.UTF_8),
@@ -108,10 +128,11 @@ class QuickNodeWebhookService(
             )
         }
 
-        internal fun networkToChainKey(network: String): String? = when (network.lowercase()) {
-            "mainnet-beta" -> "SOLANA"
-            "devnet" -> "SOLANA"
-            else -> null
-        }
+        internal fun networkToChainKey(network: String): String? =
+            when (network.lowercase()) {
+                "mainnet-beta" -> "SOLANA"
+                "devnet" -> "SOLANA"
+                else -> null
+            }
     }
 }

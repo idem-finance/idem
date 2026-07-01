@@ -14,11 +14,11 @@ import org.springframework.transaction.annotation.Transactional
 class CancelSettlementService(
     private val settlementRepository: SettlementRepository,
 ) : CancelSettlementUseCase {
-
     @Transactional
     override fun execute(cmd: CancelSettlementCommand): Result<Settlement> {
-        val settlement = settlementRepository.findById(cmd.id, cmd.tenantId)
-            ?: return Result.failure(SettlementNotFound(cmd.id))
+        val settlement =
+            settlementRepository.findById(cmd.id, cmd.tenantId)
+                ?: return Result.failure(SettlementNotFound(cmd.id))
 
         if (settlement.status != EntryStatus.PENDING) {
             return Result.failure(SettlementAlreadyTerminal(settlement.status))

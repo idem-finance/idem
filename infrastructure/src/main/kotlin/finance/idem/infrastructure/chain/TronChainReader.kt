@@ -24,8 +24,8 @@ class TronChainReader(
     private val requestDelayMs: Long = REQUEST_DELAY_MS,
     private val pageSize: Int = PAGE_SIZE,
     private val apiKey: String = "",
-) : ChainReader, Closeable {
-
+) : ChainReader,
+    Closeable {
     override val chainKey = "TRON"
 
     override fun close() = httpClient.close()
@@ -36,7 +36,10 @@ class TronChainReader(
         return watched.flatMap { fetchTransfers(it, checkpoint) }
     }
 
-    private fun fetchTransfers(watchedAddress: WatchedAddress, checkpoint: Long): List<DetectedTransfer> {
+    private fun fetchTransfers(
+        watchedAddress: WatchedAddress,
+        checkpoint: Long,
+    ): List<DetectedTransfer> {
         val collected = mutableListOf<TronTransfer>()
         var start = 0
 
@@ -59,53 +62,64 @@ class TronChainReader(
             .mapNotNull { decodeTransfer(it, watchedAddress) }
     }
 
-    internal fun decodeTransfer(transfer: TronTransfer, watchedAddress: WatchedAddress): DetectedTransfer? {
+    internal fun decodeTransfer(
+        transfer: TronTransfer,
+        watchedAddress: WatchedAddress,
+    ): DetectedTransfer? {
         if (!transfer.toAddress.equals(watchedAddress.walletAddress, ignoreCase = true)) return null
         if (!transfer.tokenInfo.tokenId.equals(watchedAddress.tokenContract, ignoreCase = true)) return null
         if (transfer.finalResult != null && transfer.finalResult != "SUCCESS") return null
 
-        val decimals = decimalsFor(watchedAddress.token) ?: run {
-            log.error("Unsupported token ${watchedAddress.token} for Tron reader in tx=${transfer.txHash} — skipping")
-            return null
-        }
+        val decimals =
+            decimalsFor(watchedAddress.token) ?: run {
+                log.error("Unsupported token ${watchedAddress.token} for Tron reader in tx=${transfer.txHash} — skipping")
+                return null
+            }
         if (transfer.tokenInfo.decimals != decimals) {
             log.error(
                 "Unexpected decimals ${transfer.tokenInfo.decimals} for ${watchedAddress.tokenContract} " +
-                    "in tx=${transfer.txHash} (expected $decimals) — skipping"
+                    "in tx=${transfer.txHash} (expected $decimals) — skipping",
             )
             return null
         }
 
-        val rawAmount = transfer.quant.toLongOrNull() ?: run {
-            log.warn("Unparseable amount '${transfer.quant}' in tx=${transfer.txHash} — skipping")
-            return null
-        }
+        val rawAmount =
+            transfer.quant.toLongOrNull() ?: run {
+                log.warn("Unparseable amount '${transfer.quant}' in tx=${transfer.txHash} — skipping")
+                return null
+            }
         if (rawAmount <= 0) return null
 
         val amount = MonetaryAmount.of(BigDecimal(rawAmount).movePointLeft(decimals))
 
         return DetectedTransfer(
             idempotencyKey = "$chainKey:${transfer.txHash}",
-            entry = OnChainEntry(
-                amount = amount,
-                token = watchedAddress.token,
-                chainId = ChainId.TRON,
-                txHash = transfer.txHash,
-                blockNumber = transfer.blockId,
-                walletAddress = transfer.toAddress.lowercase(),
-                tokenContract = transfer.tokenInfo.tokenId.lowercase(),
-                fromAddress = transfer.fromAddress.takeIf { it.isNotBlank() }?.lowercase(),
-            ),
+            entry =
+                OnChainEntry(
+                    amount = amount,
+                    token = watchedAddress.token,
+                    chainId = ChainId.TRON,
+                    txHash = transfer.txHash,
+                    blockNumber = transfer.blockId,
+                    walletAddress = transfer.toAddress.lowercase(),
+                    tokenContract = transfer.tokenInfo.tokenId.lowercase(),
+                    fromAddress = transfer.fromAddress.takeIf { it.isNotBlank() }?.lowercase(),
+                ),
             watchedAddress = watchedAddress,
         )
     }
 
-    private fun fetchPage(address: String, tokenContract: String, start: Int): List<TronTransfer> {
-        val url = "$apiUrl/api/token_trc20/transfers" +
-            "?relatedAddress=$address" +
-            "&token_address=$tokenContract" +
-            "&start=$start" +
-            "&limit=$pageSize"
+    private fun fetchPage(
+        address: String,
+        tokenContract: String,
+        start: Int,
+    ): List<TronTransfer> {
+        val url =
+            "$apiUrl/api/token_trc20/transfers" +
+                "?relatedAddress=$address" +
+                "&token_address=$tokenContract" +
+                "&start=$start" +
+                "&limit=$pageSize"
         val response = httpGet(url) ?: return emptyList()
         return runCatching {
             MAPPER.readValue(response, TronTransferResponse::class.java).tokenTransfers
@@ -115,16 +129,19 @@ class TronChainReader(
         }
     }
 
-    private fun httpGet(url: String): String? {
-        return try {
-            val requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Accept", "application/json")
+    private fun httpGet(url: String): String? =
+        try {
+            val requestBuilder =
+                HttpRequest
+                    .newBuilder()
+                    .uri(URI.create(url))
+                    .header("Accept", "application/json")
             if (apiKey.isNotBlank()) requestBuilder.header("TRON-PRO-API-KEY", apiKey)
             val request = requestBuilder.GET().build()
             val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-            if (response.statusCode() == 200) response.body()
-            else {
+            if (response.statusCode() == 200) {
+                response.body()
+            } else {
                 log.warn("Tronscan API returned HTTP ${response.statusCode()} for url=$url")
                 null
             }
@@ -132,7 +149,6 @@ class TronChainReader(
             log.warn("Tronscan API call failed: ${e.message}")
             null
         }
-    }
 
     private fun sleepForRateLimit() {
         if (requestDelayMs > 0) Thread.sleep(requestDelayMs)
@@ -169,15 +185,17 @@ class TronChainReader(
         private const val REQUEST_DELAY_MS = 200L
         private const val PAGE_SIZE = 50
 
-        private val MAPPER: ObjectMapper = ObjectMapper().apply {
-            registerModule(KotlinModule.Builder().build())
-            configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-        }
+        private val MAPPER: ObjectMapper =
+            ObjectMapper().apply {
+                registerModule(KotlinModule.Builder().build())
+                configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            }
 
-        private fun decimalsFor(token: StablecoinToken): Int? = when (token) {
-            StablecoinToken.USDT -> 6
-            StablecoinToken.USDC -> 6
-            else -> null
-        }
+        private fun decimalsFor(token: StablecoinToken): Int? =
+            when (token) {
+                StablecoinToken.USDT -> 6
+                StablecoinToken.USDC -> 6
+                else -> null
+            }
     }
 }

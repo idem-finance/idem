@@ -5,5 +5,8 @@ import finance.idem.core.security.ApiKeyId
 
 interface RevokeApiKeyUseCase {
     /** Returns false when the key was not found for this tenant. */
-    fun execute(keyId: ApiKeyId, tenantId: TenantId): Boolean
+    fun execute(
+        keyId: ApiKeyId,
+        tenantId: TenantId,
+    ): Boolean
 }

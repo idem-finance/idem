@@ -12,11 +12,14 @@ import org.springframework.transaction.annotation.Transactional
 class SessionDebitAdapter(
     private val entityManager: EntityManager,
 ) : SessionDebitPort {
-
     @Transactional(readOnly = true)
-    override fun sumDebitsForSession(tenantId: TenantId, sessionId: String): MonetaryAmount {
+    override fun sumDebitsForSession(
+        tenantId: TenantId,
+        sessionId: String,
+    ): MonetaryAmount {
         entityManager.setRlsTenantId(tenantId)
-        val sql = """
+        val sql =
+            """
             SELECT COALESCE(SUM(jl.amount), 0)
             FROM journal_lines jl
             JOIN workflow_steps ws ON ws.transaction_id = jl.transaction_id
@@ -24,34 +27,38 @@ class SessionDebitAdapter(
             WHERE wp.tenant_id = '${tenantId.value}'
               AND wp.session_id = '${sessionId.replace("'", "''")}'
               AND jl.entry_type = 'DEBIT'
-        """.trimIndent()
+            """.trimIndent()
         val result = entityManager.createNativeQuery(sql).singleResult
         return MonetaryAmount.of(result.toString())
     }
 
     @Transactional(readOnly = true)
-    override fun sumDebitsLastHour(tenantId: TenantId, agentKeyPrefix: String?): MonetaryAmount {
+    override fun sumDebitsLastHour(
+        tenantId: TenantId,
+        agentKeyPrefix: String?,
+    ): MonetaryAmount {
         entityManager.setRlsTenantId(tenantId)
-        val sql = if (agentKeyPrefix != null) {
-            """
-            SELECT COALESCE(SUM(jl.amount), 0)
-            FROM journal_lines jl
-            JOIN workflow_steps ws ON ws.transaction_id = jl.transaction_id
-            JOIN workflow_plans wp ON wp.id = ws.workflow_plan_id
-            WHERE wp.tenant_id = '${tenantId.value}'
-              AND wp.api_key_prefix = '${agentKeyPrefix.replace("'", "''")}'
-              AND jl.entry_type = 'DEBIT'
-              AND jl.created_at > now() - INTERVAL '1 hour'
-            """.trimIndent()
-        } else {
-            """
-            SELECT COALESCE(SUM(amount), 0)
-            FROM journal_lines
-            WHERE tenant_id = '${tenantId.value}'
-              AND entry_type = 'DEBIT'
-              AND created_at > now() - INTERVAL '1 hour'
-            """.trimIndent()
-        }
+        val sql =
+            if (agentKeyPrefix != null) {
+                """
+                SELECT COALESCE(SUM(jl.amount), 0)
+                FROM journal_lines jl
+                JOIN workflow_steps ws ON ws.transaction_id = jl.transaction_id
+                JOIN workflow_plans wp ON wp.id = ws.workflow_plan_id
+                WHERE wp.tenant_id = '${tenantId.value}'
+                  AND wp.api_key_prefix = '${agentKeyPrefix.replace("'", "''")}'
+                  AND jl.entry_type = 'DEBIT'
+                  AND jl.created_at > now() - INTERVAL '1 hour'
+                """.trimIndent()
+            } else {
+                """
+                SELECT COALESCE(SUM(amount), 0)
+                FROM journal_lines
+                WHERE tenant_id = '${tenantId.value}'
+                  AND entry_type = 'DEBIT'
+                  AND created_at > now() - INTERVAL '1 hour'
+                """.trimIndent()
+            }
         val result = entityManager.createNativeQuery(sql).singleResult
         return MonetaryAmount.of(result.toString())
     }

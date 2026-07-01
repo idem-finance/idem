@@ -13,15 +13,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class MonetaryEntryResponseTest {
-
     @Test
     fun `FiatEntryResponse from produces correct dto`() {
-        val entry = FiatEntry(
-            amount = MonetaryAmount.of("100.00"),
-            currency = FiatCurrency.BRL,
-            rail = PaymentRail.PIX,
-            bankReference = "ref-001",
-        )
+        val entry =
+            FiatEntry(
+                amount = MonetaryAmount.of("100.00"),
+                currency = FiatCurrency.BRL,
+                rail = PaymentRail.PIX,
+                bankReference = "ref-001",
+            )
 
         val dto = assertIs<FiatEntryResponse>(MonetaryEntryResponse.from(entry))
         assertEquals(BigDecimal("100.00"), dto.amount)
@@ -53,16 +53,17 @@ class MonetaryEntryResponseTest {
 
     @Test
     fun `OnChainEntryResponse from produces correct dto`() {
-        val entry = OnChainEntry(
-            amount = MonetaryAmount.of("1.000000"),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.EVM,
-            txHash = "0xabc",
-            blockNumber = 19_000_000L,
-            walletAddress = "0xWallet",
-            tokenContract = "0xContract",
-            fromAddress = "0xSender",
-        )
+        val entry =
+            OnChainEntry(
+                amount = MonetaryAmount.of("1.000000"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                txHash = "0xabc",
+                blockNumber = 19_000_000L,
+                walletAddress = "0xWallet",
+                tokenContract = "0xContract",
+                fromAddress = "0xSender",
+            )
 
         val dto = assertIs<OnChainEntryResponse>(MonetaryEntryResponse.from(entry))
         assertEquals(BigDecimal("1.000000"), dto.amount)
@@ -96,15 +97,16 @@ class MonetaryEntryResponseTest {
 
     @Test
     fun `OnChainEntryResponse defaults fromAddress to null when omitted`() {
-        val dto = OnChainEntryResponse(
-            amount = BigDecimal("1.000000"),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.EVM,
-            txHash = "0xabc",
-            blockNumber = 19_000_000L,
-            walletAddress = "0xWallet",
-            tokenContract = "0xContract",
-        )
+        val dto =
+            OnChainEntryResponse(
+                amount = BigDecimal("1.000000"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                txHash = "0xabc",
+                blockNumber = 19_000_000L,
+                walletAddress = "0xWallet",
+                tokenContract = "0xContract",
+            )
         assertEquals(null, dto.fromAddress)
     }
 }

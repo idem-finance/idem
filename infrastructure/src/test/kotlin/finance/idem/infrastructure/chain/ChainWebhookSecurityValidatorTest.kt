@@ -7,23 +7,26 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 class ChainWebhookSecurityValidatorTest {
-
     /**
      * Minimal config that exposes a [ChainConfig] bean so [ChainWebhookSecurityValidator]
      * can be wired — mirrors how [EvmChainReaderFactory] registers it in production.
      */
     @Configuration
-    class TestChainConfig(private val config: ChainConfig) {
+    class TestChainConfig(
+        private val config: ChainConfig,
+    ) {
         @Bean
         fun chainConfig() = config
     }
 
-    private fun runnerWith(alchemyKey: String, quicknodeSecret: String) =
-        ApplicationContextRunner()
-            .withBean(ChainConfig::class.java, {
-                ChainConfig(alchemyWebhookSigningKey = alchemyKey, quicknodeWebhookSecret = quicknodeSecret)
-            })
-            .withUserConfiguration(ChainWebhookSecurityValidator::class.java)
+    private fun runnerWith(
+        alchemyKey: String,
+        quicknodeSecret: String,
+    ) = ApplicationContextRunner()
+        .withBean(ChainConfig::class.java, {
+            ChainConfig(alchemyWebhookSigningKey = alchemyKey, quicknodeWebhookSecret = quicknodeSecret)
+        })
+        .withUserConfiguration(ChainWebhookSecurityValidator::class.java)
 
     @Test
     fun `context fails when alchemy signing key is blank`() {

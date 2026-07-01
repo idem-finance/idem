@@ -25,7 +25,6 @@ class BasicReconciliationService(
     @Value("\${idem.reconciliation.enabled:true}") private val enabled: Boolean,
     @Value("\${idem.reconciliation.matching-window-hours:24}") private val matchingWindowHours: Long,
 ) : BasicReconciliationUseCase {
-
     override fun reconcile(transaction: Transaction): ReconciliationResult {
         if (!enabled) return ReconciliationResult.NotApplicable
 
@@ -36,14 +35,15 @@ class BasicReconciliationService(
         val candidateAccountIds: Set<AccountId> = onChainLines.map { it.accountId }.toSet()
         val since = Instant.now().minusSeconds(matchingWindowHours * 3600)
 
-        val candidates = settlementRepository.findPendingCandidates(
-            tenantId = transaction.tenantId,
-            accountIds = candidateAccountIds,
-            token = onChainEntry.token,
-            chainId = onChainEntry.chainId,
-            walletAddress = onChainEntry.walletAddress,
-            since = since,
-        )
+        val candidates =
+            settlementRepository.findPendingCandidates(
+                tenantId = transaction.tenantId,
+                accountIds = candidateAccountIds,
+                token = onChainEntry.token,
+                chainId = onChainEntry.chainId,
+                walletAddress = onChainEntry.walletAddress,
+                since = since,
+            )
 
         val match = findMatch(candidates, onChainEntry)
         return if (match != null) {
@@ -70,29 +70,38 @@ class BasicReconciliationService(
      *   evidence this transfer is NOT that expectation, so it is excluded from both
      *   tiers rather than falling back to FIFO.
      */
-    private fun findMatch(candidates: List<Settlement>, onChainEntry: OnChainEntry): Settlement? {
+    private fun findMatch(
+        candidates: List<Settlement>,
+        onChainEntry: OnChainEntry,
+    ): Settlement? {
         val amountMatches = candidates.filter { it.amount == onChainEntry.amount }
 
-        val tier1 = amountMatches.firstOrNull { candidate ->
-            val expected = candidate.expectedFromAddress
-            expected != null && onChainEntry.fromAddress != null &&
-                expected.equals(onChainEntry.fromAddress, ignoreCase = true)
-        }
+        val tier1 =
+            amountMatches.firstOrNull { candidate ->
+                val expected = candidate.expectedFromAddress
+                expected != null && onChainEntry.fromAddress != null &&
+                    expected.equals(onChainEntry.fromAddress, ignoreCase = true)
+            }
         if (tier1 != null) return tier1
 
         return amountMatches.firstOrNull { it.expectedFromAddress == null }
     }
 
-    private fun settle(match: Settlement, transaction: Transaction, onChainEntry: OnChainEntry): ReconciliationResult {
-        val saved = settlementRepository.save(
-            match.copy(
-                status = EntryStatus.SETTLED,
-                matchedTransactionId = transaction.id,
-                txHash = onChainEntry.txHash,
-                blockNumber = onChainEntry.blockNumber,
-                confirmedAt = Instant.now(),
+    private fun settle(
+        match: Settlement,
+        transaction: Transaction,
+        onChainEntry: OnChainEntry,
+    ): ReconciliationResult {
+        val saved =
+            settlementRepository.save(
+                match.copy(
+                    status = EntryStatus.SETTLED,
+                    matchedTransactionId = transaction.id,
+                    txHash = onChainEntry.txHash,
+                    blockNumber = onChainEntry.blockNumber,
+                    confirmedAt = Instant.now(),
+                ),
             )
-        )
         webhookOutboxRepository.save(WebhookOutboxEntry.transactionSettled(transaction))
         return ReconciliationResult.Settled(saved)
     }
@@ -111,36 +120,43 @@ class BasicReconciliationService(
             log.warn(
                 "Reconciliation: tx={} tenant={} has on-chain lines but no CREDIT-typed line " +
                     "— skipping reconciliation",
-                transaction.id.value, transaction.tenantId.value,
+                transaction.id.value,
+                transaction.tenantId.value,
             )
             return ReconciliationResult.NotApplicable
         }
         val now = Instant.now()
-        val saved = settlementRepository.save(
-            Settlement(
-                id = UUID.randomUUID(),
-                tenantId = transaction.tenantId,
-                accountId = creditLine.accountId,
-                amount = onChainEntry.amount,
-                token = onChainEntry.token,
-                chainId = onChainEntry.chainId,
-                walletAddress = onChainEntry.walletAddress,
-                status = EntryStatus.UNMATCHED,
-                matchedTransactionId = transaction.id,
-                txHash = onChainEntry.txHash,
-                blockNumber = onChainEntry.blockNumber,
-                confirmedAt = now,
-                createdAt = now,
-                createdBy = "system",
+        val saved =
+            settlementRepository.save(
+                Settlement(
+                    id = UUID.randomUUID(),
+                    tenantId = transaction.tenantId,
+                    accountId = creditLine.accountId,
+                    amount = onChainEntry.amount,
+                    token = onChainEntry.token,
+                    chainId = onChainEntry.chainId,
+                    walletAddress = onChainEntry.walletAddress,
+                    status = EntryStatus.UNMATCHED,
+                    matchedTransactionId = transaction.id,
+                    txHash = onChainEntry.txHash,
+                    blockNumber = onChainEntry.blockNumber,
+                    confirmedAt = now,
+                    createdAt = now,
+                    createdBy = "system",
+                ),
             )
-        )
         webhookOutboxRepository.save(WebhookOutboxEntry.reconciliationUnmatched(transaction))
         log.warn(
             "Reconciliation: no PENDING match for tx={} tenant={} amount={} token={} chainId={} " +
                 "wallet={} txHash={} — flagged UNMATCHED (id={})",
-            transaction.id.value, transaction.tenantId.value, onChainEntry.amount.value,
-            onChainEntry.token, onChainEntry.chainId, onChainEntry.walletAddress,
-            onChainEntry.txHash, saved.id,
+            transaction.id.value,
+            transaction.tenantId.value,
+            onChainEntry.amount.value,
+            onChainEntry.token,
+            onChainEntry.chainId,
+            onChainEntry.walletAddress,
+            onChainEntry.txHash,
+            saved.id,
         )
         return ReconciliationResult.Unmatched(saved)
     }

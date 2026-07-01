@@ -6,11 +6,11 @@ import finance.idem.application.ledger.CreateAccountUseCase
 import finance.idem.application.ledger.EntriesAccountNotFound
 import finance.idem.application.ledger.GenerateStatementQuery
 import finance.idem.application.ledger.GenerateStatementUseCase
-import finance.idem.application.ledger.InvalidCursor
-import finance.idem.application.ledger.GetEntriesQuery
-import finance.idem.application.ledger.GetEntriesUseCase
 import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.application.ledger.GetBalanceUseCase
+import finance.idem.application.ledger.GetEntriesQuery
+import finance.idem.application.ledger.GetEntriesUseCase
+import finance.idem.application.ledger.InvalidCursor
 import finance.idem.application.ledger.ListAccountsQuery
 import finance.idem.application.ledger.ListAccountsUseCase
 import finance.idem.application.ledger.StatementAccountNotFound
@@ -49,7 +49,6 @@ class AccountController(
     private val getEntriesUseCase: GetEntriesUseCase,
     private val generateStatementUseCase: GenerateStatementUseCase,
 ) {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     @PostMapping
@@ -64,31 +63,37 @@ class AccountController(
     fun createAccount(
         @Valid @RequestBody request: CreateAccountRequest,
     ): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val currency = try {
-            FiatCurrency.valueOf(request.currency.uppercase())
-        } catch (e: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_CURRENCY", "currency must be one of: ${FiatCurrency.entries.joinToString()}"))
-        }
+        val currency =
+            try {
+                FiatCurrency.valueOf(request.currency.uppercase())
+            } catch (e: IllegalArgumentException) {
+                return ResponseEntity
+                    .badRequest()
+                    .body(ErrorResponse("INVALID_CURRENCY", "currency must be one of: ${FiatCurrency.entries.joinToString()}"))
+            }
 
-        val type = try {
-            AccountType.valueOf(request.type.uppercase())
-        } catch (e: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_ACCOUNT_TYPE", "type must be one of: ${AccountType.entries.joinToString()}"))
-        }
+        val type =
+            try {
+                AccountType.valueOf(request.type.uppercase())
+            } catch (e: IllegalArgumentException) {
+                return ResponseEntity
+                    .badRequest()
+                    .body(ErrorResponse("INVALID_ACCOUNT_TYPE", "type must be one of: ${AccountType.entries.joinToString()}"))
+            }
 
-        val cmd = CreateAccountCommand(
-            tenantId = tenantId,
-            name = request.name,
-            description = request.description,
-            currency = currency,
-            type = type,
-            createdBy = SecurityContextHolder.getContext().authentication?.name ?: "unknown",
-        )
+        val cmd =
+            CreateAccountCommand(
+                tenantId = tenantId,
+                name = request.name,
+                description = request.description,
+                currency = currency,
+                type = type,
+                createdBy = SecurityContextHolder.getContext().authentication?.name ?: "unknown",
+            )
 
         return createAccountUseCase.execute(cmd).fold(
             onSuccess = { account ->
@@ -96,7 +101,8 @@ class AccountController(
             },
             onFailure = { error ->
                 log.error("Unexpected error creating account", error)
-                ResponseEntity.internalServerError()
+                ResponseEntity
+                    .internalServerError()
                     .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
             },
         )
@@ -111,8 +117,9 @@ class AccountController(
         ApiResponse(responseCode = "403", description = "API key does not have the ACCOUNTS_READ scope"),
     )
     fun listAccounts(): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         return listAccountsUseCase.execute(ListAccountsQuery(tenantId)).fold(
             onSuccess = { accounts ->
@@ -120,7 +127,8 @@ class AccountController(
             },
             onFailure = { error ->
                 log.error("Unexpected error listing accounts", error)
-                ResponseEntity.internalServerError()
+                ResponseEntity
+                    .internalServerError()
                     .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
             },
         )
@@ -141,14 +149,16 @@ class AccountController(
         @Parameter(description = "Return balance as of this ISO-8601 instant (omit for current balance)")
         @RequestParam(required = false) asOf: Instant?,
     ): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val query = GetBalanceQuery(
-            accountId = AccountId(accountId),
-            tenantId = tenantId,
-            asOf = asOf,
-        )
+        val query =
+            GetBalanceQuery(
+                accountId = AccountId(accountId),
+                tenantId = tenantId,
+                asOf = asOf,
+            )
 
         return getBalanceUseCase.execute(query).fold(
             onSuccess = { balance ->
@@ -156,11 +166,14 @@ class AccountController(
             },
             onFailure = { error ->
                 when (error) {
-                    is BalanceAccountNotFound ->
+                    is BalanceAccountNotFound -> {
                         ResponseEntity.notFound().build()
+                    }
+
                     else -> {
                         log.error("Unexpected error fetching balance for account $accountId", error)
-                        ResponseEntity.internalServerError()
+                        ResponseEntity
+                            .internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
                     }
                 }
@@ -190,27 +203,31 @@ class AccountController(
         @Parameter(description = "Opaque pagination cursor from a previous page's nextCursor")
         @RequestParam(required = false) cursor: String?,
     ): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         if (limit < 1 || limit > 200) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("INVALID_LIMIT", "limit must be between 1 and 200"))
         }
 
         if (from != null && to != null && from.isAfter(to)) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("INVALID_RANGE", "from must not be after to"))
         }
 
-        val query = GetEntriesQuery(
-            accountId = AccountId(accountId),
-            tenantId = tenantId,
-            from = from,
-            to = to,
-            limit = limit,
-            cursor = cursor,
-        )
+        val query =
+            GetEntriesQuery(
+                accountId = AccountId(accountId),
+                tenantId = tenantId,
+                from = from,
+                to = to,
+                limit = limit,
+                cursor = cursor,
+            )
 
         return getEntriesUseCase.execute(query).fold(
             onSuccess = { page ->
@@ -218,14 +235,20 @@ class AccountController(
             },
             onFailure = { error ->
                 when (error) {
-                    is EntriesAccountNotFound ->
+                    is EntriesAccountNotFound -> {
                         ResponseEntity.notFound().build()
-                    is InvalidCursor ->
-                        ResponseEntity.badRequest()
+                    }
+
+                    is InvalidCursor -> {
+                        ResponseEntity
+                            .badRequest()
                             .body(ErrorResponse("INVALID_CURSOR", error.message ?: "Invalid cursor"))
+                    }
+
                     else -> {
                         log.error("Unexpected error fetching entries for account $accountId", error)
-                        ResponseEntity.internalServerError()
+                        ResponseEntity
+                            .internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
                     }
                 }
@@ -251,25 +274,29 @@ class AccountController(
         @Parameter(description = "Inclusive upper bound on occurredAt for the statement period", required = true)
         @RequestParam(required = false) to: Instant?,
     ): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         if (from == null || to == null) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("MISSING_PARAMETER", "from and to are required"))
         }
 
         if (from.isAfter(to)) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("INVALID_RANGE", "from must not be after to"))
         }
 
-        val query = GenerateStatementQuery(
-            accountId = AccountId(accountId),
-            tenantId = tenantId,
-            from = from,
-            to = to,
-        )
+        val query =
+            GenerateStatementQuery(
+                accountId = AccountId(accountId),
+                tenantId = tenantId,
+                from = from,
+                to = to,
+            )
 
         return generateStatementUseCase.execute(query).fold(
             onSuccess = { statement ->
@@ -277,11 +304,14 @@ class AccountController(
             },
             onFailure = { error ->
                 when (error) {
-                    is StatementAccountNotFound ->
+                    is StatementAccountNotFound -> {
                         ResponseEntity.notFound().build()
+                    }
+
                     else -> {
                         log.error("Unexpected error generating statement for account $accountId", error)
-                        ResponseEntity.internalServerError()
+                        ResponseEntity
+                            .internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
                     }
                 }

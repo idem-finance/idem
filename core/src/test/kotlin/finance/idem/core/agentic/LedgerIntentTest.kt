@@ -11,7 +11,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class LedgerIntentTest {
-
     @Test
     fun `prior totals default to ZERO when omitted`() {
         val intent = LedgerIntent(lines = emptyList())
@@ -23,11 +22,12 @@ class LedgerIntentTest {
     fun `constructs with explicit prior totals`() {
         val sessionTotal = MonetaryAmount.of("500.00")
         val hourlyTotal = MonetaryAmount.of("200.00")
-        val intent = LedgerIntent(
-            lines = emptyList(),
-            priorSessionDebitTotal = sessionTotal,
-            priorHourlyDebitTotal = hourlyTotal,
-        )
+        val intent =
+            LedgerIntent(
+                lines = emptyList(),
+                priorSessionDebitTotal = sessionTotal,
+                priorHourlyDebitTotal = hourlyTotal,
+            )
         assertEquals(sessionTotal, intent.priorSessionDebitTotal)
         assertEquals(hourlyTotal, intent.priorHourlyDebitTotal)
     }
@@ -40,15 +40,17 @@ class LedgerIntentTest {
 
     @Test
     fun `constructs with lines`() {
-        val line = LedgerIntentLine(
-            accountId = AccountId.generate(),
-            entryType = EntryType.DEBIT,
-            monetaryEntry = FiatEntry(
-                amount = MonetaryAmount.of("100.00"),
-                currency = FiatCurrency.USD,
-                rail = PaymentRail.ACH,
-            ),
-        )
+        val line =
+            LedgerIntentLine(
+                accountId = AccountId.generate(),
+                entryType = EntryType.DEBIT,
+                monetaryEntry =
+                    FiatEntry(
+                        amount = MonetaryAmount.of("100.00"),
+                        currency = FiatCurrency.USD,
+                        rail = PaymentRail.ACH,
+                    ),
+            )
         val intent = LedgerIntent(lines = listOf(line))
         assertEquals(1, intent.lines.size)
         assertEquals(line, intent.lines.first())

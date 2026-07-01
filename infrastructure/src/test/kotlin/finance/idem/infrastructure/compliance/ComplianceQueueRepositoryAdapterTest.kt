@@ -29,13 +29,13 @@ import kotlin.test.assertNotNull
 @Testcontainers
 @Import(ComplianceQueueRepositoryAdapter::class, PersistenceTestConfig::class)
 class ComplianceQueueRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -57,31 +57,37 @@ class ComplianceQueueRepositoryAdapterTest {
 
     private val tenantA = TenantId.generate()
 
-    private fun onChainEntry(amount: String = "1500") = OnChainEntry(
-        amount = MonetaryAmount.of(amount),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.EVM,
-        txHash = "0xabc123def456",
-        blockNumber = 42L,
-        walletAddress = "0xwallet",
-        tokenContract = "0xcontract",
-    )
-
-    private fun missingDataItem(tenantId: TenantId, txHash: String = "0xabc123def456"): ComplianceQueueItem {
-        val entry = onChainEntry()
-        val result = TravelRuleValidationResult.MissingData(
-            entry = entry.copy(txHash = txHash),
-            reason = "Travel rule data required for transfers >= 1000",
+    private fun onChainEntry(amount: String = "1500") =
+        OnChainEntry(
+            amount = MonetaryAmount.of(amount),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.EVM,
+            txHash = "0xabc123def456",
+            blockNumber = 42L,
+            walletAddress = "0xwallet",
+            tokenContract = "0xcontract",
         )
+
+    private fun missingDataItem(
+        tenantId: TenantId,
+        txHash: String = "0xabc123def456",
+    ): ComplianceQueueItem {
+        val entry = onChainEntry()
+        val result =
+            TravelRuleValidationResult.MissingData(
+                entry = entry.copy(txHash = txHash),
+                reason = "Travel rule data required for transfers >= 1000",
+            )
         return ComplianceQueueItem.from(result, tenantId)
     }
 
     private fun incompleteDataItem(tenantId: TenantId): ComplianceQueueItem {
         val entry = onChainEntry()
-        val result = TravelRuleValidationResult.IncompleteData(
-            entry = entry,
-            missingFields = listOf("originator.vaspDid", "beneficiary.vaspDid"),
-        )
+        val result =
+            TravelRuleValidationResult.IncompleteData(
+                entry = entry,
+                missingFields = listOf("originator.vaspDid", "beneficiary.vaspDid"),
+            )
         return ComplianceQueueItem.from(result, tenantId)
     }
 

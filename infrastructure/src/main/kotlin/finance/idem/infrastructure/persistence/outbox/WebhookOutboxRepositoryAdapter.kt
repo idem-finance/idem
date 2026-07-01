@@ -19,15 +19,17 @@ class WebhookOutboxRepositoryAdapter(
     private val entityManager: EntityManager,
     private val objectMapper: ObjectMapper,
 ) : WebhookOutboxRepository {
-
     @Transactional
     override fun save(entry: WebhookOutboxEntry) {
         entityManager.setRlsTenantId(entry.tenantId)
-        val payload = objectMapper.writeValueAsString(mapOf(
-            "transactionId" to entry.transactionId.value.toString(),
-            "eventType" to entry.eventType,
-            "occurredAt" to entry.occurredAt.toString(),
-        ))
+        val payload =
+            objectMapper.writeValueAsString(
+                mapOf(
+                    "transactionId" to entry.transactionId.value.toString(),
+                    "eventType" to entry.eventType,
+                    "occurredAt" to entry.occurredAt.toString(),
+                ),
+            )
         jpaRepository.save(
             WebhookOutboxDataModel(
                 id = entry.id,
@@ -41,7 +43,7 @@ class WebhookOutboxRepositoryAdapter(
                 lastError = null,
                 createdAt = Instant.now(),
                 deliveredAt = null,
-            )
+            ),
         )
     }
 
@@ -55,19 +57,32 @@ class WebhookOutboxRepositoryAdapter(
     }
 
     @Transactional
-    override fun markDelivered(id: UUID, tenantId: TenantId) {
+    override fun markDelivered(
+        id: UUID,
+        tenantId: TenantId,
+    ) {
         entityManager.setRlsTenantId(tenantId)
         jpaRepository.markDelivered(id.toString(), tenantId.value.toString(), Instant.now())
     }
 
     @Transactional
-    override fun markFailedForRetry(id: UUID, tenantId: TenantId, attempts: Int, nextRetryAt: Instant, lastError: String?) {
+    override fun markFailedForRetry(
+        id: UUID,
+        tenantId: TenantId,
+        attempts: Int,
+        nextRetryAt: Instant,
+        lastError: String?,
+    ) {
         entityManager.setRlsTenantId(tenantId)
         jpaRepository.markFailedForRetry(id.toString(), tenantId.value.toString(), attempts, nextRetryAt, lastError)
     }
 
     @Transactional
-    override fun markDead(id: UUID, tenantId: TenantId, lastError: String?) {
+    override fun markDead(
+        id: UUID,
+        tenantId: TenantId,
+        lastError: String?,
+    ) {
         entityManager.setRlsTenantId(tenantId)
         jpaRepository.markDead(id.toString(), tenantId.value.toString(), lastError)
     }

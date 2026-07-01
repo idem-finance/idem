@@ -24,15 +24,19 @@ data class Transaction internal constructor(
     val createdBy: String,
 ) {
     fun validate() {
-        if (lines.size < 2) throw LedgerInvariantViolation(
-            "Transaction must have at least 2 journal lines, got ${lines.size}"
-        )
+        if (lines.size < 2) {
+            throw LedgerInvariantViolation(
+                "Transaction must have at least 2 journal lines, got ${lines.size}",
+            )
+        }
 
         val crossTenant = lines.filter { it.tenantId != tenantId }
-        if (crossTenant.isNotEmpty()) throw LedgerInvariantViolation(
-            "All journal lines must belong to tenant ${tenantId.value}; " +
-                "${crossTenant.size} line(s) belong to a different tenant"
-        )
+        if (crossTenant.isNotEmpty()) {
+            throw LedgerInvariantViolation(
+                "All journal lines must belong to tenant ${tenantId.value}; " +
+                    "${crossTenant.size} line(s) belong to a different tenant",
+            )
+        }
 
         // Per-currency: sum of debits must equal sum of credits.
         // Fiat and on-chain are keyed separately (FIAT:BRL ≠ ONCHAIN:USDC).
@@ -42,9 +46,11 @@ data class Transaction internal constructor(
             .forEach { (currencyKey, currencyLines) ->
                 val debits = currencyLines.sumAmounts(EntryType.DEBIT)
                 val credits = currencyLines.sumAmounts(EntryType.CREDIT)
-                if (debits != credits) throw LedgerInvariantViolation(
-                    "Unbalanced transaction for $currencyKey: debits=$debits, credits=$credits"
-                )
+                if (debits != credits) {
+                    throw LedgerInvariantViolation(
+                        "Unbalanced transaction for $currencyKey: debits=$debits, credits=$credits",
+                    )
+                }
             }
     }
 
@@ -60,21 +66,22 @@ data class Transaction internal constructor(
             agentContext: AgentContext? = null,
             metadata: Map<String, String> = emptyMap(),
         ): Transaction {
-            val tx = Transaction(
-                id = id,
-                tenantId = tenantId,
-                idempotencyKey = idempotencyKey,
-                lines = lines.toList(),
-                // MVP has no async/2-phase commit — by the time create() validates
-                // successfully, PostTransactionService is about to persist it within
-                // a single @Transactional, so it's committed atomically with that write.
-                status = TransactionStatus.COMMITTED,
-                agentContext = agentContext,
-                metadata = metadata.toMap(),
-                occurredAt = occurredAt,
-                createdAt = createdAt,
-                createdBy = createdBy,
-            )
+            val tx =
+                Transaction(
+                    id = id,
+                    tenantId = tenantId,
+                    idempotencyKey = idempotencyKey,
+                    lines = lines.toList(),
+                    // MVP has no async/2-phase commit — by the time create() validates
+                    // successfully, PostTransactionService is about to persist it within
+                    // a single @Transactional, so it's committed atomically with that write.
+                    status = TransactionStatus.COMMITTED,
+                    agentContext = agentContext,
+                    metadata = metadata.toMap(),
+                    occurredAt = occurredAt,
+                    createdAt = createdAt,
+                    createdBy = createdBy,
+                )
             tx.validate()
             return tx
         }
@@ -91,19 +98,27 @@ data class Transaction internal constructor(
             createdBy: String,
             agentContext: AgentContext? = null,
             metadata: Map<String, String> = emptyMap(),
-        ): Transaction = Transaction(
-            id = id, tenantId = tenantId, idempotencyKey = idempotencyKey,
-            lines = lines, status = status, agentContext = agentContext,
-            metadata = metadata, occurredAt = occurredAt,
-            createdAt = createdAt, createdBy = createdBy,
-        )
+        ): Transaction =
+            Transaction(
+                id = id,
+                tenantId = tenantId,
+                idempotencyKey = idempotencyKey,
+                lines = lines,
+                status = status,
+                agentContext = agentContext,
+                metadata = metadata,
+                occurredAt = occurredAt,
+                createdAt = createdAt,
+                createdBy = createdBy,
+            )
     }
 }
 
-private fun MonetaryEntry.currencyKey(): String = when (this) {
-    is FiatEntry -> "FIAT:${currency.name}"
-    is OnChainEntry -> "ONCHAIN:${chainId.name}:${token.name}"
-}
+private fun MonetaryEntry.currencyKey(): String =
+    when (this) {
+        is FiatEntry -> "FIAT:${currency.name}"
+        is OnChainEntry -> "ONCHAIN:${chainId.name}:${token.name}"
+    }
 
 private fun List<JournalLine>.sumAmounts(type: EntryType): MonetaryAmount =
     filter { it.entryType == type }

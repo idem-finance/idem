@@ -25,51 +25,112 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class ReconcileEntriesServiceUnitTest {
-
     private val tenantId = TenantId.generate()
     private val accountId = AccountId.generate()
     private val now = Instant.now()
 
     // Pass-through transaction manager — no real DB needed for unit tests.
-    private val txManager = object : PlatformTransactionManager {
-        override fun getTransaction(definition: TransactionDefinition?): TransactionStatus = SimpleTransactionStatus()
-        override fun commit(status: TransactionStatus) = Unit
-        override fun rollback(status: TransactionStatus) = Unit
-    }
+    private val txManager =
+        object : PlatformTransactionManager {
+            override fun getTransaction(definition: TransactionDefinition?): TransactionStatus = SimpleTransactionStatus()
+
+            override fun commit(status: TransactionStatus) = Unit
+
+            override fun rollback(status: TransactionStatus) = Unit
+        }
 
     private val savedOutbox = mutableListOf<WebhookOutboxEntry>()
-    private val outboxRepo = object : WebhookOutboxRepository {
-        override fun save(entry: WebhookOutboxEntry) { savedOutbox.add(entry) }
-        override fun findDispatchable(limit: Int) = emptyList<finance.idem.application.outbox.WebhookOutboxDispatch>()
-        override fun markDelivered(id: UUID, tenantId: TenantId) = Unit
-        override fun markFailedForRetry(id: UUID, tenantId: TenantId, attempts: Int, nextRetryAt: Instant, lastError: String?) = Unit
-        override fun markDead(id: UUID, tenantId: TenantId, lastError: String?) = Unit
-    }
+    private val outboxRepo =
+        object : WebhookOutboxRepository {
+            override fun save(entry: WebhookOutboxEntry) {
+                savedOutbox.add(entry)
+            }
+
+            override fun findDispatchable(limit: Int) = emptyList<finance.idem.application.outbox.WebhookOutboxDispatch>()
+
+            override fun markDelivered(
+                id: UUID,
+                tenantId: TenantId,
+            ) = Unit
+
+            override fun markFailedForRetry(
+                id: UUID,
+                tenantId: TenantId,
+                attempts: Int,
+                nextRetryAt: Instant,
+                lastError: String?,
+            ) = Unit
+
+            override fun markDead(
+                id: UUID,
+                tenantId: TenantId,
+                lastError: String?,
+            ) = Unit
+        }
 
     private fun unmatchedSettlement(
         walletAddress: String = "wallet-1",
         token: StablecoinToken = StablecoinToken.USDC,
     ) = Settlement(
-        id = UUID.randomUUID(), tenantId = tenantId, accountId = accountId,
-        amount = MonetaryAmount.of("100.000000"), token = token,
-        chainId = ChainId.SOLANA, walletAddress = walletAddress,
-        status = EntryStatus.UNMATCHED, matchedTransactionId = TransactionId.generate(),
-        txHash = "hash-${UUID.randomUUID()}", blockNumber = 1L,
-        confirmedAt = now.minusSeconds(30), createdAt = now, createdBy = "system",
+        id = UUID.randomUUID(),
+        tenantId = tenantId,
+        accountId = accountId,
+        amount = MonetaryAmount.of("100.000000"),
+        token = token,
+        chainId = ChainId.SOLANA,
+        walletAddress = walletAddress,
+        status = EntryStatus.UNMATCHED,
+        matchedTransactionId = TransactionId.generate(),
+        txHash = "hash-${UUID.randomUUID()}",
+        blockNumber = 1L,
+        confirmedAt = now.minusSeconds(30),
+        createdAt = now,
+        createdBy = "system",
     )
 
-    private fun cmd() = ReconcileEntriesCommand(
-        tenantId = tenantId, accountId = null,
-        from = now.minusSeconds(3600), to = now.plusSeconds(3600),
-    )
+    private fun cmd() =
+        ReconcileEntriesCommand(
+            tenantId = tenantId,
+            accountId = null,
+            from = now.minusSeconds(3600),
+            to = now.plusSeconds(3600),
+        )
 
-    private val emptySettlementRepo = object : SettlementRepository {
-        override fun save(settlement: Settlement) = settlement
-        override fun findById(id: UUID, tenantId: TenantId): Settlement? = null
-        override fun findUnmatchedInWindow(tenantId: TenantId, accountId: AccountId?, from: Instant, to: Instant) = emptyList<Settlement>()
-        override fun findPendingCandidates(tenantId: TenantId, accountIds: Set<AccountId>, token: StablecoinToken, chainId: ChainId, walletAddress: String, since: Instant) = emptyList<Settlement>()
-        override fun findPage(tenantId: TenantId, status: finance.idem.core.ledger.EntryStatus?, from: Instant?, to: Instant?, afterCreatedAt: Instant?, afterId: UUID?, limit: Int) = emptyList<Settlement>()
-    }
+    private val emptySettlementRepo =
+        object : SettlementRepository {
+            override fun save(settlement: Settlement) = settlement
+
+            override fun findById(
+                id: UUID,
+                tenantId: TenantId,
+            ): Settlement? = null
+
+            override fun findUnmatchedInWindow(
+                tenantId: TenantId,
+                accountId: AccountId?,
+                from: Instant,
+                to: Instant,
+            ) = emptyList<Settlement>()
+
+            override fun findPendingCandidates(
+                tenantId: TenantId,
+                accountIds: Set<AccountId>,
+                token: StablecoinToken,
+                chainId: ChainId,
+                walletAddress: String,
+                since: Instant,
+            ) = emptyList<Settlement>()
+
+            override fun findPage(
+                tenantId: TenantId,
+                status: finance.idem.core.ledger.EntryStatus?,
+                from: Instant?,
+                to: Instant?,
+                afterCreatedAt: Instant?,
+                afterId: UUID?,
+                limit: Int,
+            ) = emptyList<Settlement>()
+        }
 
     @Test
     fun `tolerancePercent above 100 is rejected`() {
@@ -99,22 +160,44 @@ class ReconcileEntriesServiceUnitTest {
         val failingEntry = unmatchedSettlement(walletAddress = "wallet-1", token = StablecoinToken.USDC)
         val survivingEntry = unmatchedSettlement(walletAddress = "wallet-2", token = StablecoinToken.USDT)
 
-        val repo = object : SettlementRepository {
-            override fun save(settlement: Settlement) = settlement
-            override fun findById(id: UUID, tenantId: TenantId): Settlement? = null
-            override fun findUnmatchedInWindow(tenantId: TenantId, accountId: AccountId?, from: Instant, to: Instant) =
-                listOf(failingEntry, survivingEntry)
+        val repo =
+            object : SettlementRepository {
+                override fun save(settlement: Settlement) = settlement
 
-            override fun findPendingCandidates(
-                tenantId: TenantId, accountIds: Set<AccountId>,
-                token: StablecoinToken, chainId: ChainId, walletAddress: String, since: Instant,
-            ): List<Settlement> {
-                if (token == StablecoinToken.USDC) throw RuntimeException("simulated DB failure")
-                return emptyList()
+                override fun findById(
+                    id: UUID,
+                    tenantId: TenantId,
+                ): Settlement? = null
+
+                override fun findUnmatchedInWindow(
+                    tenantId: TenantId,
+                    accountId: AccountId?,
+                    from: Instant,
+                    to: Instant,
+                ) = listOf(failingEntry, survivingEntry)
+
+                override fun findPendingCandidates(
+                    tenantId: TenantId,
+                    accountIds: Set<AccountId>,
+                    token: StablecoinToken,
+                    chainId: ChainId,
+                    walletAddress: String,
+                    since: Instant,
+                ): List<Settlement> {
+                    if (token == StablecoinToken.USDC) throw RuntimeException("simulated DB failure")
+                    return emptyList()
+                }
+
+                override fun findPage(
+                    tenantId: TenantId,
+                    status: finance.idem.core.ledger.EntryStatus?,
+                    from: Instant?,
+                    to: Instant?,
+                    afterCreatedAt: Instant?,
+                    afterId: UUID?,
+                    limit: Int,
+                ) = emptyList<Settlement>()
             }
-
-            override fun findPage(tenantId: TenantId, status: finance.idem.core.ledger.EntryStatus?, from: Instant?, to: Instant?, afterCreatedAt: Instant?, afterId: UUID?, limit: Int) = emptyList<Settlement>()
-        }
 
         val service = ReconcileEntriesService(repo, outboxRepo, txManager, BigDecimal.ZERO)
         val result = service.execute(cmd()).getOrThrow()

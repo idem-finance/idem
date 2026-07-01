@@ -28,8 +28,20 @@ class SettlementDataModel(
     @Column(name = "created_by", nullable = false, updatable = false) val createdBy: String,
 ) {
     protected constructor() : this(
-        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-        BigDecimal.ZERO, "", "", "", "PENDING",
-        null, null, null, null, null, Instant.now(), "",
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        BigDecimal.ZERO,
+        "",
+        "",
+        "",
+        "PENDING",
+        null,
+        null,
+        null,
+        null,
+        null,
+        Instant.now(),
+        "",
     )
 }

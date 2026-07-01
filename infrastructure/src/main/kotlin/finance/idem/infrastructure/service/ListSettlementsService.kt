@@ -13,30 +13,36 @@ import org.springframework.transaction.annotation.Transactional
 class ListSettlementsService(
     private val settlementRepository: SettlementRepository,
 ) : ListSettlementsUseCase {
-
     @Transactional(readOnly = true)
     override fun execute(query: ListSettlementsQuery): Result<SettlementPage> {
         val rawCursor = query.cursor
-        val cursor = if (rawCursor != null) {
-            SettlementCursor.decode(rawCursor).getOrElse {
-                return Result.failure(InvalidCursor(rawCursor))
+        val cursor =
+            if (rawCursor != null) {
+                SettlementCursor.decode(rawCursor).getOrElse {
+                    return Result.failure(InvalidCursor(rawCursor))
+                }
+            } else {
+                null
             }
-        } else null
 
-        val rows = settlementRepository.findPage(
-            tenantId = query.tenantId,
-            status = query.status,
-            from = query.from,
-            to = query.to,
-            afterCreatedAt = cursor?.createdAt,
-            afterId = cursor?.id,
-            limit = query.limit,
-        )
+        val rows =
+            settlementRepository.findPage(
+                tenantId = query.tenantId,
+                status = query.status,
+                from = query.from,
+                to = query.to,
+                afterCreatedAt = cursor?.createdAt,
+                afterId = cursor?.id,
+                limit = query.limit,
+            )
 
-        val nextCursor = if (rows.size == query.limit) {
-            val last = rows.last()
-            SettlementCursor(last.createdAt, last.id).encode()
-        } else null
+        val nextCursor =
+            if (rows.size == query.limit) {
+                val last = rows.last()
+                SettlementCursor(last.createdAt, last.id).encode()
+            } else {
+                null
+            }
 
         return Result.success(SettlementPage(rows, nextCursor))
     }

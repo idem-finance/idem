@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
 class ReconcileBatchModelsTest {
-
     private val tenantId = TenantId.generate()
     private val txId = TransactionId.generate()
 

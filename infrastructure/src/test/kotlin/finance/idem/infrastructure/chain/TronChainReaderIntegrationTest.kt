@@ -20,25 +20,25 @@ import org.mockito.kotlin.whenever
 import java.math.BigDecimal
 
 class TronChainReaderIntegrationTest {
-
     private lateinit var wireMock: WireMockServer
     private lateinit var reader: TronChainReader
 
     private val usdtContract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
     private val watchedWallet = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"
-    private val senderWallet  = "TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW"
-    private val txHash        = "abc123def456abc123def456abc123def456abc123def456abc123def456abc1"
-    private val blockId       = 55_000_000L
+    private val senderWallet = "TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW"
+    private val txHash = "abc123def456abc123def456abc123def456abc123def456abc123def456abc1"
+    private val blockId = 55_000_000L
 
-    private val watched = WatchedAddress(
-        chainKey = "TRON",
-        walletAddress = watchedWallet,
-        tokenContract = usdtContract,
-        token = StablecoinToken.USDT,
-        tenantId = "tenant-1",
-        debitAccountId = "debit-1",
-        creditAccountId = "credit-1",
-    )
+    private val watched =
+        WatchedAddress(
+            chainKey = "TRON",
+            walletAddress = watchedWallet,
+            tokenContract = usdtContract,
+            token = StablecoinToken.USDT,
+            tenantId = "tenant-1",
+            debitAccountId = "debit-1",
+            creditAccountId = "credit-1",
+        )
 
     @BeforeEach
     fun setUp() {
@@ -48,12 +48,13 @@ class TronChainReaderIntegrationTest {
         val mockRepo = mock<WatchedAddressRepository>()
         whenever(mockRepo.findByChainKey("TRON")).thenReturn(listOf(watched))
 
-        reader = TronChainReader(
-            apiUrl = "http://localhost:${wireMock.port()}",
-            watchedAddressRepository = mockRepo,
-            requestDelayMs = 0,
-            pageSize = 2,
-        )
+        reader =
+            TronChainReader(
+                apiUrl = "http://localhost:${wireMock.port()}",
+                watchedAddressRepository = mockRepo,
+                requestDelayMs = 0,
+                pageSize = 2,
+            )
     }
 
     @AfterEach
@@ -107,9 +108,14 @@ class TronChainReaderIntegrationTest {
     fun `poll skips failed transfers`() {
         stubTransfers(
             transfersResponse(
-                txHash, blockId, senderWallet, watchedWallet, usdtContract, "1000000",
+                txHash,
+                blockId,
+                senderWallet,
+                watchedWallet,
+                usdtContract,
+                "1000000",
                 finalResult = "FAILED",
-            )
+            ),
         )
 
         assertEquals(emptyList<DetectedTransfer>(), reader.poll(0L))
@@ -128,11 +134,11 @@ class TronChainReaderIntegrationTest {
                 .inScenario("pagination")
                 .whenScenarioStateIs(STARTED)
                 .willReturn(
-                    aResponse().withStatus(200)
+                    aResponse()
+                        .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(twoTransfersResponse(tx1, blockId + 2, tx2, blockId + 1, senderWallet))
-                )
-                .willSetStateTo("page2")
+                        .withBody(twoTransfersResponse(tx1, blockId + 2, tx2, blockId + 1, senderWallet)),
+                ).willSetStateTo("page2"),
         )
         // Page 2 (start=2): 1 item at checkpoint boundary → stops pagination
         wireMock.stubFor(
@@ -141,10 +147,11 @@ class TronChainReaderIntegrationTest {
                 .inScenario("pagination")
                 .whenScenarioStateIs("page2")
                 .willReturn(
-                    aResponse().withStatus(200)
+                    aResponse()
+                        .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(transfersResponse(tx3, blockId, senderWallet, watchedWallet, usdtContract, "500000"))
-                )
+                        .withBody(transfersResponse(tx3, blockId, senderWallet, watchedWallet, usdtContract, "500000")),
+                ),
         )
 
         val result = reader.poll(blockId)
@@ -161,19 +168,20 @@ class TronChainReaderIntegrationTest {
 
         val mockRepo = mock<WatchedAddressRepository>()
         whenever(mockRepo.findByChainKey("TRON")).thenReturn(listOf(watched))
-        val readerWithApiKey = TronChainReader(
-            apiUrl = "http://localhost:${wireMock.port()}",
-            watchedAddressRepository = mockRepo,
-            requestDelayMs = 0,
-            pageSize = 2,
-            apiKey = "test-tron-key",
-        )
+        val readerWithApiKey =
+            TronChainReader(
+                apiUrl = "http://localhost:${wireMock.port()}",
+                watchedAddressRepository = mockRepo,
+                requestDelayMs = 0,
+                pageSize = 2,
+                apiKey = "test-tron-key",
+            )
 
         readerWithApiKey.poll(blockId - 1)
 
         wireMock.verify(
             getRequestedFor(urlPathEqualTo("/api/token_trc20/transfers"))
-                .withHeader("TRON-PRO-API-KEY", equalTo("test-tron-key"))
+                .withHeader("TRON-PRO-API-KEY", equalTo("test-tron-key")),
         )
     }
 
@@ -185,7 +193,7 @@ class TronChainReaderIntegrationTest {
 
         wireMock.verify(
             getRequestedFor(urlPathEqualTo("/api/token_trc20/transfers"))
-                .withoutHeader("TRON-PRO-API-KEY")
+                .withoutHeader("TRON-PRO-API-KEY"),
         )
     }
 
@@ -195,14 +203,19 @@ class TronChainReaderIntegrationTest {
             get(urlPathEqualTo("/api/token_trc20/transfers"))
                 .withQueryParam("start", equalTo("0"))
                 .willReturn(
-                    aResponse().withStatus(200)
+                    aResponse()
+                        .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody(
                             twoTransfersResponse(
-                                "txNew", blockId + 10, "txOld", blockId + 1, senderWallet,
-                            )
-                        )
-                )
+                                "txNew",
+                                blockId + 10,
+                                "txOld",
+                                blockId + 1,
+                                senderWallet,
+                            ),
+                        ),
+                ),
         )
 
         val result = reader.poll(blockId)
@@ -219,10 +232,11 @@ class TronChainReaderIntegrationTest {
                 .withQueryParam("relatedAddress", equalTo(watchedWallet))
                 .withQueryParam("token_address", equalTo(usdtContract))
                 .willReturn(
-                    aResponse().withStatus(200)
+                    aResponse()
+                        .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(body)
-                )
+                        .withBody(body),
+                ),
         )
     }
 
@@ -255,11 +269,13 @@ class TronChainReaderIntegrationTest {
             }
           ]
         }
-    """.trimIndent()
+        """.trimIndent()
 
     private fun twoTransfersResponse(
-        tx1: String, block1: Long,
-        tx2: String, block2: Long,
+        tx1: String,
+        block1: Long,
+        tx2: String,
+        block2: Long,
         from: String,
     ) = """
         {
@@ -288,9 +304,10 @@ class TronChainReaderIntegrationTest {
             }
           ]
         }
-    """.trimIndent()
+        """.trimIndent()
 
-    private fun emptyTransfersResponse() = """
+    private fun emptyTransfersResponse() =
+        """
         {"total": 0, "rangeTotal": 0, "token_transfers": []}
-    """.trimIndent()
+        """.trimIndent()
 }

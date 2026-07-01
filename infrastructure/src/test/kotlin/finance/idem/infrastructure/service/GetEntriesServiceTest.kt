@@ -2,8 +2,8 @@ package finance.idem.infrastructure.service
 
 import finance.idem.application.ledger.EntriesAccountNotFound
 import finance.idem.application.ledger.EntryCursor
-import finance.idem.application.ledger.InvalidCursor
 import finance.idem.application.ledger.GetEntriesQuery
+import finance.idem.application.ledger.InvalidCursor
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
@@ -36,8 +36,8 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class GetEntriesServiceTest {
-
     @Mock lateinit var accountRepository: AccountRepository
+
     @Mock lateinit var journalLineRepository: JournalLineRepository
 
     private lateinit var service: GetEntriesService
@@ -51,13 +51,21 @@ class GetEntriesServiceTest {
         service = GetEntriesService(accountRepository, journalLineRepository)
     }
 
-    private fun account() = Account.create(
-        id = accountId, tenantId = tenantId, name = "Nostro BRL",
-        currency = FiatCurrency.BRL, type = AccountType.ASSET,
-        createdAt = now, createdBy = "system",
-    )
+    private fun account() =
+        Account.create(
+            id = accountId,
+            tenantId = tenantId,
+            name = "Nostro BRL",
+            currency = FiatCurrency.BRL,
+            type = AccountType.ASSET,
+            createdAt = now,
+            createdBy = "system",
+        )
 
-    private fun line(createdAt: Instant, id: UUID = UUID.randomUUID()) = JournalLine(
+    private fun line(
+        createdAt: Instant,
+        id: UUID = UUID.randomUUID(),
+    ) = JournalLine(
         id = id,
         transactionId = TransactionId.generate(),
         accountId = accountId,

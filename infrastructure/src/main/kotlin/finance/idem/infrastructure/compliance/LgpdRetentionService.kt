@@ -29,6 +29,7 @@ class LgpdRetentionService(
                     entityManager.setRlsTenantId(TenantId(entry.tenantId))
                     travelRuleDataRepo.deleteByTransferIdAndTenantId(entry.entityId, entry.tenantId)
                 }
+
                 else -> {
                     log.error("Unknown entityType '{}' in LGPD retention sweep — skipping row {}", entry.entityType, entry.id)
                     return@forEach

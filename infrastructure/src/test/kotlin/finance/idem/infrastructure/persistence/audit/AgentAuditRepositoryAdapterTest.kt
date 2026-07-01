@@ -31,16 +31,16 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(AgentAuditRepositoryAdapter::class, AuditConfig::class, PersistenceTestConfig::class)
 class AgentAuditRepositoryAdapterTest {
-
     companion object {
         private const val APP_ROLE = "idem_app_role"
         private const val APP_ROLE_PASSWORD = "app_role_pass"
 
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -55,7 +55,8 @@ class AgentAuditRepositoryAdapterTest {
                 conn.createStatement().use { stmt ->
                     try {
                         stmt.execute("CREATE ROLE $APP_ROLE NOSUPERUSER LOGIN PASSWORD '$APP_ROLE_PASSWORD'")
-                    } catch (_: SQLException) {}
+                    } catch (_: SQLException) {
+                    }
                     stmt.execute("GRANT CONNECT ON DATABASE idem_test TO $APP_ROLE")
                     stmt.execute("GRANT USAGE ON SCHEMA public TO $APP_ROLE")
                     stmt.execute("GRANT SELECT, INSERT ON agent_audit_events TO $APP_ROLE")
@@ -78,12 +79,13 @@ class AgentAuditRepositoryAdapterTest {
     private val tenantA = TenantId.generate()
     private val tenantB = TenantId.generate()
 
-    private fun agentContext(planId: WorkflowPlanId) = AgentContext(
-        agentId = "agent-1",
-        sessionId = "sess-abc",
-        workflowPlanId = planId,
-        intent = "offramp",
-    )
+    private fun agentContext(planId: WorkflowPlanId) =
+        AgentContext(
+            agentId = "agent-1",
+            sessionId = "sess-abc",
+            workflowPlanId = planId,
+            intent = "offramp",
+        )
 
     @Test
     fun `save persists event with non-blank HMAC`() {
@@ -95,9 +97,11 @@ class AgentAuditRepositoryAdapterTest {
         entityManager.clear()
 
         entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
-        val hmac = entityManager.createNativeQuery(
-            "SELECT hmac FROM agent_audit_events WHERE id = '${event.id}'"
-        ).singleResult as String
+        val hmac =
+            entityManager
+                .createNativeQuery(
+                    "SELECT hmac FROM agent_audit_events WHERE id = '${event.id}'",
+                ).singleResult as String
 
         assertTrue(hmac.isNotBlank())
         assertTrue(hmac.length >= 40, "HMAC should be base64-encoded ~44 chars")
@@ -117,15 +121,22 @@ class AgentAuditRepositoryAdapterTest {
         entityManager.clear()
 
         entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
-        val count = (entityManager.createNativeQuery(
-            "SELECT COUNT(*) FROM agent_audit_events WHERE workflow_plan_id = '${planId.value}'"
-        ).singleResult as Number).toLong()
+        val count =
+            (
+                entityManager
+                    .createNativeQuery(
+                        "SELECT COUNT(*) FROM agent_audit_events WHERE workflow_plan_id = '${planId.value}'",
+                    ).singleResult as Number
+            ).toLong()
 
         assertEquals(2L, count, "Both PENDING and COMPLETED rows must be present")
 
-        val statuses = entityManager.createNativeQuery(
-            "SELECT status FROM agent_audit_events WHERE workflow_plan_id = '${planId.value}' ORDER BY occurred_at"
-        ).resultList.map { it as String }
+        val statuses =
+            entityManager
+                .createNativeQuery(
+                    "SELECT status FROM agent_audit_events WHERE workflow_plan_id = '${planId.value}' ORDER BY occurred_at",
+                ).resultList
+                .map { it as String }
         assertEquals(AgentAuditStatus.PENDING.name, statuses[0])
         assertEquals(AgentAuditStatus.COMPLETED.name, statuses[1])
     }
@@ -145,8 +156,10 @@ class AgentAuditRepositoryAdapterTest {
         var countA = -1L
         session.doWork { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantA.value}'")
-            val rs = conn.createStatement()
-                .executeQuery("SELECT COUNT(*) FROM agent_audit_events WHERE tenant_id = '${tenantA.value}'")
+            val rs =
+                conn
+                    .createStatement()
+                    .executeQuery("SELECT COUNT(*) FROM agent_audit_events WHERE tenant_id = '${tenantA.value}'")
             rs.next()
             countA = rs.getLong(1)
         }
@@ -154,8 +167,10 @@ class AgentAuditRepositoryAdapterTest {
         var countB = -1L
         session.doWork { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantB.value}'")
-            val rs = conn.createStatement()
-                .executeQuery("SELECT COUNT(*) FROM agent_audit_events WHERE tenant_id = '${tenantB.value}'")
+            val rs =
+                conn
+                    .createStatement()
+                    .executeQuery("SELECT COUNT(*) FROM agent_audit_events WHERE tenant_id = '${tenantB.value}'")
             rs.next()
             countB = rs.getLong(1)
         }
@@ -261,7 +276,7 @@ class AgentAuditRepositoryAdapterTest {
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantA.value}'")
             assertThrows<SQLException>("Non-superuser UPDATE must be denied") {
                 conn.createStatement().executeUpdate(
-                    "UPDATE agent_audit_events SET status = 'TAMPERED' WHERE id = '${event.id}'"
+                    "UPDATE agent_audit_events SET status = 'TAMPERED' WHERE id = '${event.id}'",
                 )
             }
             conn.rollback()

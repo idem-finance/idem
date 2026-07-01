@@ -10,17 +10,17 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class ApiKeyTest {
-
     private val tenantId = TenantId.generate()
 
     @Test
     fun `create builds ApiKey with generated id and correct fields`() {
-        val key = ApiKey.create(
-            tenantId = tenantId,
-            keyHash = "\$2a\$12\$somebcrypthash",
-            prefix = "sk_live_a1b2",
-            scopes = setOf(ApiScope.TRANSACTIONS_READ, ApiScope.TRANSACTIONS_WRITE),
-        )
+        val key =
+            ApiKey.create(
+                tenantId = tenantId,
+                keyHash = "\$2a\$12\$somebcrypthash",
+                prefix = "sk_live_a1b2",
+                scopes = setOf(ApiScope.TRANSACTIONS_READ, ApiScope.TRANSACTIONS_WRITE),
+            )
         assertNotNull(key.id)
         assert(key.tenantId == tenantId)
         assert(key.keyHash == "\$2a\$12\$somebcrypthash")
@@ -80,12 +80,13 @@ class ApiKeyTest {
         assertEquals(uuid, ApiKeyId.of(uuid.toString()).value)
     }
 
-    private fun apiKey(scopes: Set<ApiScope> = setOf(ApiScope.TRANSACTIONS_READ)) = ApiKey(
-        id = ApiKeyId.generate(),
-        tenantId = tenantId,
-        keyHash = "\$2a\$12\$hash",
-        prefix = "sk_live_test",
-        scopes = scopes,
-        createdAt = Instant.now(),
-    )
+    private fun apiKey(scopes: Set<ApiScope> = setOf(ApiScope.TRANSACTIONS_READ)) =
+        ApiKey(
+            id = ApiKeyId.generate(),
+            tenantId = tenantId,
+            keyHash = "\$2a\$12\$hash",
+            prefix = "sk_live_test",
+            scopes = scopes,
+            createdAt = Instant.now(),
+        )
 }

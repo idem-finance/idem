@@ -16,7 +16,6 @@ import org.springframework.test.web.servlet.post
 @WebMvcTest(QuickNodeWebhookController::class)
 @AutoConfigureMockMvc(addFilters = false)
 class QuickNodeWebhookControllerTest {
-
     @Autowired
     lateinit var mockMvc: MockMvc
 
@@ -28,15 +27,17 @@ class QuickNodeWebhookControllerTest {
         whenever(quickNodeWebhookUseCase.handle(any(), any(), any(), any()))
             .thenReturn(Result.failure(IllegalArgumentException("bad sig")))
 
-        mockMvc.post("/internal/webhooks/quicknode") {
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
-            header("X-QN-Signature", "deadbeef")
-            header("X-QN-Nonce", "test-nonce-123")
-            header("X-QN-Timestamp", "1718000000")
-        }.andExpect {
-            status { isUnauthorized() }
-        }
+        mockMvc
+            .post("/internal/webhooks/quicknode") {
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
+                header("X-QN-Signature", "deadbeef")
+                header("X-QN-Nonce", "test-nonce-123")
+                header("X-QN-Timestamp", "1718000000")
+            }.andExpect {
+                status { isUnauthorized() }
+            }
     }
 
     @Test
@@ -44,15 +45,17 @@ class QuickNodeWebhookControllerTest {
         whenever(quickNodeWebhookUseCase.handle(any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
 
-        mockMvc.post("/internal/webhooks/quicknode") {
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
-            header("X-QN-Signature", "valid-hmac")
-            header("X-QN-Nonce", "test-nonce-123")
-            header("X-QN-Timestamp", "1718000000")
-        }.andExpect {
-            status { isOk() }
-        }
+        mockMvc
+            .post("/internal/webhooks/quicknode") {
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
+                header("X-QN-Signature", "valid-hmac")
+                header("X-QN-Nonce", "test-nonce-123")
+                header("X-QN-Timestamp", "1718000000")
+            }.andExpect {
+                status { isOk() }
+            }
     }
 
     @Test
@@ -60,11 +63,13 @@ class QuickNodeWebhookControllerTest {
         whenever(quickNodeWebhookUseCase.handle(isNull(), isNull(), isNull(), any()))
             .thenReturn(Result.success(Unit))
 
-        mockMvc.post("/internal/webhooks/quicknode") {
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
-        }.andExpect {
-            status { isOk() }
-        }
+        mockMvc
+            .post("/internal/webhooks/quicknode") {
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    """{"data":[{"signature":"abc","slot":1,"network":"mainnet-beta"}],"metadata":{"streamId":"st_test","dataset":"block"}}"""
+            }.andExpect {
+                status { isOk() }
+            }
     }
 }

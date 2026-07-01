@@ -23,13 +23,14 @@ data class ApiKey(
             prefix: String,
             scopes: Set<ApiScope>,
             createdAt: Instant = Instant.now(),
-        ): ApiKey = ApiKey(
-            id = ApiKeyId.generate(),
-            tenantId = tenantId,
-            keyHash = keyHash,
-            prefix = prefix,
-            scopes = scopes,
-            createdAt = createdAt,
-        )
+        ): ApiKey =
+            ApiKey(
+                id = ApiKeyId.generate(),
+                tenantId = tenantId,
+                keyHash = keyHash,
+                prefix = prefix,
+                scopes = scopes,
+                createdAt = createdAt,
+            )
     }
 }

@@ -23,7 +23,6 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class ApiKeyManagementServiceTest {
-
     @Mock
     private lateinit var apiKeyService: ApiKeyService
 
@@ -123,12 +122,13 @@ class ApiKeyManagementServiceTest {
         assertFalse(service.execute(keyId, tenantId))
     }
 
-    private fun apiKey(scopes: Set<ApiScope>) = ApiKey(
-        id = ApiKeyId(UUID.randomUUID()),
-        tenantId = tenantId,
-        keyHash = "\$2a\$12\$fakehash",
-        prefix = "sk_live_test",
-        scopes = scopes,
-        createdAt = Instant.now(),
-    )
+    private fun apiKey(scopes: Set<ApiScope>) =
+        ApiKey(
+            id = ApiKeyId(UUID.randomUUID()),
+            tenantId = tenantId,
+            keyHash = "\$2a\$12\$fakehash",
+            prefix = "sk_live_test",
+            scopes = scopes,
+            createdAt = Instant.now(),
+        )
 }

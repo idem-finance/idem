@@ -6,9 +6,9 @@ import org.springframework.boot.context.properties.bind.BindException
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 
 class AuditPropertiesValidationTest {
-
-    private val runner = ApplicationContextRunner()
-        .withUserConfiguration(AuditConfig::class.java)
+    private val runner =
+        ApplicationContextRunner()
+            .withUserConfiguration(AuditConfig::class.java)
 
     @Test
     fun `context fails to start when hmac-secret is blank`() {

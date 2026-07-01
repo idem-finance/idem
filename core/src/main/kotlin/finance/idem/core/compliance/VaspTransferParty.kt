@@ -14,6 +14,6 @@ data class VaspTransferParty(
             "VaspTransferParty cannot have both naturalPerson and legalPerson"
         }
         require(accountNumber.isNotBlank()) { "accountNumber must not be blank" }
-        require(vaspDid.isNotBlank())       { "vaspDid must not be blank" }
+        require(vaspDid.isNotBlank()) { "vaspDid must not be blank" }
     }
 }

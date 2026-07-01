@@ -26,7 +26,6 @@ class TenantController(
     private val updateWebhookConfigUseCase: UpdateWebhookConfigUseCase,
     private val getWebhookConfigUseCase: GetWebhookConfigUseCase,
 ) {
-
     @PutMapping("/webhook")
     @PreAuthorize("hasAuthority('WEBHOOK_MANAGE')")
     @Operation(summary = "Register or update the tenant webhook URL")
@@ -36,9 +35,12 @@ class TenantController(
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "403", description = "Requires WEBHOOK_MANAGE scope"),
     )
-    fun updateWebhook(@Valid @RequestBody request: UpdateWebhookConfigRequest): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+    fun updateWebhook(
+        @Valid @RequestBody request: UpdateWebhookConfigRequest,
+    ): ResponseEntity<Any> {
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         return updateWebhookConfigUseCase.execute(tenantId, request.webhookUrl).fold(
             onSuccess = { config ->
@@ -46,11 +48,12 @@ class TenantController(
                     WebhookConfigCreatedResponse(
                         webhookUrl = config.webhookUrl,
                         webhookSecret = config.webhookSecret,
-                    )
+                    ),
                 )
             },
             onFailure = { error ->
-                ResponseEntity.badRequest()
+                ResponseEntity
+                    .badRequest()
                     .body(ErrorResponse("INVALID_WEBHOOK_URL", error.message ?: "Invalid webhook URL"))
             },
         )
@@ -66,18 +69,21 @@ class TenantController(
         ApiResponse(responseCode = "403", description = "Requires WEBHOOK_MANAGE scope"),
     )
     fun getWebhook(): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val config = getWebhookConfigUseCase.execute(tenantId)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse("WEBHOOK_NOT_CONFIGURED", "No webhook URL configured for this tenant"))
+        val config =
+            getWebhookConfigUseCase.execute(tenantId)
+                ?: return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse("WEBHOOK_NOT_CONFIGURED", "No webhook URL configured for this tenant"))
 
         return ResponseEntity.ok(
             WebhookConfigResponse(
                 webhookUrl = config.webhookUrl,
                 secretPrefix = config.webhookSecret.take(8) + "...",
-            )
+            ),
         )
     }
 }

@@ -15,18 +15,19 @@ class ReconcileBatchService(
     private val transactionRepository: TransactionRepository,
     private val reconciliationUseCase: BasicReconciliationUseCase,
 ) : ReconcileBatchUseCase {
-
     @Transactional
     override fun execute(cmd: ReconcileBatchCommand): List<ReconcileBatchItemResult> =
         cmd.transactionIds.map { txId ->
-            val tx = transactionRepository.findById(txId, cmd.tenantId)
-                ?: return@map ReconcileBatchItemResult(txId, ReconcileOutcome.NOT_FOUND)
+            val tx =
+                transactionRepository.findById(txId, cmd.tenantId)
+                    ?: return@map ReconcileBatchItemResult(txId, ReconcileOutcome.NOT_FOUND)
 
-            val outcome = when (reconciliationUseCase.reconcile(tx)) {
-                is ReconciliationResult.Settled -> ReconcileOutcome.SETTLED
-                is ReconciliationResult.Unmatched -> ReconcileOutcome.UNMATCHED
-                ReconciliationResult.NotApplicable -> ReconcileOutcome.NOT_APPLICABLE
-            }
+            val outcome =
+                when (reconciliationUseCase.reconcile(tx)) {
+                    is ReconciliationResult.Settled -> ReconcileOutcome.SETTLED
+                    is ReconciliationResult.Unmatched -> ReconcileOutcome.UNMATCHED
+                    ReconciliationResult.NotApplicable -> ReconcileOutcome.NOT_APPLICABLE
+                }
             ReconcileBatchItemResult(txId, outcome)
         }
 }

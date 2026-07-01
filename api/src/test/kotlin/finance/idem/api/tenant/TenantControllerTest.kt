@@ -23,7 +23,6 @@ import java.util.UUID
 @WebMvcTest(TenantController::class)
 @Import(TestSecurityConfig::class)
 class TenantControllerTest {
-
     @Autowired
     lateinit var mockMvc: MockMvc
 
@@ -48,15 +47,16 @@ class TenantControllerTest {
     fun `update returns 200 with secret on valid URL`() {
         whenever(updateWebhookConfigUseCase.execute(any(), any())).thenReturn(Result.success(config))
 
-        mockMvc.put("/api/v1/tenant/webhook") {
-            with(authentication(webhookAuth))
-            contentType = MediaType.APPLICATION_JSON
-            content = putBody
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.webhookUrl") { value(webhookUrl) }
-            jsonPath("$.webhookSecret") { value(secret) }
-        }
+        mockMvc
+            .put("/api/v1/tenant/webhook") {
+                with(authentication(webhookAuth))
+                contentType = MediaType.APPLICATION_JSON
+                content = putBody
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.webhookUrl") { value(webhookUrl) }
+                jsonPath("$.webhookSecret") { value(secret) }
+            }
     }
 
     @Test
@@ -64,46 +64,50 @@ class TenantControllerTest {
         whenever(updateWebhookConfigUseCase.execute(any(), any()))
             .thenReturn(Result.failure(IllegalArgumentException("blocked private address")))
 
-        mockMvc.put("/api/v1/tenant/webhook") {
-            with(authentication(webhookAuth))
-            contentType = MediaType.APPLICATION_JSON
-            content = putBody
-        }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("INVALID_WEBHOOK_URL") }
-        }
+        mockMvc
+            .put("/api/v1/tenant/webhook") {
+                with(authentication(webhookAuth))
+                contentType = MediaType.APPLICATION_JSON
+                content = putBody
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_WEBHOOK_URL") }
+            }
     }
 
     @Test
     fun `update returns 400 when webhookUrl is blank`() {
-        mockMvc.put("/api/v1/tenant/webhook") {
-            with(authentication(webhookAuth))
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"webhookUrl":""}"""
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .put("/api/v1/tenant/webhook") {
+                with(authentication(webhookAuth))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"webhookUrl":""}"""
+            }.andExpect {
+                status { isBadRequest() }
+            }
     }
 
     @Test
     fun `update returns 403 when wrong scope`() {
-        mockMvc.put("/api/v1/tenant/webhook") {
-            with(authentication(wrongScopeAuth))
-            contentType = MediaType.APPLICATION_JSON
-            content = putBody
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .put("/api/v1/tenant/webhook") {
+                with(authentication(wrongScopeAuth))
+                contentType = MediaType.APPLICATION_JSON
+                content = putBody
+            }.andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
     fun `update returns 401 with no auth`() {
-        mockMvc.put("/api/v1/tenant/webhook") {
-            contentType = MediaType.APPLICATION_JSON
-            content = putBody
-        }.andExpect {
-            status { isUnauthorized() }
-        }
+        mockMvc
+            .put("/api/v1/tenant/webhook") {
+                contentType = MediaType.APPLICATION_JSON
+                content = putBody
+            }.andExpect {
+                status { isUnauthorized() }
+            }
     }
 
     // ---- GET /api/v1/tenant/webhook ----
@@ -112,33 +116,36 @@ class TenantControllerTest {
     fun `get returns 200 with masked secret when configured`() {
         whenever(getWebhookConfigUseCase.execute(any())).thenReturn(config)
 
-        mockMvc.get("/api/v1/tenant/webhook") {
-            with(authentication(webhookAuth))
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.webhookUrl") { value(webhookUrl) }
-            jsonPath("$.secretPrefix") { value("aaaaaaaa...") }
-        }
+        mockMvc
+            .get("/api/v1/tenant/webhook") {
+                with(authentication(webhookAuth))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.webhookUrl") { value(webhookUrl) }
+                jsonPath("$.secretPrefix") { value("aaaaaaaa...") }
+            }
     }
 
     @Test
     fun `get returns 404 when not configured`() {
         whenever(getWebhookConfigUseCase.execute(any())).thenReturn(null)
 
-        mockMvc.get("/api/v1/tenant/webhook") {
-            with(authentication(webhookAuth))
-        }.andExpect {
-            status { isNotFound() }
-            jsonPath("$.code") { value("WEBHOOK_NOT_CONFIGURED") }
-        }
+        mockMvc
+            .get("/api/v1/tenant/webhook") {
+                with(authentication(webhookAuth))
+            }.andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("WEBHOOK_NOT_CONFIGURED") }
+            }
     }
 
     @Test
     fun `get returns 403 when wrong scope`() {
-        mockMvc.get("/api/v1/tenant/webhook") {
-            with(authentication(wrongScopeAuth))
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .get("/api/v1/tenant/webhook") {
+                with(authentication(wrongScopeAuth))
+            }.andExpect {
+                status { isForbidden() }
+            }
     }
 }

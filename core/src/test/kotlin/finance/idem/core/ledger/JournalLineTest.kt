@@ -16,27 +16,28 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 class JournalLineTest {
-
     private val now = Instant.now()
     private val tenantId = TenantId.generate()
-    private val fiatEntry = FiatEntry(
-        amount = MonetaryAmount.of("1000.00"),
-        currency = FiatCurrency.BRL,
-        rail = PaymentRail.PIX,
-    )
+    private val fiatEntry =
+        FiatEntry(
+            amount = MonetaryAmount.of("1000.00"),
+            currency = FiatCurrency.BRL,
+            rail = PaymentRail.PIX,
+        )
 
     @Test
     fun `constructs with all required fields`() {
-        val line = JournalLine(
-            id = UUID.randomUUID(),
-            transactionId = TransactionId.generate(),
-            accountId = AccountId.generate(),
-            tenantId = tenantId,
-            entryType = EntryType.DEBIT,
-            monetaryEntry = fiatEntry,
-            createdAt = now,
-            createdBy = "sk_live_xxxx",
-        )
+        val line =
+            JournalLine(
+                id = UUID.randomUUID(),
+                transactionId = TransactionId.generate(),
+                accountId = AccountId.generate(),
+                tenantId = tenantId,
+                entryType = EntryType.DEBIT,
+                monetaryEntry = fiatEntry,
+                createdAt = now,
+                createdBy = "sk_live_xxxx",
+            )
         assertEquals(EntryType.DEBIT, line.entryType)
         assertEquals(fiatEntry, line.monetaryEntry)
         assertEquals("sk_live_xxxx", line.createdBy)
@@ -45,47 +46,50 @@ class JournalLineTest {
 
     @Test
     fun `description defaults to null`() {
-        val line = JournalLine(
-            id = UUID.randomUUID(),
-            transactionId = TransactionId.generate(),
-            accountId = AccountId.generate(),
-            tenantId = tenantId,
-            entryType = EntryType.CREDIT,
-            monetaryEntry = fiatEntry,
-            createdAt = now,
-            createdBy = "system",
-        )
+        val line =
+            JournalLine(
+                id = UUID.randomUUID(),
+                transactionId = TransactionId.generate(),
+                accountId = AccountId.generate(),
+                tenantId = tenantId,
+                entryType = EntryType.CREDIT,
+                monetaryEntry = fiatEntry,
+                createdAt = now,
+                createdBy = "system",
+            )
         assertNull(line.description)
     }
 
     @Test
     fun `constructs with optional description`() {
-        val line = JournalLine(
-            id = UUID.randomUUID(),
-            transactionId = TransactionId.generate(),
-            accountId = AccountId.generate(),
-            tenantId = tenantId,
-            entryType = EntryType.CREDIT,
-            monetaryEntry = fiatEntry,
-            description = "Nostro BRL PIX leg",
-            createdAt = now,
-            createdBy = "system",
-        )
+        val line =
+            JournalLine(
+                id = UUID.randomUUID(),
+                transactionId = TransactionId.generate(),
+                accountId = AccountId.generate(),
+                tenantId = tenantId,
+                entryType = EntryType.CREDIT,
+                monetaryEntry = fiatEntry,
+                description = "Nostro BRL PIX leg",
+                createdAt = now,
+                createdBy = "system",
+            )
         assertEquals("Nostro BRL PIX leg", line.description)
     }
 
     @Test
     fun `is immutable — no updatedAt or updatedBy fields`() {
-        val line = JournalLine(
-            id = UUID.randomUUID(),
-            transactionId = TransactionId.generate(),
-            accountId = AccountId.generate(),
-            tenantId = tenantId,
-            entryType = EntryType.DEBIT,
-            monetaryEntry = fiatEntry,
-            createdAt = now,
-            createdBy = "system",
-        )
+        val line =
+            JournalLine(
+                id = UUID.randomUUID(),
+                transactionId = TransactionId.generate(),
+                accountId = AccountId.generate(),
+                tenantId = tenantId,
+                entryType = EntryType.DEBIT,
+                monetaryEntry = fiatEntry,
+                createdAt = now,
+                createdBy = "system",
+            )
         val fields = line::class.members.map { it.name }.toSet()
         assertFalse("updatedAt" in fields, "JournalLine must not have updatedAt — it is immutable")
         assertFalse("updatedBy" in fields, "JournalLine must not have updatedBy — it is immutable")

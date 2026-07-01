@@ -13,10 +13,11 @@ data class EntryTimelineResponse(
     val nextCursor: String?,
 ) {
     companion object {
-        fun from(page: EntryPage) = EntryTimelineResponse(
-            accountId = page.accountId.value,
-            entries = page.entries.map { JournalLineResponse.from(it) },
-            nextCursor = page.nextCursor,
-        )
+        fun from(page: EntryPage) =
+            EntryTimelineResponse(
+                accountId = page.accountId.value,
+                entries = page.entries.map { JournalLineResponse.from(it) },
+                nextCursor = page.nextCursor,
+            )
     }
 }

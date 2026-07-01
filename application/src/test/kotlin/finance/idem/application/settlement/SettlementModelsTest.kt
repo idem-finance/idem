@@ -14,7 +14,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class SettlementModelsTest {
-
     private val tenantId = TenantId.generate()
     private val accountId = AccountId.generate()
     private val now = Instant.now()
@@ -52,18 +51,19 @@ class SettlementModelsTest {
 
     @Test
     fun `SettlementPage holds settlements and nextCursor`() {
-        val settlement = Settlement(
-            id = UUID.randomUUID(),
-            tenantId = tenantId,
-            accountId = accountId,
-            amount = MonetaryAmount.of("100.00"),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.SOLANA,
-            walletAddress = "wallet",
-            status = EntryStatus.PENDING,
-            createdAt = now,
-            createdBy = "test",
-        )
+        val settlement =
+            Settlement(
+                id = UUID.randomUUID(),
+                tenantId = tenantId,
+                accountId = accountId,
+                amount = MonetaryAmount.of("100.00"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.SOLANA,
+                walletAddress = "wallet",
+                status = EntryStatus.PENDING,
+                createdAt = now,
+                createdBy = "test",
+            )
         val page = SettlementPage(listOf(settlement), "cursor-token")
         assertEquals(1, page.settlements.size)
         assertEquals(settlement, page.settlements[0])

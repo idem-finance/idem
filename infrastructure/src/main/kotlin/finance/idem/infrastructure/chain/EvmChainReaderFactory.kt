@@ -14,29 +14,29 @@ class EvmChainReaderFactory(
     private val config: ChainConfig,
     private val watchedAddressRepository: WatchedAddressRepository,
 ) {
-
     private val web3jInstances = mutableListOf<Web3j>()
     private var readers: List<ChainReader> = emptyList()
 
     @Bean
     fun chainReaders(): List<ChainReader> {
-        readers = buildList {
-            if (config.evm.rpcUrl.isNotBlank()) {
-                add(EvmChainReader("EVM_1", buildWeb3j(config.evm.rpcUrl), watchedAddressRepository))
+        readers =
+            buildList {
+                if (config.evm.rpcUrl.isNotBlank()) {
+                    add(EvmChainReader("EVM_1", buildWeb3j(config.evm.rpcUrl), watchedAddressRepository))
+                }
+                if (config.evmBase.rpcUrl.isNotBlank()) {
+                    add(EvmChainReader("EVM_8453", buildWeb3j(config.evmBase.rpcUrl), watchedAddressRepository))
+                }
+                if (config.evmPolygon.rpcUrl.isNotBlank()) {
+                    add(EvmChainReader("EVM_137", buildWeb3j(config.evmPolygon.rpcUrl), watchedAddressRepository))
+                }
+                if (config.solana.rpcUrl.isNotBlank()) {
+                    add(SolanaChainReader(config.solana.rpcUrl, watchedAddressRepository, transactionBatchSize = config.solana.batchSize))
+                }
+                if (config.tron.apiUrl.isNotBlank()) {
+                    add(TronChainReader(config.tron.apiUrl, watchedAddressRepository, apiKey = config.tron.apiKey))
+                }
             }
-            if (config.evmBase.rpcUrl.isNotBlank()) {
-                add(EvmChainReader("EVM_8453", buildWeb3j(config.evmBase.rpcUrl), watchedAddressRepository))
-            }
-            if (config.evmPolygon.rpcUrl.isNotBlank()) {
-                add(EvmChainReader("EVM_137", buildWeb3j(config.evmPolygon.rpcUrl), watchedAddressRepository))
-            }
-            if (config.solana.rpcUrl.isNotBlank()) {
-                add(SolanaChainReader(config.solana.rpcUrl, watchedAddressRepository, transactionBatchSize = config.solana.batchSize))
-            }
-            if (config.tron.apiUrl.isNotBlank()) {
-                add(TronChainReader(config.tron.apiUrl, watchedAddressRepository, apiKey = config.tron.apiKey))
-            }
-        }
         return readers
     }
 
@@ -46,6 +46,5 @@ class EvmChainReaderFactory(
         readers.filterIsInstance<Closeable>().forEach(Closeable::close)
     }
 
-    private fun buildWeb3j(rpcUrl: String): Web3j =
-        Web3j.build(HttpService(rpcUrl)).also { web3jInstances += it }
+    private fun buildWeb3j(rpcUrl: String): Web3j = Web3j.build(HttpService(rpcUrl)).also { web3jInstances += it }
 }

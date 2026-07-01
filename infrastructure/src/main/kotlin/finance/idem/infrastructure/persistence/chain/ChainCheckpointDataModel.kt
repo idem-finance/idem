@@ -12,10 +12,8 @@ class ChainCheckpointDataModel(
     @Id
     @Column(name = "chain_id", nullable = false)
     val chainId: String,
-
     @Column(name = "last_block", nullable = false)
     val lastBlock: Long,
-
     @Column(name = "updated_at", nullable = false)
     val updatedAt: Instant,
 ) {

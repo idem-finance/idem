@@ -14,30 +14,31 @@ import org.mockito.kotlin.whenever
 import java.math.BigDecimal
 
 class TronChainReaderTest {
-
     private val usdtContract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
     private val usdcContract = "TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8"
     private val watchedWallet = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"
-    private val senderWallet  = "TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW"
-    private val txHash        = "abc123def456abc123def456abc123def456abc123def456abc123def456abc1"
-    private val blockId       = 55_000_000L
+    private val senderWallet = "TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW"
+    private val txHash = "abc123def456abc123def456abc123def456abc123def456abc123def456abc1"
+    private val blockId = 55_000_000L
 
-    private val watchedAddress = WatchedAddress(
-        chainKey = "TRON",
-        walletAddress = watchedWallet,
-        tokenContract = usdtContract,
-        token = StablecoinToken.USDT,
-        tenantId = "tenant-1",
-        debitAccountId = "debit-1",
-        creditAccountId = "credit-1",
-    )
+    private val watchedAddress =
+        WatchedAddress(
+            chainKey = "TRON",
+            walletAddress = watchedWallet,
+            tokenContract = usdtContract,
+            token = StablecoinToken.USDT,
+            tenantId = "tenant-1",
+            debitAccountId = "debit-1",
+            creditAccountId = "credit-1",
+        )
 
     private val mockRepo = mock<WatchedAddressRepository>()
-    private val reader = TronChainReader(
-        apiUrl = "http://localhost:9999",
-        watchedAddressRepository = mockRepo,
-        requestDelayMs = 0,
-    )
+    private val reader =
+        TronChainReader(
+            apiUrl = "http://localhost:9999",
+            watchedAddressRepository = mockRepo,
+            requestDelayMs = 0,
+        )
 
     @BeforeEach
     fun setUp() {
@@ -89,20 +90,28 @@ class TronChainReaderTest {
 
     @Test
     fun `returns null when finalResult is FAILED`() {
-        val transfer = transfer(
-            to = watchedWallet, contract = usdtContract, quant = "1000000",
-            decimals = 6, finalResult = "FAILED",
-        )
+        val transfer =
+            transfer(
+                to = watchedWallet,
+                contract = usdtContract,
+                quant = "1000000",
+                decimals = 6,
+                finalResult = "FAILED",
+            )
 
         assertNull(reader.decodeTransfer(transfer, watchedAddress))
     }
 
     @Test
     fun `processes transfer when finalResult is null — legacy response format`() {
-        val transfer = transfer(
-            to = watchedWallet, contract = usdtContract, quant = "1000000",
-            decimals = 6, finalResult = null,
-        )
+        val transfer =
+            transfer(
+                to = watchedWallet,
+                contract = usdtContract,
+                quant = "1000000",
+                decimals = 6,
+                finalResult = null,
+            )
 
         assertEquals("TRON:$txHash", reader.decodeTransfer(transfer, watchedAddress)!!.idempotencyKey)
     }

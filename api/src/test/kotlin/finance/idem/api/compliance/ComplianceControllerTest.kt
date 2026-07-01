@@ -27,7 +27,6 @@ import kotlin.test.assertTrue
 @WebMvcTest(ComplianceController::class)
 @Import(TestSecurityConfig::class)
 class ComplianceControllerTest {
-
     @Autowired
     lateinit var mockMvc: MockMvc
 
@@ -39,10 +38,12 @@ class ComplianceControllerTest {
 
     private val tenantId = TenantId(UUID.randomUUID())
 
-    private fun mockAuth(vararg scopes: String): TestingAuthenticationToken =
-        TestingAuthenticationToken(tenantId, null, *scopes)
+    private fun mockAuth(vararg scopes: String): TestingAuthenticationToken = TestingAuthenticationToken(tenantId, null, *scopes)
 
-    private fun record(action: String, entityType: String = "TRANSACTION") = AuditExportRecord(
+    private fun record(
+        action: String,
+        entityType: String = "TRANSACTION",
+    ) = AuditExportRecord(
         timestamp = Instant.parse("2026-06-01T12:00:00Z"),
         actor = "sk_live_test",
         action = action,
@@ -55,49 +56,55 @@ class ComplianceControllerTest {
 
     @Test
     fun `missing COMPLIANCE_EXPORT scope returns 403`() {
-        mockMvc.get("/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z") {
-            with(authentication(mockAuth("TRANSACTIONS_READ")))
-        }.andExpect { status { isForbidden() } }
+        mockMvc
+            .get("/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z") {
+                with(authentication(mockAuth("TRANSACTIONS_READ")))
+            }.andExpect { status { isForbidden() } }
     }
 
     @Test
     fun `missing from parameter returns 400`() {
-        mockMvc.get("/api/v1/compliance/audit-export?to=2026-12-31T23:59:59Z") {
-            with(authentication(mockAuth("COMPLIANCE_EXPORT")))
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .get("/api/v1/compliance/audit-export?to=2026-12-31T23:59:59Z") {
+                with(authentication(mockAuth("COMPLIANCE_EXPORT")))
+            }.andExpect {
+                status { isBadRequest() }
+            }
     }
 
     @Test
     fun `missing to parameter returns 400`() {
-        mockMvc.get("/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z") {
-            with(authentication(mockAuth("COMPLIANCE_EXPORT")))
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .get("/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z") {
+                with(authentication(mockAuth("COMPLIANCE_EXPORT")))
+            }.andExpect {
+                status { isBadRequest() }
+            }
     }
 
     @Test
     fun `from after to returns 400`() {
-        mockMvc.get("/api/v1/compliance/audit-export?from=2026-12-31T00:00:00Z&to=2026-01-01T00:00:00Z") {
-            with(authentication(mockAuth("COMPLIANCE_EXPORT")))
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .get("/api/v1/compliance/audit-export?from=2026-12-31T00:00:00Z&to=2026-01-01T00:00:00Z") {
+                with(authentication(mockAuth("COMPLIANCE_EXPORT")))
+            }.andExpect {
+                status { isBadRequest() }
+            }
     }
 
     @Test
     fun `valid request returns 200 with NDJSON content-type and disposition header`() {
         whenever(exportAuditLogUseCase.export(any())).thenReturn(listOf(record("POST_TRANSACTION")))
 
-        val result = mockMvc.get(
-            "/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z"
-        ) {
-            with(authentication(mockAuth("COMPLIANCE_EXPORT")))
-        }.andExpect {
-            status { isOk() }
-        }.andReturn()
+        val result =
+            mockMvc
+                .get(
+                    "/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z",
+                ) {
+                    with(authentication(mockAuth("COMPLIANCE_EXPORT")))
+                }.andExpect {
+                    status { isOk() }
+                }.andReturn()
 
         assertTrue(result.response.contentType?.startsWith("application/x-ndjson") == true)
         assertTrue(result.response.getHeader(HttpHeaders.CONTENT_DISPOSITION)?.contains("audit-") == true)
@@ -109,15 +116,20 @@ class ComplianceControllerTest {
         val records = listOf(record("POST_TRANSACTION"), record("AGENT_ACTION_STARTED", "WORKFLOW"))
         whenever(exportAuditLogUseCase.export(any())).thenReturn(records)
 
-        val result = mockMvc.get(
-            "/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z"
-        ) {
-            with(authentication(mockAuth("COMPLIANCE_EXPORT")))
-        }.andExpect {
-            status { isOk() }
-        }.andReturn()
+        val result =
+            mockMvc
+                .get(
+                    "/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z",
+                ) {
+                    with(authentication(mockAuth("COMPLIANCE_EXPORT")))
+                }.andExpect {
+                    status { isOk() }
+                }.andReturn()
 
-        val lines = result.response.contentAsString.trimEnd().split("\n")
+        val lines =
+            result.response.contentAsString
+                .trimEnd()
+                .split("\n")
         assertEquals(2, lines.size)
         lines.forEach { line ->
             val node = objectMapper.readTree(line)
@@ -138,11 +150,12 @@ class ComplianceControllerTest {
             emptyList<AuditExportRecord>()
         }
 
-        mockMvc.get(
-            "/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z"
-        ) {
-            with(authentication(mockAuth("COMPLIANCE_EXPORT")))
-        }.andExpect { status { isOk() } }
+        mockMvc
+            .get(
+                "/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z",
+            ) {
+                with(authentication(mockAuth("COMPLIANCE_EXPORT")))
+            }.andExpect { status { isOk() } }
 
         assertEquals(AuditEntryType.ALL, capturedType)
     }
@@ -151,13 +164,15 @@ class ComplianceControllerTest {
     fun `empty record list returns 200 with empty body`() {
         whenever(exportAuditLogUseCase.export(any())).thenReturn(emptyList())
 
-        val result = mockMvc.get(
-            "/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z"
-        ) {
-            with(authentication(mockAuth("COMPLIANCE_EXPORT")))
-        }.andExpect {
-            status { isOk() }
-        }.andReturn()
+        val result =
+            mockMvc
+                .get(
+                    "/api/v1/compliance/audit-export?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z",
+                ) {
+                    with(authentication(mockAuth("COMPLIANCE_EXPORT")))
+                }.andExpect {
+                    status { isOk() }
+                }.andReturn()
 
         assertTrue(result.response.contentAsString.isBlank())
     }

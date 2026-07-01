@@ -10,7 +10,6 @@ class TelemetryStatsAdapter(
     private val tenantJpaRepository: TenantJpaRepository,
     private val journalLineJpaRepository: JournalLineJpaRepository,
 ) : TelemetryStatsPort {
-
     override fun tenantCount(): Long = tenantJpaRepository.count()
 
     override fun journalLineCount(): Long = journalLineJpaRepository.count()

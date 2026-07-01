@@ -9,8 +9,13 @@ class ApiKeyAuthentication(
     val keyPrefix: String,
     authorities: Collection<GrantedAuthority>,
 ) : AbstractAuthenticationToken(authorities) {
-    init { isAuthenticated = true }
+    init {
+        isAuthenticated = true
+    }
+
     override fun getCredentials() = null
+
     override fun getPrincipal() = tenantId
+
     override fun getName() = keyPrefix
 }

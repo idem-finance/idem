@@ -25,7 +25,6 @@ import java.util.UUID
  * deps on this module, so the literal is duplicated there with a cross-reference comment).
  */
 class TraceIdFilter : OncePerRequestFilter() {
-
     companion object {
         const val TRACE_ID_HEADER = "X-Idem-Trace-Id"
         const val MDC_KEY = "traceId"
@@ -36,9 +35,11 @@ class TraceIdFilter : OncePerRequestFilter() {
         response: HttpServletResponse,
         chain: FilterChain,
     ) {
-        val traceId = request.getHeader(TRACE_ID_HEADER)
-            ?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
-            ?: UUID.randomUUID().toString()
+        val traceId =
+            request
+                .getHeader(TRACE_ID_HEADER)
+                ?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+                ?: UUID.randomUUID().toString()
         response.setHeader(TRACE_ID_HEADER, traceId)
         MDC.put(MDC_KEY, traceId)
         try {

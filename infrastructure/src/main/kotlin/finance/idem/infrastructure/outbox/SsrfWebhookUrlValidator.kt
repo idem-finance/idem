@@ -21,11 +21,11 @@ import java.net.URI
 class SsrfWebhookUrlValidator(
     @Value("\${idem.webhook.require-https:true}") private val requireHttps: Boolean,
 ) : WebhookUrlValidator {
-
     override fun validate(rawUrl: String): Result<Unit> {
-        val uri = runCatching { URI.create(rawUrl) }.getOrElse {
-            return Result.failure(IllegalArgumentException("malformed webhook URL"))
-        }
+        val uri =
+            runCatching { URI.create(rawUrl) }.getOrElse {
+                return Result.failure(IllegalArgumentException("malformed webhook URL"))
+            }
 
         val scheme = uri.scheme?.lowercase()
         if (requireHttps && scheme != "https") {
@@ -35,16 +35,18 @@ class SsrfWebhookUrlValidator(
             return Result.failure(IllegalArgumentException("webhook URL scheme must be http or https; got: $scheme"))
         }
 
-        val host = uri.host
-            ?: return Result.failure(IllegalArgumentException("webhook URL has no resolvable host"))
+        val host =
+            uri.host
+                ?: return Result.failure(IllegalArgumentException("webhook URL has no resolvable host"))
 
         if (isBlockedHostname(host)) {
             return Result.failure(IllegalArgumentException("webhook URL host is not permitted: $host"))
         }
 
-        val address = runCatching { InetAddress.getByName(host) }.getOrElse {
-            return Result.failure(IllegalArgumentException("webhook URL host does not resolve: $host"))
-        }
+        val address =
+            runCatching { InetAddress.getByName(host) }.getOrElse {
+                return Result.failure(IllegalArgumentException("webhook URL host does not resolve: $host"))
+            }
 
         if (isPrivateOrReserved(address)) {
             return Result.failure(IllegalArgumentException("webhook URL resolves to a private or reserved address"))

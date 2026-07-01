@@ -11,16 +11,18 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/internal/webhooks")
-class QuickNodeWebhookController(private val quickNodeWebhookUseCase: QuickNodeWebhookUseCase) {
-
+class QuickNodeWebhookController(
+    private val quickNodeWebhookUseCase: QuickNodeWebhookUseCase,
+) {
     @PostMapping("/quicknode")
     fun receive(
         @RequestHeader(value = "X-QN-Signature", required = false) signature: String?,
         @RequestHeader(value = "X-QN-Nonce", required = false) nonce: String?,
         @RequestHeader(value = "X-QN-Timestamp", required = false) timestamp: String?,
         @RequestBody rawBody: String,
-    ): ResponseEntity<Void> = quickNodeWebhookUseCase.handle(signature, nonce, timestamp, rawBody).fold(
-        onSuccess = { ResponseEntity.ok().build() },
-        onFailure = { ResponseEntity.status(HttpStatus.UNAUTHORIZED).build() },
-    )
+    ): ResponseEntity<Void> =
+        quickNodeWebhookUseCase.handle(signature, nonce, timestamp, rawBody).fold(
+            onSuccess = { ResponseEntity.ok().build() },
+            onFailure = { ResponseEntity.status(HttpStatus.UNAUTHORIZED).build() },
+        )
 }

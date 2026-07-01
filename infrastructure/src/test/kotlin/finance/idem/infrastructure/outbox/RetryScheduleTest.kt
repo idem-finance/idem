@@ -6,7 +6,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class RetryScheduleTest {
-
     @Test
     fun `attempt 1 retries after 5 seconds`() {
         assertEquals(Duration.ofSeconds(5), RetrySchedule.nextRetryDelay(1, maxAttempts = 5))

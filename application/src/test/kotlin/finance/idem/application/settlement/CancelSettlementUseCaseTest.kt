@@ -8,7 +8,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class CancelSettlementUseCaseTest {
-
     private val tenantId = TenantId.generate()
 
     @Test

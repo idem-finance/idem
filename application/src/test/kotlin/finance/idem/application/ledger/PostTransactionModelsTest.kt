@@ -20,7 +20,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 class PostTransactionModelsTest {
-
     private val tenantId = TenantId.generate()
     private val debitId = AccountId.generate()
     private val creditId = AccountId.generate()
@@ -29,14 +28,26 @@ class PostTransactionModelsTest {
     private fun transaction(): Transaction {
         val txId = TransactionId.generate()
         val line = { id: AccountId, type: EntryType ->
-            JournalLine(UUID.randomUUID(), txId, id, tenantId, type,
+            JournalLine(
+                UUID.randomUUID(),
+                txId,
+                id,
+                tenantId,
+                type,
                 FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
-                null, now, "system")
+                null,
+                now,
+                "system",
+            )
         }
         return Transaction.create(
-            id = txId, tenantId = tenantId, idempotencyKey = "k1",
+            id = txId,
+            tenantId = tenantId,
+            idempotencyKey = "k1",
             lines = listOf(line(debitId, EntryType.DEBIT), line(creditId, EntryType.CREDIT)),
-            occurredAt = now, createdAt = now, createdBy = "sk_test",
+            occurredAt = now,
+            createdAt = now,
+            createdBy = "sk_test",
         )
     }
 
@@ -120,13 +131,14 @@ class PostTransactionModelsTest {
     fun `PostTransactionCommand holds all fields`() {
         val entry = FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX)
         val line = JournalLineRequest(debitId, EntryType.DEBIT, entry, "desc")
-        val cmd = PostTransactionCommand(
-            tenantId = tenantId,
-            idempotencyKey = "idem-1",
-            lines = listOf(line),
-            createdBy = "sk_test",
-            metadata = mapOf("ref" to "abc"),
-        )
+        val cmd =
+            PostTransactionCommand(
+                tenantId = tenantId,
+                idempotencyKey = "idem-1",
+                lines = listOf(line),
+                createdBy = "sk_test",
+                metadata = mapOf("ref" to "abc"),
+            )
 
         assertEquals(tenantId, cmd.tenantId)
         assertEquals("idem-1", cmd.idempotencyKey)

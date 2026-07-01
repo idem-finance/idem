@@ -19,7 +19,6 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class UpdateWebhookConfigServiceTest {
-
     @Mock
     private lateinit var tenantRepository: TenantRepository
 

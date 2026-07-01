@@ -29,16 +29,16 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(AuditRepositoryAdapter::class, AuditConfig::class, PersistenceTestConfig::class)
 class AuditRepositoryAdapterTest {
-
     companion object {
         private const val APP_ROLE = "idem_app_role"
         private const val APP_ROLE_PASSWORD = "app_role_pass"
 
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -65,9 +65,12 @@ class AuditRepositoryAdapterTest {
             }
         }
 
-        fun restrictedConn() = DriverManager.getConnection(
-            postgres.jdbcUrl, APP_ROLE, APP_ROLE_PASSWORD
-        )
+        fun restrictedConn() =
+            DriverManager.getConnection(
+                postgres.jdbcUrl,
+                APP_ROLE,
+                APP_ROLE_PASSWORD,
+            )
     }
 
     @Autowired
@@ -82,15 +85,16 @@ class AuditRepositoryAdapterTest {
     private val tenantA = TenantId.generate()
     private val tenantB = TenantId.generate()
 
-    private fun auditEntry(tenantId: TenantId = tenantA) = AuditEntry(
-        id = UUID.randomUUID(),
-        transactionId = TransactionId.generate(),
-        tenantId = tenantId,
-        action = "POST_TRANSACTION",
-        agentContext = null,
-        createdBy = "sk_live_test",
-        occurredAt = Instant.now(),
-    )
+    private fun auditEntry(tenantId: TenantId = tenantA) =
+        AuditEntry(
+            id = UUID.randomUUID(),
+            transactionId = TransactionId.generate(),
+            tenantId = tenantId,
+            action = "POST_TRANSACTION",
+            agentContext = null,
+            createdBy = "sk_live_test",
+            occurredAt = Instant.now(),
+        )
 
     @Test
     fun `save persists entry with all fields populated`() {
@@ -102,9 +106,11 @@ class AuditRepositoryAdapterTest {
 
         // Re-query with tenant context set so RLS allows access
         entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
-        val rows = entityManager.createNativeQuery(
-            "SELECT id, action, created_by, hmac FROM audit_log WHERE id = '${entry.id}'"
-        ).resultList
+        val rows =
+            entityManager
+                .createNativeQuery(
+                    "SELECT id, action, created_by, hmac FROM audit_log WHERE id = '${entry.id}'",
+                ).resultList
         assertEquals(1, rows.size)
         val row = rows[0] as Array<*>
         assertEquals("POST_TRANSACTION", row[1])
@@ -122,9 +128,11 @@ class AuditRepositoryAdapterTest {
         entityManager.clear()
 
         entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
-        val hmac = entityManager.createNativeQuery(
-            "SELECT hmac FROM audit_log WHERE id = '${entry.id}'"
-        ).singleResult as String
+        val hmac =
+            entityManager
+                .createNativeQuery(
+                    "SELECT hmac FROM audit_log WHERE id = '${entry.id}'",
+                ).singleResult as String
 
         assertTrue(hmac.isNotBlank())
         // HMAC should be base64-encoded SHA256 — expect ~44 chars
@@ -145,8 +153,10 @@ class AuditRepositoryAdapterTest {
         var countA = -1L
         session.doWork { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantA.value}'")
-            val rs = conn.createStatement()
-                .executeQuery("SELECT COUNT(*) FROM audit_log WHERE tenant_id = '${tenantA.value}'")
+            val rs =
+                conn
+                    .createStatement()
+                    .executeQuery("SELECT COUNT(*) FROM audit_log WHERE tenant_id = '${tenantA.value}'")
             rs.next()
             countA = rs.getLong(1)
         }
@@ -154,8 +164,10 @@ class AuditRepositoryAdapterTest {
         var countB = -1L
         session.doWork { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantB.value}'")
-            val rs = conn.createStatement()
-                .executeQuery("SELECT COUNT(*) FROM audit_log WHERE tenant_id = '${tenantB.value}'")
+            val rs =
+                conn
+                    .createStatement()
+                    .executeQuery("SELECT COUNT(*) FROM audit_log WHERE tenant_id = '${tenantB.value}'")
             rs.next()
             countB = rs.getLong(1)
         }
@@ -176,7 +188,7 @@ class AuditRepositoryAdapterTest {
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${entry.tenantId.value}'")
             assertThrows<SQLException>("Non-superuser UPDATE must be denied") {
                 conn.createStatement().executeUpdate(
-                    "UPDATE audit_log SET action = 'TAMPERED' WHERE id = '${entry.id}'"
+                    "UPDATE audit_log SET action = 'TAMPERED' WHERE id = '${entry.id}'",
                 )
             }
             conn.rollback()
@@ -193,8 +205,10 @@ class AuditRepositoryAdapterTest {
             conn.autoCommit = false
             // Authenticate as tenantB — should not see tenantA's rows
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantB.value}'")
-            val rs = conn.createStatement()
-                .executeQuery("SELECT COUNT(*) FROM audit_log WHERE tenant_id = '${tenantA.value}'")
+            val rs =
+                conn
+                    .createStatement()
+                    .executeQuery("SELECT COUNT(*) FROM audit_log WHERE tenant_id = '${tenantA.value}'")
             rs.next()
             assertEquals(0L, rs.getLong(1), "Non-superuser with tenantB context must see 0 of tenantA rows")
             conn.rollback()

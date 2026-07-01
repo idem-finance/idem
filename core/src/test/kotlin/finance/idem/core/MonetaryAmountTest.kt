@@ -8,7 +8,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class MonetaryAmountTest {
-
     @Test
     fun `plus adds two amounts`() {
         val result = MonetaryAmount.of("100.50") + MonetaryAmount.of("49.50")

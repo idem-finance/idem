@@ -17,7 +17,10 @@ data class ComplianceQueueItem(
     val enqueuedAt: Instant,
 ) {
     companion object {
-        fun from(result: TravelRuleValidationResult.MissingData, tenantId: TenantId): ComplianceQueueItem =
+        fun from(
+            result: TravelRuleValidationResult.MissingData,
+            tenantId: TenantId,
+        ): ComplianceQueueItem =
             ComplianceQueueItem(
                 id = UUID.randomUUID(),
                 tenantId = tenantId,
@@ -29,7 +32,10 @@ data class ComplianceQueueItem(
                 enqueuedAt = Instant.now(),
             )
 
-        fun from(result: TravelRuleValidationResult.IncompleteData, tenantId: TenantId): ComplianceQueueItem =
+        fun from(
+            result: TravelRuleValidationResult.IncompleteData,
+            tenantId: TenantId,
+        ): ComplianceQueueItem =
             ComplianceQueueItem(
                 id = UUID.randomUUID(),
                 tenantId = tenantId,

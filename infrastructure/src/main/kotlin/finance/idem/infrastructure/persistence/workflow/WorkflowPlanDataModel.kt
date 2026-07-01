@@ -15,40 +15,39 @@ import java.util.UUID
 class WorkflowPlanDataModel(
     @Id
     val id: UUID,
-
     @Column(name = "tenant_id", nullable = false)
     val tenantId: UUID,
-
     @Column(name = "agent_id", nullable = false)
     val agentId: String,
-
     @Column(name = "session_id", nullable = false)
     val sessionId: String,
-
     @Column(name = "api_key_prefix")
     val apiKeyPrefix: String?,
-
     val intent: String?,
-
     @Column(nullable = false)
     val status: String,
-
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant,
-
     @Column(name = "completed_at")
     val completedAt: Instant?,
-
     @Column(name = "rolled_back_at")
     val rolledBackAt: Instant?,
-
     @Column(name = "rollback_reason")
     val rollbackReason: String?,
-
     @OneToMany(mappedBy = "workflowPlan", cascade = [CascadeType.ALL], fetch = FetchType.EAGER, orphanRemoval = true)
     val steps: MutableList<WorkflowStepDataModel> = mutableListOf(),
 ) {
     constructor() : this(
-        UUID.randomUUID(), UUID.randomUUID(), "", "", null, null, "PLANNED", Instant.now(), null, null, null,
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        "",
+        "",
+        null,
+        null,
+        "PLANNED",
+        Instant.now(),
+        null,
+        null,
+        null,
     )
 }

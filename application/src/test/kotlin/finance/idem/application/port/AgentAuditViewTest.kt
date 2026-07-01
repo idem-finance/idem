@@ -7,24 +7,24 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class AgentAuditViewTest {
-
     @Test
     fun `preserves all fields`() {
         val id = UUID.randomUUID()
         val planId = UUID.randomUUID()
         val now = Instant.now()
-        val view = AgentAuditView(
-            id = id,
-            workflowPlanId = planId,
-            agentId = "agent-1",
-            sessionId = "sess-abc",
-            eventType = "AGENT_ACTION_COMPLETED",
-            intentPayload = "transfer",
-            status = "COMPLETED",
-            occurredAt = now,
-            completedAt = now,
-            hmacSignature = "sig",
-        )
+        val view =
+            AgentAuditView(
+                id = id,
+                workflowPlanId = planId,
+                agentId = "agent-1",
+                sessionId = "sess-abc",
+                eventType = "AGENT_ACTION_COMPLETED",
+                intentPayload = "transfer",
+                status = "COMPLETED",
+                occurredAt = now,
+                completedAt = now,
+                hmacSignature = "sig",
+            )
 
         assertEquals(id, view.id)
         assertEquals(planId, view.workflowPlanId)
@@ -40,18 +40,19 @@ class AgentAuditViewTest {
 
     @Test
     fun `completedAt and intentPayload can be null`() {
-        val view = AgentAuditView(
-            id = UUID.randomUUID(),
-            workflowPlanId = UUID.randomUUID(),
-            agentId = "agent-1",
-            sessionId = "sess-abc",
-            eventType = "AGENT_ACTION_STARTED",
-            intentPayload = null,
-            status = "PENDING",
-            occurredAt = Instant.now(),
-            completedAt = null,
-            hmacSignature = "sig",
-        )
+        val view =
+            AgentAuditView(
+                id = UUID.randomUUID(),
+                workflowPlanId = UUID.randomUUID(),
+                agentId = "agent-1",
+                sessionId = "sess-abc",
+                eventType = "AGENT_ACTION_STARTED",
+                intentPayload = null,
+                status = "PENDING",
+                occurredAt = Instant.now(),
+                completedAt = null,
+                hmacSignature = "sig",
+            )
 
         assertNull(view.completedAt)
         assertNull(view.intentPayload)

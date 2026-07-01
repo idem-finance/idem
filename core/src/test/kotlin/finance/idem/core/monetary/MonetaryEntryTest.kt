@@ -12,17 +12,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class MonetaryEntryTest {
-
     // ── FiatEntry ────────────────────────────────────────────────────────────
 
     @Test
     fun `FiatEntry valid with all fields`() {
-        val entry = FiatEntry(
-            amount = MonetaryAmount.of("1000.00"),
-            currency = FiatCurrency.BRL,
-            rail = PaymentRail.PIX,
-            bankReference = "REF-001",
-        )
+        val entry =
+            FiatEntry(
+                amount = MonetaryAmount.of("1000.00"),
+                currency = FiatCurrency.BRL,
+                rail = PaymentRail.PIX,
+                bankReference = "REF-001",
+            )
         assertEquals(MonetaryAmount.of("1000.00"), entry.amount)
         assertEquals(FiatCurrency.BRL, entry.currency)
         assertEquals(PaymentRail.PIX, entry.rail)
@@ -31,11 +31,12 @@ class MonetaryEntryTest {
 
     @Test
     fun `FiatEntry valid without optional bankReference`() {
-        val entry = FiatEntry(
-            amount = MonetaryAmount.of("500"),
-            currency = FiatCurrency.USD,
-            rail = PaymentRail.WIRE,
-        )
+        val entry =
+            FiatEntry(
+                amount = MonetaryAmount.of("500"),
+                currency = FiatCurrency.USD,
+                rail = PaymentRail.WIRE,
+            )
         assertNull(entry.bankReference)
     }
 
@@ -114,19 +115,21 @@ class MonetaryEntryTest {
 
     @Test
     fun `when expression on MonetaryEntry is exhaustive without else`() {
-        val fiat: MonetaryEntry = FiatEntry(
-            amount = MonetaryAmount.of("100"),
-            currency = FiatCurrency.BRL,
-            rail = PaymentRail.PIX,
-        )
+        val fiat: MonetaryEntry =
+            FiatEntry(
+                amount = MonetaryAmount.of("100"),
+                currency = FiatCurrency.BRL,
+                rail = PaymentRail.PIX,
+            )
         val onChain: MonetaryEntry = validOnChainEntry()
 
         // If a new subtype were added and this when had no else, it would fail to compile.
         // This test documents and exercises both branches.
-        fun label(entry: MonetaryEntry): String = when (entry) {
-            is FiatEntry -> "fiat"
-            is OnChainEntry -> "on-chain"
-        }
+        fun label(entry: MonetaryEntry): String =
+            when (entry) {
+                is FiatEntry -> "fiat"
+                is OnChainEntry -> "on-chain"
+            }
 
         assertEquals("fiat", label(fiat))
         assertEquals("on-chain", label(onChain))

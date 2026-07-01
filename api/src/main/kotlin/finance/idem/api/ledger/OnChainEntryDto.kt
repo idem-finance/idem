@@ -15,13 +15,14 @@ data class OnChainEntryDto(
     val walletAddress: String,
     val tokenContract: String,
 ) : MonetaryEntryRequestDto() {
-    override fun toDomain() = OnChainEntry(
-        amount = MonetaryAmount.of(amount),
-        token = token,
-        chainId = chainId,
-        txHash = txHash,
-        blockNumber = blockNumber,
-        walletAddress = walletAddress,
-        tokenContract = tokenContract,
-    )
+    override fun toDomain() =
+        OnChainEntry(
+            amount = MonetaryAmount.of(amount),
+            token = token,
+            chainId = chainId,
+            txHash = txHash,
+            blockNumber = blockNumber,
+            walletAddress = walletAddress,
+            tokenContract = tokenContract,
+        )
 }

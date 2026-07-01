@@ -6,8 +6,8 @@ import com.fasterxml.jackson.annotation.JsonProperty
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class QuickNodeWebhookPayload(
     @JsonProperty("signature") val signature: String = "",
-    @JsonProperty("slot")      val slot: Long = 0L,
-    @JsonProperty("network")   val network: String = "",
+    @JsonProperty("slot") val slot: Long = 0L,
+    @JsonProperty("network") val network: String = "",
 )
 
 // QuickNode Streams always wraps deliveries in a {data, metadata} envelope, even when a

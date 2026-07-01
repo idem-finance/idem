@@ -28,17 +28,16 @@ import javax.sql.DataSource
 @ConditionalOnProperty(name = ["idem.scheduling.distributed-lock.enabled"], havingValue = "true")
 @EnableSchedulerLock(defaultLockAtMostFor = "PT5M")
 class SchedulerLockConfig {
-
     @Bean
     fun lockProvider(dataSource: DataSource): LockProvider =
         JdbcTemplateLockProvider(
-            JdbcTemplateLockProvider.Configuration.builder()
+            JdbcTemplateLockProvider.Configuration
+                .builder()
                 .withJdbcTemplate(JdbcTemplate(dataSource))
                 .usingDbTime()
-                .build()
+                .build(),
         )
 
     @Bean
-    fun lockingTaskExecutor(lockProvider: LockProvider): LockingTaskExecutor =
-        DefaultLockingTaskExecutor(lockProvider)
+    fun lockingTaskExecutor(lockProvider: LockProvider): LockingTaskExecutor = DefaultLockingTaskExecutor(lockProvider)
 }

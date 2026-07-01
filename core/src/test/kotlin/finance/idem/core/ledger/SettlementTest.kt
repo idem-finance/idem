@@ -16,24 +16,24 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SettlementTest {
-
     private val now = Instant.now()
     private val tenantId = TenantId.generate()
     private val accountId = AccountId.generate()
     private val watchedWallet = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS"
 
-    private fun pendingSettlement(id: UUID = UUID.randomUUID()) = Settlement(
-        id = id,
-        tenantId = tenantId,
-        accountId = accountId,
-        amount = MonetaryAmount.of("100.000000"),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.SOLANA,
-        walletAddress = watchedWallet,
-        status = EntryStatus.PENDING,
-        createdAt = now,
-        createdBy = "api-user",
-    )
+    private fun pendingSettlement(id: UUID = UUID.randomUUID()) =
+        Settlement(
+            id = id,
+            tenantId = tenantId,
+            accountId = accountId,
+            amount = MonetaryAmount.of("100.000000"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.SOLANA,
+            walletAddress = watchedWallet,
+            status = EntryStatus.PENDING,
+            createdAt = now,
+            createdBy = "api-user",
+        )
 
     @Test
     fun `EntryStatus contains all four lifecycle values`() {
@@ -61,13 +61,14 @@ class SettlementTest {
         val matchedTransactionId = TransactionId.generate()
         val confirmedAt = Instant.now()
 
-        val settlement = pendingSettlement().copy(
-            status = EntryStatus.SETTLED,
-            matchedTransactionId = matchedTransactionId,
-            txHash = "5j7s6XxnkqxAbcDE1234567890abcdefghijklmnopqrstuvwxyz1234567",
-            blockNumber = 250_000_000L,
-            confirmedAt = confirmedAt,
-        )
+        val settlement =
+            pendingSettlement().copy(
+                status = EntryStatus.SETTLED,
+                matchedTransactionId = matchedTransactionId,
+                txHash = "5j7s6XxnkqxAbcDE1234567890abcdefghijklmnopqrstuvwxyz1234567",
+                blockNumber = 250_000_000L,
+                confirmedAt = confirmedAt,
+            )
 
         assertEquals(EntryStatus.SETTLED, settlement.status)
         assertEquals(matchedTransactionId, settlement.matchedTransactionId)

@@ -6,7 +6,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class ValueObjectsTest {
-
     @Test
     fun `AccountId equality works by wrapped value`() {
         val id = UUID.randomUUID()

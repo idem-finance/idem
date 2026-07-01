@@ -43,15 +43,20 @@ import kotlin.test.assertNull
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers
-@Import(SettlementRepositoryAdapter::class, AccountRepositoryAdapter::class, TransactionRepositoryAdapter::class, PersistenceTestConfig::class)
+@Import(
+    SettlementRepositoryAdapter::class,
+    AccountRepositoryAdapter::class,
+    TransactionRepositoryAdapter::class,
+    PersistenceTestConfig::class,
+)
 class SettlementRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -63,8 +68,11 @@ class SettlementRepositoryAdapterTest {
     }
 
     @Autowired lateinit var adapter: SettlementRepositoryAdapter
+
     @Autowired lateinit var accountAdapter: AccountRepositoryAdapter
+
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
+
     @Autowired lateinit var entityManager: EntityManager
 
     private val tenantA = TenantId.generate()
@@ -132,20 +140,22 @@ class SettlementRepositoryAdapterTest {
         val session = entityManager.unwrap(org.hibernate.Session::class.java)
         session.doWork { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            conn.prepareStatement(
-                "INSERT INTO settlements (id, tenant_id, account_id, amount, token, chain_id, wallet_address, status, created_by, created_at) " +
-                    "VALUES (?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?, ?, 'test', $createdAtExpr)"
-            ).use { stmt ->
-                stmt.setString(1, id.toString())
-                stmt.setString(2, tenantId.value.toString())
-                stmt.setString(3, accountId.value.toString())
-                stmt.setBigDecimal(4, BigDecimal(amount))
-                stmt.setString(5, token.name)
-                stmt.setString(6, chainId.name)
-                stmt.setString(7, walletAddress)
-                stmt.setString(8, status.name)
-                stmt.executeUpdate()
-            }
+            conn
+                .prepareStatement(
+                    "INSERT INTO settlements " +
+                        "(id, tenant_id, account_id, amount, token, chain_id, wallet_address, status, created_by, created_at) " +
+                        "VALUES (?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?, ?, 'test', $createdAtExpr)",
+                ).use { stmt ->
+                    stmt.setString(1, id.toString())
+                    stmt.setString(2, tenantId.value.toString())
+                    stmt.setString(3, accountId.value.toString())
+                    stmt.setBigDecimal(4, BigDecimal(amount))
+                    stmt.setString(5, token.name)
+                    stmt.setString(6, chainId.name)
+                    stmt.setString(7, walletAddress)
+                    stmt.setString(8, status.name)
+                    stmt.executeUpdate()
+                }
         }
         entityManager.clear()
         return id
@@ -153,23 +163,30 @@ class SettlementRepositoryAdapterTest {
 
     private fun onChainTx(tenantId: TenantId = tenantA): Transaction {
         val txId = TransactionId.generate()
-        val entry = OnChainEntry(
-            amount = MonetaryAmount.of("100.000000"),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.SOLANA,
-            txHash = "tx-hash-1",
-            blockNumber = 250_000_000L,
-            walletAddress = watchedWallet,
-            tokenContract = usdcMint,
-        )
-        val tx = Transaction.create(
-            id = txId, tenantId = tenantId, idempotencyKey = "SOLANA:tx-hash-1:0",
-            lines = listOf(
-                JournalLine(UUID.randomUUID(), txId, accountA, tenantId, EntryType.DEBIT, entry, null, now, "test"),
-                JournalLine(UUID.randomUUID(), txId, accountA2, tenantId, EntryType.CREDIT, entry, null, now, "test"),
-            ),
-            occurredAt = now, createdAt = now, createdBy = "test",
-        )
+        val entry =
+            OnChainEntry(
+                amount = MonetaryAmount.of("100.000000"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.SOLANA,
+                txHash = "tx-hash-1",
+                blockNumber = 250_000_000L,
+                walletAddress = watchedWallet,
+                tokenContract = usdcMint,
+            )
+        val tx =
+            Transaction.create(
+                id = txId,
+                tenantId = tenantId,
+                idempotencyKey = "SOLANA:tx-hash-1:0",
+                lines =
+                    listOf(
+                        JournalLine(UUID.randomUUID(), txId, accountA, tenantId, EntryType.DEBIT, entry, null, now, "test"),
+                        JournalLine(UUID.randomUUID(), txId, accountA2, tenantId, EntryType.CREDIT, entry, null, now, "test"),
+                    ),
+                occurredAt = now,
+                createdAt = now,
+                createdBy = "test",
+            )
         transactionAdapter.save(tx)
         return tx
     }
@@ -225,15 +242,16 @@ class SettlementRepositoryAdapterTest {
         val tx = onChainTx()
         val confirmedAt = Instant.now()
 
-        val updated = adapter.save(
-            settlement.copy(
-                status = EntryStatus.SETTLED,
-                matchedTransactionId = tx.id,
-                txHash = "tx-hash-1",
-                blockNumber = 250_000_000L,
-                confirmedAt = confirmedAt,
+        val updated =
+            adapter.save(
+                settlement.copy(
+                    status = EntryStatus.SETTLED,
+                    matchedTransactionId = tx.id,
+                    txHash = "tx-hash-1",
+                    blockNumber = 250_000_000L,
+                    confirmedAt = confirmedAt,
+                ),
             )
-        )
 
         assertEquals(settlement.id, updated.id)
         val found = adapter.findById(settlement.id, tenantA)
@@ -244,9 +262,13 @@ class SettlementRepositoryAdapterTest {
         assertEquals(250_000_000L, found.blockNumber)
         assertNotNull(found.confirmedAt)
 
-        val count = (entityManager.createNativeQuery("SELECT COUNT(*) FROM settlements WHERE id = :id")
-            .setParameter("id", settlement.id)
-            .singleResult as Number).toLong()
+        val count =
+            (
+                entityManager
+                    .createNativeQuery("SELECT COUNT(*) FROM settlements WHERE id = :id")
+                    .setParameter("id", settlement.id)
+                    .singleResult as Number
+            ).toLong()
         assertEquals(1L, count)
     }
 
@@ -257,9 +279,15 @@ class SettlementRepositoryAdapterTest {
         insertSettlement(tenantId = tenantA, accountId = accountA, walletAddress = "some-other-wallet")
         insertSettlement(tenantId = tenantA, accountId = accountA, chainId = ChainId.EVM)
 
-        val results = adapter.findPendingCandidates(
-            tenantA, setOf(accountA), StablecoinToken.USDC, ChainId.SOLANA, watchedWallet, now.minusSeconds(3600),
-        )
+        val results =
+            adapter.findPendingCandidates(
+                tenantA,
+                setOf(accountA),
+                StablecoinToken.USDC,
+                ChainId.SOLANA,
+                watchedWallet,
+                now.minusSeconds(3600),
+            )
 
         assertEquals(1, results.size)
         assertEquals(match, results[0].id)
@@ -270,9 +298,15 @@ class SettlementRepositoryAdapterTest {
         insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '2 hours'")
         val recent = insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '10 minutes'")
 
-        val results = adapter.findPendingCandidates(
-            tenantA, setOf(accountA), StablecoinToken.USDC, ChainId.SOLANA, watchedWallet, now.minusSeconds(3600),
-        )
+        val results =
+            adapter.findPendingCandidates(
+                tenantA,
+                setOf(accountA),
+                StablecoinToken.USDC,
+                ChainId.SOLANA,
+                watchedWallet,
+                now.minusSeconds(3600),
+            )
 
         assertEquals(1, results.size)
         assertEquals(recent, results[0].id)
@@ -285,9 +319,15 @@ class SettlementRepositoryAdapterTest {
         insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.CANCELLED)
         val pending = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.PENDING)
 
-        val results = adapter.findPendingCandidates(
-            tenantA, setOf(accountA), StablecoinToken.USDC, ChainId.SOLANA, watchedWallet, now.minusSeconds(3600),
-        )
+        val results =
+            adapter.findPendingCandidates(
+                tenantA,
+                setOf(accountA),
+                StablecoinToken.USDC,
+                ChainId.SOLANA,
+                watchedWallet,
+                now.minusSeconds(3600),
+            )
 
         assertEquals(1, results.size)
         assertEquals(pending, results[0].id)
@@ -298,9 +338,15 @@ class SettlementRepositoryAdapterTest {
         val newer = insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '5 seconds'")
         val older = insertSettlement(tenantId = tenantA, accountId = accountA, createdAtExpr = "now() - interval '1 hour'")
 
-        val results = adapter.findPendingCandidates(
-            tenantA, setOf(accountA), StablecoinToken.USDC, ChainId.SOLANA, watchedWallet, now.minusSeconds(7200),
-        )
+        val results =
+            adapter.findPendingCandidates(
+                tenantA,
+                setOf(accountA),
+                StablecoinToken.USDC,
+                ChainId.SOLANA,
+                watchedWallet,
+                now.minusSeconds(7200),
+            )
 
         assertEquals(2, results.size)
         assertEquals(older, results[0].id, "Older entry must come first")
@@ -313,9 +359,15 @@ class SettlementRepositoryAdapterTest {
         val matchA2 = insertSettlement(tenantId = tenantA, accountId = accountA2)
         insertSettlement(tenantId = tenantA, accountId = accountA3)
 
-        val results = adapter.findPendingCandidates(
-            tenantA, setOf(accountA, accountA2), StablecoinToken.USDC, ChainId.SOLANA, watchedWallet, now.minusSeconds(3600),
-        )
+        val results =
+            adapter.findPendingCandidates(
+                tenantA,
+                setOf(accountA, accountA2),
+                StablecoinToken.USDC,
+                ChainId.SOLANA,
+                watchedWallet,
+                now.minusSeconds(3600),
+            )
 
         assertEquals(setOf(matchA, matchA2), results.map { it.id }.toSet())
     }
@@ -330,9 +382,15 @@ class SettlementRepositoryAdapterTest {
         TestTransaction.end()
         TestTransaction.start()
 
-        val results = adapter.findPendingCandidates(
-            tenantA, setOf(accountA), StablecoinToken.USDC, ChainId.SOLANA, watchedWallet, now.minusSeconds(3600),
-        )
+        val results =
+            adapter.findPendingCandidates(
+                tenantA,
+                setOf(accountA),
+                StablecoinToken.USDC,
+                ChainId.SOLANA,
+                watchedWallet,
+                now.minusSeconds(3600),
+            )
         assertEquals(1, results.size)
 
         // PESSIMISTIC_WRITE held by the still-open transaction above must block a
@@ -356,12 +414,24 @@ class SettlementRepositoryAdapterTest {
         insertSettlement(tenantId = tenantB, accountId = accountB)
         val matchA = insertSettlement(tenantId = tenantA, accountId = accountA)
 
-        val resultsA = adapter.findPendingCandidates(
-            tenantA, setOf(accountA), StablecoinToken.USDC, ChainId.SOLANA, watchedWallet, now.minusSeconds(3600),
-        )
-        val resultsB = adapter.findPendingCandidates(
-            tenantB, setOf(accountB), StablecoinToken.USDC, ChainId.SOLANA, watchedWallet, now.minusSeconds(3600),
-        )
+        val resultsA =
+            adapter.findPendingCandidates(
+                tenantA,
+                setOf(accountA),
+                StablecoinToken.USDC,
+                ChainId.SOLANA,
+                watchedWallet,
+                now.minusSeconds(3600),
+            )
+        val resultsB =
+            adapter.findPendingCandidates(
+                tenantB,
+                setOf(accountB),
+                StablecoinToken.USDC,
+                ChainId.SOLANA,
+                watchedWallet,
+                now.minusSeconds(3600),
+            )
 
         assertEquals(1, resultsA.size)
         assertEquals(matchA, resultsA[0].id)
@@ -384,14 +454,27 @@ class SettlementRepositoryAdapterTest {
 
     @Test
     fun `findUnmatchedInWindow excludes rows outside the time window`() {
-        insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED,
-            createdAtExpr = "now() - interval '2 hours'")
-        val inWindow = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED,
-            createdAtExpr = "now() - interval '30 minutes'")
-
-        val results = adapter.findUnmatchedInWindow(
-            tenantA, null, now.minusSeconds(3600), now.plusSeconds(3600),
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.UNMATCHED,
+            createdAtExpr = "now() - interval '2 hours'",
         )
+        val inWindow =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.UNMATCHED,
+                createdAtExpr = "now() - interval '30 minutes'",
+            )
+
+        val results =
+            adapter.findUnmatchedInWindow(
+                tenantA,
+                null,
+                now.minusSeconds(3600),
+                now.plusSeconds(3600),
+            )
 
         assertEquals(1, results.size)
         assertEquals(inWindow, results[0].id)
@@ -420,10 +503,20 @@ class SettlementRepositoryAdapterTest {
 
     @Test
     fun `findUnmatchedInWindow orders results by createdAt ascending`() {
-        val newer = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED,
-            createdAtExpr = "now() - interval '5 seconds'")
-        val older = insertSettlement(tenantId = tenantA, accountId = accountA, status = EntryStatus.UNMATCHED,
-            createdAtExpr = "now() - interval '1 hour'")
+        val newer =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.UNMATCHED,
+                createdAtExpr = "now() - interval '5 seconds'",
+            )
+        val older =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.UNMATCHED,
+                createdAtExpr = "now() - interval '1 hour'",
+            )
 
         val results = adapter.findUnmatchedInWindow(tenantA, null, now.minusSeconds(7200), now.plusSeconds(3600))
 

@@ -54,13 +54,13 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(ChainReaderOrchestratorIntegrationTest.FakeChainReadersConfig::class)
 class ChainReaderOrchestratorIntegrationTest {
-
     companion object {
         @Container
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -75,8 +75,9 @@ class ChainReaderOrchestratorIntegrationTest {
 
     @TestConfiguration
     @EnableScheduling
-    class FakeChainReadersConfig(private val accountRepository: AccountRepository) {
-
+    class FakeChainReadersConfig(
+        private val accountRepository: AccountRepository,
+    ) {
         val tenantId: TenantId = TenantId.generate()
         val debitAccountId: AccountId = AccountId.generate()
         val creditAccountId: AccountId = AccountId.generate()
@@ -86,12 +87,13 @@ class ChainReaderOrchestratorIntegrationTest {
 
         // debitAccountId is never seeded, so PostTransactionUseCase.execute() fails with
         // TransactionAccountNotFound — exercises the dead-letter path on chain-recovery.
-        val deadLetterTransfer = transfer(
-            chainKey = "EVM_8453",
-            txHash = "0xdead",
-            blockNumber = 300L,
-            debitAccountId = AccountId.generate(),
-        )
+        val deadLetterTransfer =
+            transfer(
+                chainKey = "EVM_8453",
+                txHash = "0xdead",
+                blockNumber = 300L,
+                debitAccountId = AccountId.generate(),
+            )
 
         private fun transfer(
             chainKey: String,
@@ -101,24 +103,26 @@ class ChainReaderOrchestratorIntegrationTest {
             creditAccountId: AccountId = this.creditAccountId,
         ) = DetectedTransfer(
             idempotencyKey = "$chainKey:$txHash",
-            entry = OnChainEntry(
-                amount = MonetaryAmount.of("100.000000"),
-                token = StablecoinToken.USDC,
-                chainId = ChainId.EVM,
-                txHash = txHash,
-                blockNumber = blockNumber,
-                walletAddress = "0xwatched",
-                tokenContract = "0xcontract",
-            ),
-            watchedAddress = WatchedAddress(
-                chainKey = chainKey,
-                walletAddress = "0xwatched",
-                tokenContract = "0xcontract",
-                token = StablecoinToken.USDC,
-                tenantId = tenantId.value.toString(),
-                debitAccountId = debitAccountId.value.toString(),
-                creditAccountId = creditAccountId.value.toString(),
-            ),
+            entry =
+                OnChainEntry(
+                    amount = MonetaryAmount.of("100.000000"),
+                    token = StablecoinToken.USDC,
+                    chainId = ChainId.EVM,
+                    txHash = txHash,
+                    blockNumber = blockNumber,
+                    walletAddress = "0xwatched",
+                    tokenContract = "0xcontract",
+                ),
+            watchedAddress =
+                WatchedAddress(
+                    chainKey = chainKey,
+                    walletAddress = "0xwatched",
+                    tokenContract = "0xcontract",
+                    token = StablecoinToken.USDC,
+                    tenantId = tenantId.value.toString(),
+                    debitAccountId = debitAccountId.value.toString(),
+                    creditAccountId = creditAccountId.value.toString(),
+                ),
         )
 
         @PostConstruct
@@ -126,33 +130,48 @@ class ChainReaderOrchestratorIntegrationTest {
             val now = Instant.now()
             accountRepository.save(
                 Account.create(
-                    debitAccountId, tenantId, "On-chain wallet", FiatCurrency.USD, AccountType.ASSET, now, "test",
-                )
+                    debitAccountId,
+                    tenantId,
+                    "On-chain wallet",
+                    FiatCurrency.USD,
+                    AccountType.ASSET,
+                    now,
+                    "test",
+                ),
             )
             accountRepository.save(
                 Account.create(
-                    creditAccountId, tenantId, "Settlement clearing", FiatCurrency.USD, AccountType.LIABILITY, now, "test",
-                )
+                    creditAccountId,
+                    tenantId,
+                    "Settlement clearing",
+                    FiatCurrency.USD,
+                    AccountType.LIABILITY,
+                    now,
+                    "test",
+                ),
             )
         }
 
         @Bean
-        fun fakeEvmReader(): ChainReader = mock<ChainReader>().also {
-            whenever(it.chainKey).thenReturn("EVM_1")
-            whenever(it.poll(any())).thenReturn(listOf(evmTransfer))
-        }
+        fun fakeEvmReader(): ChainReader =
+            mock<ChainReader>().also {
+                whenever(it.chainKey).thenReturn("EVM_1")
+                whenever(it.poll(any())).thenReturn(listOf(evmTransfer))
+            }
 
         @Bean
-        fun fakeTronReader(): ChainReader = mock<ChainReader>().also {
-            whenever(it.chainKey).thenReturn("TRON")
-            whenever(it.poll(any())).thenReturn(listOf(tronTransfer))
-        }
+        fun fakeTronReader(): ChainReader =
+            mock<ChainReader>().also {
+                whenever(it.chainKey).thenReturn("TRON")
+                whenever(it.poll(any())).thenReturn(listOf(tronTransfer))
+            }
 
         @Bean
-        fun fakeDeadLetterReader(): ChainReader = mock<ChainReader>().also {
-            whenever(it.chainKey).thenReturn("EVM_8453")
-            whenever(it.poll(any())).thenReturn(listOf(deadLetterTransfer))
-        }
+        fun fakeDeadLetterReader(): ChainReader =
+            mock<ChainReader>().also {
+                whenever(it.chainKey).thenReturn("EVM_8453")
+                whenever(it.poll(any())).thenReturn(listOf(deadLetterTransfer))
+            }
 
         @Bean
         @Primary
@@ -172,12 +191,19 @@ class ChainReaderOrchestratorIntegrationTest {
     lateinit var fakeTronReader: ChainReader
 
     @Autowired lateinit var fakeConfig: FakeChainReadersConfig
+
     @Autowired lateinit var chainCheckpointRepository: ChainCheckpointRepository
+
     @Autowired lateinit var transactionRepository: TransactionRepository
+
     @Autowired lateinit var idempotencyStore: IdempotencyStore
+
     @Autowired lateinit var meterRegistry: MeterRegistry
+
     @Autowired lateinit var failedChainTransferJpaRepository: FailedChainTransferJpaRepository
+
     @Autowired lateinit var jdbcTemplate: JdbcTemplate
+
     @Autowired lateinit var dataSource: DataSource
 
     @Test
@@ -198,10 +224,11 @@ class ChainReaderOrchestratorIntegrationTest {
             assertEquals(2, tx.lines.size)
             assertEquals("chain-recovery", tx.createdBy)
 
-            val lockRow = jdbcTemplate.queryForMap(
-                "SELECT locked_at, lock_until FROM shedlock WHERE name = ?",
-                ChainReaderOrchestrator.RECOVERY_SWEEP_LOCK_NAME,
-            )
+            val lockRow =
+                jdbcTemplate.queryForMap(
+                    "SELECT locked_at, lock_until FROM shedlock WHERE name = ?",
+                    ChainReaderOrchestrator.RECOVERY_SWEEP_LOCK_NAME,
+                )
             assertNotNull(lockRow["locked_at"])
             assertNotNull(lockRow["lock_until"])
         }
@@ -216,14 +243,18 @@ class ChainReaderOrchestratorIntegrationTest {
             assertNotNull(checkpoint)
             assertEquals(fakeConfig.deadLetterTransfer.entry.blockNumber, checkpoint.lastBlock)
 
-            val counter = meterRegistry.get(ChainMetrics.DEAD_LETTER_COUNTER)
-                .tag(ChainMetrics.TAG_CHAIN_KEY, "EVM_8453")
-                .tag(ChainMetrics.TAG_SOURCE, "chain-recovery")
-                .counter()
+            val counter =
+                meterRegistry
+                    .get(ChainMetrics.DEAD_LETTER_COUNTER)
+                    .tag(ChainMetrics.TAG_CHAIN_KEY, "EVM_8453")
+                    .tag(ChainMetrics.TAG_SOURCE, "chain-recovery")
+                    .counter()
             assertEquals(1.0, counter.count())
 
-            val row = failedChainTransferJpaRepository.findAll()
-                .find { it.idempotencyKey == fakeConfig.deadLetterTransfer.idempotencyKey }
+            val row =
+                failedChainTransferJpaRepository
+                    .findAll()
+                    .find { it.idempotencyKey == fakeConfig.deadLetterTransfer.idempotencyKey }
             assertNotNull(row)
             assertEquals("EVM_8453", row.chainKey)
             assertEquals("chain-recovery", row.source)
@@ -258,21 +289,24 @@ class ChainReaderOrchestratorIntegrationTest {
         // Build a second LockProvider that identifies as "other-replica".
         // ShedLock's unlock() uses AND locked_by = :lockedBy, so only the holder can release.
         // This prevents the production scheduler (locked_by = hostname) from releasing our hold.
-        val otherReplicaLock = JdbcTemplateLockProvider(
-            JdbcTemplateLockProvider.Configuration.builder()
-                .withJdbcTemplate(JdbcTemplate(dataSource))
-                .usingDbTime()
-                .withLockedByValue("other-replica")
-                .build(),
-        )
+        val otherReplicaLock =
+            JdbcTemplateLockProvider(
+                JdbcTemplateLockProvider.Configuration
+                    .builder()
+                    .withJdbcTemplate(JdbcTemplate(dataSource))
+                    .usingDbTime()
+                    .withLockedByValue("other-replica")
+                    .build(),
+            )
 
         // Wait until we can acquire the pollTron lock as "other-replica".
         // If the scheduler currently holds it, lock() returns empty and Awaitility retries.
         var heldLock: Optional<SimpleLock> = Optional.empty()
         await().atMost(Duration.ofSeconds(10)).until {
-            heldLock = otherReplicaLock.lock(
-                LockConfiguration(Instant.now(), "pollTron", Duration.ofSeconds(30), Duration.ZERO),
-            )
+            heldLock =
+                otherReplicaLock.lock(
+                    LockConfiguration(Instant.now(), "pollTron", Duration.ofSeconds(30), Duration.ZERO),
+                )
             heldLock.isPresent
         }
 

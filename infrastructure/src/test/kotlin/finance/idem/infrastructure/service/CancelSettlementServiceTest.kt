@@ -25,25 +25,25 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class CancelSettlementServiceTest {
-
     private val settlementRepository: SettlementRepository = mock()
     private val service = CancelSettlementService(settlementRepository)
 
     private val tenantId = TenantId.generate()
     private val id = UUID.randomUUID()
 
-    private fun pending() = Settlement(
-        id = id,
-        tenantId = tenantId,
-        accountId = AccountId.generate(),
-        amount = MonetaryAmount.of("100.00"),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.SOLANA,
-        walletAddress = "wallet",
-        status = EntryStatus.PENDING,
-        createdAt = Instant.now(),
-        createdBy = "test",
-    )
+    private fun pending() =
+        Settlement(
+            id = id,
+            tenantId = tenantId,
+            accountId = AccountId.generate(),
+            amount = MonetaryAmount.of("100.00"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.SOLANA,
+            walletAddress = "wallet",
+            status = EntryStatus.PENDING,
+            createdAt = Instant.now(),
+            createdBy = "test",
+        )
 
     @Test
     fun `returns SettlementNotFound when settlement does not exist`() {

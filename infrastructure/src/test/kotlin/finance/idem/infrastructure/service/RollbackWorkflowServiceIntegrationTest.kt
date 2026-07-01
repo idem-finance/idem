@@ -15,8 +15,6 @@ import finance.idem.core.agentic.AgentContext
 import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.StepStatus
 import finance.idem.core.agentic.WorkflowStatus
-import finance.idem.infrastructure.persistence.policy.PolicyRepositoryAdapter
-import finance.idem.infrastructure.persistence.policy.SessionDebitAdapter
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountType
 import finance.idem.core.monetary.FiatEntry
@@ -31,6 +29,8 @@ import finance.idem.infrastructure.persistence.audit.AuditRepositoryAdapter
 import finance.idem.infrastructure.persistence.idempotency.PostgresIdempotencyStore
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxJpaRepository
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
+import finance.idem.infrastructure.persistence.policy.PolicyRepositoryAdapter
+import finance.idem.infrastructure.persistence.policy.SessionDebitAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
 import finance.idem.infrastructure.persistence.workflow.WorkflowPlanRepositoryAdapter
 import org.junit.jupiter.api.BeforeEach
@@ -68,13 +68,18 @@ import kotlin.test.assertNull
     SessionDebitAdapter::class,
 )
 class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase() {
-
     @Autowired lateinit var executeService: ExecuteWorkflowService
+
     @Autowired lateinit var rollbackService: RollbackWorkflowService
+
     @Autowired lateinit var accountAdapter: AccountRepositoryAdapter
+
     @Autowired lateinit var workflowPlanAdapter: WorkflowPlanRepositoryAdapter
+
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
+
     @Autowired lateinit var outboxJpaRepo: WebhookOutboxJpaRepository
+
     @Autowired lateinit var policyRepository: PolicyRepositoryAdapter
 
     private val tenantId = TenantId.generate()
@@ -96,24 +101,31 @@ class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBas
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private fun brlLine(accountId: AccountId, entryType: EntryType) = JournalLineRequest(
+    private fun brlLine(
+        accountId: AccountId,
+        entryType: EntryType,
+    ) = JournalLineRequest(
         accountId = accountId,
         entryType = entryType,
         monetaryEntry = FiatEntry(MonetaryAmount.of("500.00"), FiatCurrency.BRL, PaymentRail.PIX),
     )
 
-    private fun buildStep(key: String, debit: AccountId = debitId, credit: AccountId = creditId) =
-        WorkflowStepCommand(
-            idempotencyKey = key,
-            description = key,
-            lines = listOf(brlLine(debit, EntryType.DEBIT), brlLine(credit, EntryType.CREDIT)),
-        )
+    private fun buildStep(
+        key: String,
+        debit: AccountId = debitId,
+        credit: AccountId = creditId,
+    ) = WorkflowStepCommand(
+        idempotencyKey = key,
+        description = key,
+        lines = listOf(brlLine(debit, EntryType.DEBIT), brlLine(credit, EntryType.CREDIT)),
+    )
 
-    private fun buildCmd(steps: List<WorkflowStepCommand>) =
-        ExecuteWorkflowCommand(tenantId, agentCtx, steps, "integration-test")
+    private fun buildCmd(steps: List<WorkflowStepCommand>) = ExecuteWorkflowCommand(tenantId, agentCtx, steps, "integration-test")
 
-    private fun rollbackCmd(planId: WorkflowPlanId, reason: String = "test-rollback") =
-        RollbackWorkflowCommand(tenantId, agentCtx, planId, reason, "integration-test")
+    private fun rollbackCmd(
+        planId: WorkflowPlanId,
+        reason: String = "test-rollback",
+    ) = RollbackWorkflowCommand(tenantId, agentCtx, planId, reason, "integration-test")
 
     private fun executeAndCommit(steps: List<WorkflowStepCommand>): WorkflowPlanId {
         val result = executeService.execute(buildCmd(steps)).getOrThrow()
@@ -185,17 +197,20 @@ class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBas
         // execute() writes: PENDING + COMPLETED (2 events)
         // rollback() writes: PENDING (intent=ROLLBACK) + COMPLETED (intent=ROLLBACK) (2 more events)
         @Suppress("UNCHECKED_CAST")
-        val rows = entityManager.createNativeQuery(
-            "SELECT status, intent FROM agent_audit_events WHERE workflow_plan_id = ?::uuid ORDER BY occurred_at"
-        ).setParameter(1, planId.value.toString()).resultList as List<Array<Any?>>
+        val rows =
+            entityManager
+                .createNativeQuery(
+                    "SELECT status, intent FROM agent_audit_events WHERE workflow_plan_id = ?::uuid ORDER BY occurred_at",
+                ).setParameter(1, planId.value.toString())
+                .resultList as List<Array<Any?>>
 
         assertEquals(4, rows.size, "Expected 4 audit events: 2 from execute, 2 from rollback")
-        assertEquals("PENDING",   rows[0][0])
+        assertEquals("PENDING", rows[0][0])
         assertEquals("COMPLETED", rows[1][0])
-        assertEquals("PENDING",   rows[2][0])
-        assertEquals("ROLLBACK",  rows[2][1], "Rollback PENDING audit event must have intent=ROLLBACK")
+        assertEquals("PENDING", rows[2][0])
+        assertEquals("ROLLBACK", rows[2][1], "Rollback PENDING audit event must have intent=ROLLBACK")
         assertEquals("COMPLETED", rows[3][0])
-        assertEquals("ROLLBACK",  rows[3][1], "Rollback COMPLETED audit event must have intent=ROLLBACK")
+        assertEquals("ROLLBACK", rows[3][1], "Rollback COMPLETED audit event must have intent=ROLLBACK")
     }
 
     // ── outbox entry ──────────────────────────────────────────────────────────
@@ -207,7 +222,7 @@ class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBas
         rollbackService.execute(rollbackCmd(planId)).getOrThrow()
         entityManager.flush()
 
-        assertEquals(1L, outboxCount("workflow.committed"),    "execute() must produce workflow.committed")
+        assertEquals(1L, outboxCount("workflow.committed"), "execute() must produce workflow.committed")
         assertEquals(1L, outboxCount("workflow.rolled_back"), "rollback() must produce workflow.rolled_back")
         assertEquals(0L, outboxCount("workflow.failed"))
     }

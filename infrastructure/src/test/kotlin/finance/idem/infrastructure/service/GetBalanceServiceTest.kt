@@ -33,8 +33,8 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class GetBalanceServiceTest {
-
     @Mock lateinit var accountRepository: AccountRepository
+
     @Mock lateinit var transactionRepository: TransactionRepository
 
     private lateinit var service: GetBalanceService
@@ -49,30 +49,55 @@ class GetBalanceServiceTest {
         service = GetBalanceService(accountRepository, transactionRepository, fixedClock)
     }
 
-    private fun assetAccount() = Account.create(
-        id = accountId, tenantId = tenantId, name = "Nostro BRL",
-        currency = FiatCurrency.BRL, type = AccountType.ASSET,
-        createdAt = now, createdBy = "system",
-    )
+    private fun assetAccount() =
+        Account.create(
+            id = accountId,
+            tenantId = tenantId,
+            name = "Nostro BRL",
+            currency = FiatCurrency.BRL,
+            type = AccountType.ASSET,
+            createdAt = now,
+            createdBy = "system",
+        )
 
-    private fun liabilityAccount() = Account.create(
-        id = accountId, tenantId = tenantId, name = "Customer BRL Payable",
-        currency = FiatCurrency.BRL, type = AccountType.LIABILITY,
-        createdAt = now, createdBy = "system",
-    )
+    private fun liabilityAccount() =
+        Account.create(
+            id = accountId,
+            tenantId = tenantId,
+            name = "Customer BRL Payable",
+            currency = FiatCurrency.BRL,
+            type = AccountType.LIABILITY,
+            createdAt = now,
+            createdBy = "system",
+        )
 
-    private fun brlFiat(amount: String) = FiatEntry(
-        amount = MonetaryAmount.of(amount), currency = FiatCurrency.BRL, rail = PaymentRail.PIX,
-    )
+    private fun brlFiat(amount: String) =
+        FiatEntry(
+            amount = MonetaryAmount.of(amount),
+            currency = FiatCurrency.BRL,
+            rail = PaymentRail.PIX,
+        )
 
-    private fun line(txId: TransactionId, entryType: EntryType, amount: String, accId: AccountId = accountId) =
-        JournalLine(UUID.randomUUID(), txId, accId, tenantId, entryType, brlFiat(amount), null, now, "system")
+    private fun line(
+        txId: TransactionId,
+        entryType: EntryType,
+        amount: String,
+        accId: AccountId = accountId,
+    ) = JournalLine(UUID.randomUUID(), txId, accId, tenantId, entryType, brlFiat(amount), null, now, "system")
 
-    private fun tx(lineBuilder: (TransactionId) -> List<JournalLine>, occurredAt: Instant = now): Transaction {
+    private fun tx(
+        lineBuilder: (TransactionId) -> List<JournalLine>,
+        occurredAt: Instant = now,
+    ): Transaction {
         val txId = TransactionId.generate()
         return Transaction.create(
-            id = txId, tenantId = tenantId, idempotencyKey = UUID.randomUUID().toString(),
-            lines = lineBuilder(txId), occurredAt = occurredAt, createdAt = now, createdBy = "system",
+            id = txId,
+            tenantId = tenantId,
+            idempotencyKey = UUID.randomUUID().toString(),
+            lines = lineBuilder(txId),
+            occurredAt = occurredAt,
+            createdAt = now,
+            createdBy = "system",
         )
     }
 
@@ -100,9 +125,11 @@ class GetBalanceServiceTest {
     fun `single debit on asset account increases balance`() {
         val other = otherAccountId()
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
-        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
-        ))
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
+            ),
+        )
         assertEquals(MonetaryAmount.of("1000"), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount)
     }
 
@@ -110,10 +137,12 @@ class GetBalanceServiceTest {
     fun `mixed debits and credits on asset account — net debit balance`() {
         val other = otherAccountId()
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
-        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
-            tx({ id -> listOf(line(id, EntryType.CREDIT, "400", accountId), line(id, EntryType.DEBIT, "400", other)) }),
-        ))
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
+                tx({ id -> listOf(line(id, EntryType.CREDIT, "400", accountId), line(id, EntryType.DEBIT, "400", other)) }),
+            ),
+        )
         assertEquals(MonetaryAmount.of("600"), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount)
     }
 
@@ -121,9 +150,11 @@ class GetBalanceServiceTest {
     fun `credit on liability account increases balance`() {
         val other = otherAccountId()
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(liabilityAccount())
-        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx({ id -> listOf(line(id, EntryType.CREDIT, "500", accountId), line(id, EntryType.DEBIT, "500", other)) }),
-        ))
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx({ id -> listOf(line(id, EntryType.CREDIT, "500", accountId), line(id, EntryType.DEBIT, "500", other)) }),
+            ),
+        )
         assertEquals(MonetaryAmount.of("500"), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount)
     }
 
@@ -132,10 +163,18 @@ class GetBalanceServiceTest {
         val other = otherAccountId()
         val cutoff = now.minusSeconds(3600)
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
-        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }, occurredAt = now.minusSeconds(7200)),
-            tx({ id -> listOf(line(id, EntryType.DEBIT, "500", accountId), line(id, EntryType.CREDIT, "500", other)) }, occurredAt = now),
-        ))
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx(
+                    { id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) },
+                    occurredAt = now.minusSeconds(7200),
+                ),
+                tx(
+                    { id -> listOf(line(id, EntryType.DEBIT, "500", accountId), line(id, EntryType.CREDIT, "500", other)) },
+                    occurredAt = now,
+                ),
+            ),
+        )
         assertEquals(MonetaryAmount.of("1000"), service.execute(GetBalanceQuery(accountId, tenantId, asOf = cutoff)).getOrThrow().amount)
     }
 
@@ -144,9 +183,14 @@ class GetBalanceServiceTest {
         val other = otherAccountId()
         val cutoff = now.minusSeconds(3600)
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
-        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx({ id -> listOf(line(id, EntryType.DEBIT, "750", accountId), line(id, EntryType.CREDIT, "750", other)) }, occurredAt = cutoff),
-        ))
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx(
+                    { id -> listOf(line(id, EntryType.DEBIT, "750", accountId), line(id, EntryType.CREDIT, "750", other)) },
+                    occurredAt = cutoff,
+                ),
+            ),
+        )
         assertEquals(MonetaryAmount.of("750"), service.execute(GetBalanceQuery(accountId, tenantId, asOf = cutoff)).getOrThrow().amount)
     }
 
@@ -154,28 +198,45 @@ class GetBalanceServiceTest {
     fun `only lines matching the queried accountId contribute to balance`() {
         val other = otherAccountId()
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
-        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
-        ))
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
+            ),
+        )
         assertEquals(MonetaryAmount.of("1000"), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount)
     }
 
     @Test
     fun `on-chain entries are excluded from fiat balance`() {
         val other = otherAccountId()
-        val onChainEntry = OnChainEntry(
-            amount = MonetaryAmount.of("180.00"), token = finance.idem.core.StablecoinToken.USDC,
-            chainId = finance.idem.core.ChainId.EVM, txHash = "0xabc", blockNumber = 19_000_000L,
-            walletAddress = "0xWallet", tokenContract = "0xContract",
-        )
+        val onChainEntry =
+            OnChainEntry(
+                amount = MonetaryAmount.of("180.00"),
+                token = finance.idem.core.StablecoinToken.USDC,
+                chainId = finance.idem.core.ChainId.EVM,
+                txHash = "0xabc",
+                blockNumber = 19_000_000L,
+                walletAddress = "0xWallet",
+                tokenContract = "0xContract",
+            )
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
-        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(
-            tx({ id -> listOf(
-                JournalLine(UUID.randomUUID(), id, accountId, tenantId, EntryType.DEBIT, onChainEntry, null, now, "system"),
-                JournalLine(UUID.randomUUID(), id, other, tenantId, EntryType.CREDIT, onChainEntry, null, now, "system"),
-            )}),
-        ))
-        assertTrue(service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().amount.isZero())
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx({ id ->
+                    listOf(
+                        JournalLine(UUID.randomUUID(), id, accountId, tenantId, EntryType.DEBIT, onChainEntry, null, now, "system"),
+                        JournalLine(UUID.randomUUID(), id, other, tenantId, EntryType.CREDIT, onChainEntry, null, now, "system"),
+                    )
+                }),
+            ),
+        )
+        assertTrue(
+            service
+                .execute(GetBalanceQuery(accountId, tenantId))
+                .getOrThrow()
+                .amount
+                .isZero(),
+        )
     }
 
     @Test

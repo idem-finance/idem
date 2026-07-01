@@ -29,16 +29,16 @@ class RollbackWorkflowService(
     private val transactionRepository: TransactionRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
 ) : RollbackWorkflowUseCase {
-
     override fun execute(cmd: RollbackWorkflowCommand): Result<RollbackWorkflowSummary> {
-        val plan = workflowPlanRepository.findById(cmd.workflowPlanId, cmd.tenantId)
-            ?: return Result.failure(WorkflowPlanNotFound(cmd.workflowPlanId))
+        val plan =
+            workflowPlanRepository.findById(cmd.workflowPlanId, cmd.tenantId)
+                ?: return Result.failure(WorkflowPlanNotFound(cmd.workflowPlanId))
 
         if (plan.status !in setOf(WorkflowStatus.COMMITTED, WorkflowStatus.EXECUTING)) {
             return Result.failure(
                 IllegalStateException(
-                    "Cannot rollback plan ${cmd.workflowPlanId.value}: expected COMMITTED or EXECUTING, was ${plan.status}"
-                )
+                    "Cannot rollback plan ${cmd.workflowPlanId.value}: expected COMMITTED or EXECUTING, was ${plan.status}",
+                ),
             )
         }
 
@@ -48,56 +48,67 @@ class RollbackWorkflowService(
                 tenantId = cmd.tenantId,
                 agentContext = cmd.agentContext.copy(intent = "ROLLBACK"),
                 intent = "ROLLBACK",
-            )
+            ),
         )
 
         // Compensating transactions bypass PolicyGuard by design — rollback must always succeed
         // regardless of the current policy configuration (e.g. AllowedTokens, RequireHumanApproval).
         var updatedPlan = plan
         plan.executedSteps().sortedByDescending { it.stepOrder }.forEach { step ->
-            val originalTxId = checkNotNull(step.transactionId) {
-                "Executed step ${step.stepOrder} of plan ${cmd.workflowPlanId.value} has null transactionId — data integrity violation"
-            }
-            val originalTx = transactionRepository.findById(originalTxId, cmd.tenantId)
-                ?: error("Original transaction $originalTxId not found for step ${step.stepOrder} — cannot compensate")
+            val originalTxId =
+                checkNotNull(step.transactionId) {
+                    "Executed step ${step.stepOrder} of plan ${cmd.workflowPlanId.value} has null transactionId — data integrity violation"
+                }
+            val originalTx =
+                transactionRepository.findById(originalTxId, cmd.tenantId)
+                    ?: error("Original transaction $originalTxId not found for step ${step.stepOrder} — cannot compensate")
 
-            val compensatingLines = originalTx.lines.map { line ->
-                JournalLineRequest(
-                    accountId = line.accountId,
-                    entryType = when (line.entryType) {
-                        EntryType.DEBIT -> EntryType.CREDIT
-                        EntryType.CREDIT -> EntryType.DEBIT
-                    },
-                    monetaryEntry = line.monetaryEntry,
-                    description = "Compensating entry for rollback of ${originalTxId.value}",
+            val compensatingLines =
+                originalTx.lines.map { line ->
+                    JournalLineRequest(
+                        accountId = line.accountId,
+                        entryType =
+                            when (line.entryType) {
+                                EntryType.DEBIT -> EntryType.CREDIT
+                                EntryType.CREDIT -> EntryType.DEBIT
+                            },
+                        monetaryEntry = line.monetaryEntry,
+                        description = "Compensating entry for rollback of ${originalTxId.value}",
+                    )
+                }
+
+            val compensatingCmd =
+                PostTransactionCommand(
+                    tenantId = cmd.tenantId,
+                    idempotencyKey = "rollback:${originalTxId.value}",
+                    lines = compensatingLines,
+                    createdBy = cmd.createdBy,
+                    agentContext =
+                        cmd.agentContext.copy(
+                            intent = "ROLLBACK",
+                            workflowPlanId = cmd.workflowPlanId,
+                        ),
+                    metadata = mapOf("compensating_for" to originalTxId.value.toString()),
                 )
-            }
-
-            val compensatingCmd = PostTransactionCommand(
-                tenantId = cmd.tenantId,
-                idempotencyKey = "rollback:${originalTxId.value}",
-                lines = compensatingLines,
-                createdBy = cmd.createdBy,
-                agentContext = cmd.agentContext.copy(
-                    intent = "ROLLBACK",
-                    workflowPlanId = cmd.workflowPlanId,
-                ),
-                metadata = mapOf("compensating_for" to originalTxId.value.toString()),
-            )
-            val compensatingTxId = postTransactionUseCase.execute(compensatingCmd).getOrElse { ex ->
-                throw RuntimeException("Failed to post compensating transaction for step ${step.stepOrder}: ${ex.message}", ex)
-            }
+            val compensatingTxId =
+                postTransactionUseCase.execute(compensatingCmd).getOrElse { ex ->
+                    throw RuntimeException("Failed to post compensating transaction for step ${step.stepOrder}: ${ex.message}", ex)
+                }
             updatedPlan = updatedPlan.withStepRolledBack(step.stepOrder, compensatingTxId)
             workflowPlanRepository.updateStep(cmd.workflowPlanId, cmd.tenantId, updatedPlan.steps[step.stepOrder])
         }
 
         val rolledBackAt = Instant.now()
-        val rolledBackPlan = updatedPlan
-            .withStatus(WorkflowStatus.ROLLED_BACK)
-            .copy(rolledBackAt = rolledBackAt, rollbackReason = cmd.reason)
+        val rolledBackPlan =
+            updatedPlan
+                .withStatus(WorkflowStatus.ROLLED_BACK)
+                .copy(rolledBackAt = rolledBackAt, rollbackReason = cmd.reason)
         workflowPlanRepository.updateStatus(
-            cmd.workflowPlanId, cmd.tenantId, WorkflowStatus.ROLLED_BACK,
-            rolledBackAt = rolledBackAt, rollbackReason = cmd.reason,
+            cmd.workflowPlanId,
+            cmd.tenantId,
+            WorkflowStatus.ROLLED_BACK,
+            rolledBackAt = rolledBackAt,
+            rollbackReason = cmd.reason,
         )
 
         agentAuditRepository.save(
@@ -106,15 +117,16 @@ class RollbackWorkflowService(
                 tenantId = cmd.tenantId,
                 agentContext = cmd.agentContext.copy(intent = "ROLLBACK"),
                 outcome = "Rollback completed. Reason: ${cmd.reason}",
-            )
+            ),
         )
 
         webhookOutboxRepository.save(WebhookOutboxEntry.workflowRolledBack(rolledBackPlan))
 
-        val compensated = rolledBackPlan.steps
-            .filter { it.compensatingTransactionId != null }
-            .sortedBy { it.stepOrder }
-            .map { CompensatedStepSummary(it.stepOrder, it.description, it.compensatingTransactionId) }
+        val compensated =
+            rolledBackPlan.steps
+                .filter { it.compensatingTransactionId != null }
+                .sortedBy { it.stepOrder }
+                .map { CompensatedStepSummary(it.stepOrder, it.description, it.compensatingTransactionId) }
         return Result.success(RollbackWorkflowSummary(cmd.workflowPlanId, compensated, "ROLLED_BACK"))
     }
 }

@@ -1,3 +1,5 @@
 package finance.idem.application.ledger
 
-sealed class PostTransactionError(message: String) : Exception(message)
+sealed class PostTransactionError(
+    message: String,
+) : Exception(message)

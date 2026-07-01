@@ -9,7 +9,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class ReconcileEntriesCommandTest {
-
     private val tenantId = TenantId.generate()
     private val from = Instant.parse("2025-01-01T00:00:00Z")
     private val to = Instant.parse("2025-01-31T23:59:59Z")
@@ -37,10 +36,13 @@ class ReconcileEntriesCommandTest {
         val cmdNull = ReconcileEntriesCommand(tenantId = tenantId, from = from, to = to)
         assertNull(cmdNull.tolerancePercent)
 
-        val cmdWithTolerance = ReconcileEntriesCommand(
-            tenantId = tenantId, from = from, to = to,
-            tolerancePercent = BigDecimal("0.5"),
-        )
+        val cmdWithTolerance =
+            ReconcileEntriesCommand(
+                tenantId = tenantId,
+                from = from,
+                to = to,
+                tolerancePercent = BigDecimal("0.5"),
+            )
         assertEquals(BigDecimal("0.5"), cmdWithTolerance.tolerancePercent)
     }
 }

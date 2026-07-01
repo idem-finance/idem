@@ -6,13 +6,14 @@ import org.springframework.data.repository.query.Param
 import java.util.UUID
 
 interface SettlementIdempotencyKeyJpaRepository : JpaRepository<SettlementIdempotencyKeyDataModel, SettlementIdempotencyKeyId> {
-
-    @Query("""
+    @Query(
+        """
         SELECT i FROM SettlementIdempotencyKeyDataModel i
         WHERE i.key = :key
           AND i.tenantId = :tenantId
           AND i.expiresAt > CURRENT_TIMESTAMP
-    """)
+    """,
+    )
     fun findActiveByKeyAndTenantId(
         @Param("key") key: String,
         @Param("tenantId") tenantId: UUID,

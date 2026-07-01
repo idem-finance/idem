@@ -2,19 +2,18 @@ package finance.idem.core
 
 import java.math.BigDecimal
 
-class MonetaryAmount private constructor(val value: BigDecimal) {
-
+class MonetaryAmount private constructor(
+    val value: BigDecimal,
+) {
     init {
         require(value.scale() <= MAX_SCALE) {
             "MonetaryAmount scale ${value.scale()} exceeds maximum $MAX_SCALE"
         }
     }
 
-    operator fun plus(other: MonetaryAmount): MonetaryAmount =
-        MonetaryAmount(value.add(other.value))
+    operator fun plus(other: MonetaryAmount): MonetaryAmount = MonetaryAmount(value.add(other.value))
 
-    operator fun minus(other: MonetaryAmount): MonetaryAmount =
-        MonetaryAmount(value.subtract(other.value))
+    operator fun minus(other: MonetaryAmount): MonetaryAmount = MonetaryAmount(value.subtract(other.value))
 
     fun isZero(): Boolean = value.compareTo(BigDecimal.ZERO) == 0
 

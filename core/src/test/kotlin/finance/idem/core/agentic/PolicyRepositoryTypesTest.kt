@@ -11,7 +11,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class PolicyRepositoryTypesTest {
-
     @Test
     fun `PolicyRuleId generate produces non-null distinct values`() {
         val a = PolicyRuleId.generate()
@@ -41,12 +40,13 @@ class PolicyRepositoryTypesTest {
 
     @Test
     fun `PolicyRuleRecord with null agentKeyPrefix is a tenant-wide rule`() {
-        val record = PolicyRuleRecord(
-            id = PolicyRuleId.generate(),
-            agentKeyPrefix = null,
-            rule = PolicyRule.MaxDebitPerHour(MonetaryAmount.of("500")),
-            createdAt = Instant.now(),
-        )
+        val record =
+            PolicyRuleRecord(
+                id = PolicyRuleId.generate(),
+                agentKeyPrefix = null,
+                rule = PolicyRule.MaxDebitPerHour(MonetaryAmount.of("500")),
+                createdAt = Instant.now(),
+            )
         assertEquals(null, record.agentKeyPrefix)
     }
 
@@ -81,6 +81,7 @@ class PolicyRepositoryTypesTest {
     @Test
     fun `params serializes AllowedTokens to list of token names`() {
         val rule = PolicyRule.AllowedTokens(setOf(StablecoinToken.USDC, StablecoinToken.USDT))
+
         @Suppress("UNCHECKED_CAST")
         val tokens = rule.params()["tokens"] as List<String>
         assertEquals(setOf("USDC", "USDT"), tokens.toSet())
@@ -89,6 +90,7 @@ class PolicyRepositoryTypesTest {
     @Test
     fun `params serializes AllowedChains to list of chain names`() {
         val rule = PolicyRule.AllowedChains(setOf(ChainId.EVM, ChainId.SOLANA))
+
         @Suppress("UNCHECKED_CAST")
         val chains = rule.params()["chains"] as List<String>
         assertEquals(setOf("EVM", "SOLANA"), chains.toSet())

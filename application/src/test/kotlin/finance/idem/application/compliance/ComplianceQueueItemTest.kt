@@ -11,18 +11,18 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class ComplianceQueueItemTest {
-
     private val tenantId = TenantId.generate()
 
-    private val entry = OnChainEntry(
-        amount = MonetaryAmount.of("1500"),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.EVM,
-        txHash = "0xabc123",
-        blockNumber = 42L,
-        walletAddress = "0xwallet",
-        tokenContract = "0xcontract",
-    )
+    private val entry =
+        OnChainEntry(
+            amount = MonetaryAmount.of("1500"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.EVM,
+            txHash = "0xabc123",
+            blockNumber = 42L,
+            walletAddress = "0xwallet",
+            tokenContract = "0xcontract",
+        )
 
     @Test
     fun `from MissingData sets reason MISSING_DATA and empty missingFields`() {

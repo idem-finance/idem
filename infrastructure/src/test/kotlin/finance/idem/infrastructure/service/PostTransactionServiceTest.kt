@@ -3,10 +3,10 @@ package finance.idem.infrastructure.service
 import finance.idem.application.audit.AuditEntry
 import finance.idem.application.compliance.TravelRuleValidationResult
 import finance.idem.application.compliance.TravelRuleValidator
-import finance.idem.application.ledger.JournalLineRequest
-import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.IdempotencyConflict
 import finance.idem.application.ledger.InvariantViolation
+import finance.idem.application.ledger.JournalLineRequest
+import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionError
 import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.outbox.WebhookOutboxEntry
@@ -26,14 +26,14 @@ import finance.idem.core.PaymentRail
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
+import finance.idem.core.compliance.LegalPerson
+import finance.idem.core.compliance.TravelRuleData
+import finance.idem.core.compliance.VaspTransferParty
 import finance.idem.core.ledger.AccountRepository
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.ledger.TransactionStatus
-import finance.idem.core.compliance.LegalPerson
-import finance.idem.core.compliance.TravelRuleData
-import finance.idem.core.compliance.VaspTransferParty
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.BeforeEach
@@ -57,15 +57,22 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class PostTransactionServiceTest {
-
     @Mock lateinit var transactionRepository: TransactionRepository
+
     @Mock lateinit var accountRepository: AccountRepository
+
     @Mock lateinit var auditRepository: AuditRepository
+
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
+
     @Mock lateinit var idempotencyStore: IdempotencyStore
+
     @Mock lateinit var reconciliationService: BasicReconciliationUseCase
+
     @Mock lateinit var travelRuleValidator: TravelRuleValidator
+
     @Mock lateinit var complianceQueueRepository: ComplianceQueueRepository
+
     @Mock lateinit var lgpdRetentionRepository: LgpdRetentionRepository
 
     private lateinit var service: PostTransactionService
@@ -76,35 +83,41 @@ class PostTransactionServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = PostTransactionService(
-            transactionRepository,
-            accountRepository,
-            auditRepository,
-            webhookOutboxRepository,
-            idempotencyStore,
-            reconciliationService,
-            travelRuleValidator,
-            complianceQueueRepository,
-            lgpdRetentionRepository,
-        )
+        service =
+            PostTransactionService(
+                transactionRepository,
+                accountRepository,
+                auditRepository,
+                webhookOutboxRepository,
+                idempotencyStore,
+                reconciliationService,
+                travelRuleValidator,
+                complianceQueueRepository,
+                lgpdRetentionRepository,
+            )
     }
 
-    private fun brlLine(accountId: AccountId, entryType: EntryType) = JournalLineRequest(
+    private fun brlLine(
+        accountId: AccountId,
+        entryType: EntryType,
+    ) = JournalLineRequest(
         accountId = accountId,
         entryType = entryType,
-        monetaryEntry = FiatEntry(
-            amount = MonetaryAmount.of("1000.00"),
-            currency = FiatCurrency.BRL,
-            rail = PaymentRail.PIX,
-        ),
+        monetaryEntry =
+            FiatEntry(
+                amount = MonetaryAmount.of("1000.00"),
+                currency = FiatCurrency.BRL,
+                rail = PaymentRail.PIX,
+            ),
     )
 
     private fun command(
         idempotencyKey: String = "idem-001",
-        lines: List<JournalLineRequest> = listOf(
-            brlLine(debitAccountId, EntryType.DEBIT),
-            brlLine(creditAccountId, EntryType.CREDIT),
-        ),
+        lines: List<JournalLineRequest> =
+            listOf(
+                brlLine(debitAccountId, EntryType.DEBIT),
+                brlLine(creditAccountId, EntryType.CREDIT),
+            ),
     ) = PostTransactionCommand(
         tenantId = tenantId,
         idempotencyKey = idempotencyKey,
@@ -184,16 +197,41 @@ class PostTransactionServiceTest {
     @Test
     fun `returns existing TransactionId when key already committed`() {
         val existingId = TransactionId.generate()
-        val existingTx = Transaction.create(
-            id = existingId, tenantId = tenantId, idempotencyKey = "idem-001",
-            lines = listOf(
-                JournalLine(UUID.randomUUID(), existingId, debitAccountId, tenantId, EntryType.DEBIT,
-                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
-                JournalLine(UUID.randomUUID(), existingId, creditAccountId, tenantId, EntryType.CREDIT,
-                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
-            ),
-            occurredAt = Instant.now(), createdAt = Instant.now(), createdBy = "system",
-        ).copy(status = TransactionStatus.COMMITTED)
+        val existingTx =
+            Transaction
+                .create(
+                    id = existingId,
+                    tenantId = tenantId,
+                    idempotencyKey = "idem-001",
+                    lines =
+                        listOf(
+                            JournalLine(
+                                UUID.randomUUID(),
+                                existingId,
+                                debitAccountId,
+                                tenantId,
+                                EntryType.DEBIT,
+                                FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX),
+                                null,
+                                Instant.now(),
+                                "system",
+                            ),
+                            JournalLine(
+                                UUID.randomUUID(),
+                                existingId,
+                                creditAccountId,
+                                tenantId,
+                                EntryType.CREDIT,
+                                FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX),
+                                null,
+                                Instant.now(),
+                                "system",
+                            ),
+                        ),
+                    occurredAt = Instant.now(),
+                    createdAt = Instant.now(),
+                    createdBy = "system",
+                ).copy(status = TransactionStatus.COMMITTED)
 
         whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(false)
         whenever(idempotencyStore.find("idem-001", tenantId)).thenReturn(existingId)
@@ -211,16 +249,41 @@ class PostTransactionServiceTest {
     @Test
     fun `returns IdempotencyConflict when key exists but transaction is PENDING`() {
         val existingId = TransactionId.generate()
-        val pendingTx = Transaction.create(
-            id = existingId, tenantId = tenantId, idempotencyKey = "idem-001",
-            lines = listOf(
-                JournalLine(UUID.randomUUID(), existingId, debitAccountId, tenantId, EntryType.DEBIT,
-                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
-                JournalLine(UUID.randomUUID(), existingId, creditAccountId, tenantId, EntryType.CREDIT,
-                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
-            ),
-            occurredAt = Instant.now(), createdAt = Instant.now(), createdBy = "system",
-        ).copy(status = TransactionStatus.PENDING)
+        val pendingTx =
+            Transaction
+                .create(
+                    id = existingId,
+                    tenantId = tenantId,
+                    idempotencyKey = "idem-001",
+                    lines =
+                        listOf(
+                            JournalLine(
+                                UUID.randomUUID(),
+                                existingId,
+                                debitAccountId,
+                                tenantId,
+                                EntryType.DEBIT,
+                                FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX),
+                                null,
+                                Instant.now(),
+                                "system",
+                            ),
+                            JournalLine(
+                                UUID.randomUUID(),
+                                existingId,
+                                creditAccountId,
+                                tenantId,
+                                EntryType.CREDIT,
+                                FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX),
+                                null,
+                                Instant.now(),
+                                "system",
+                            ),
+                        ),
+                    occurredAt = Instant.now(),
+                    createdAt = Instant.now(),
+                    createdBy = "system",
+                ).copy(status = TransactionStatus.PENDING)
 
         whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(false)
         whenever(idempotencyStore.find("idem-001", tenantId)).thenReturn(existingId)
@@ -236,16 +299,41 @@ class PostTransactionServiceTest {
     @Test
     fun `proceeds when previous transaction was ROLLED_BACK — releases and retries key`() {
         val rolledBackId = TransactionId.generate()
-        val rolledBackTx = Transaction.create(
-            id = rolledBackId, tenantId = tenantId, idempotencyKey = "idem-001",
-            lines = listOf(
-                JournalLine(UUID.randomUUID(), rolledBackId, debitAccountId, tenantId, EntryType.DEBIT,
-                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
-                JournalLine(UUID.randomUUID(), rolledBackId, creditAccountId, tenantId, EntryType.CREDIT,
-                    FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX), null, Instant.now(), "system"),
-            ),
-            occurredAt = Instant.now(), createdAt = Instant.now(), createdBy = "system",
-        ).copy(status = TransactionStatus.ROLLED_BACK)
+        val rolledBackTx =
+            Transaction
+                .create(
+                    id = rolledBackId,
+                    tenantId = tenantId,
+                    idempotencyKey = "idem-001",
+                    lines =
+                        listOf(
+                            JournalLine(
+                                UUID.randomUUID(),
+                                rolledBackId,
+                                debitAccountId,
+                                tenantId,
+                                EntryType.DEBIT,
+                                FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX),
+                                null,
+                                Instant.now(),
+                                "system",
+                            ),
+                            JournalLine(
+                                UUID.randomUUID(),
+                                rolledBackId,
+                                creditAccountId,
+                                tenantId,
+                                EntryType.CREDIT,
+                                FiatEntry(MonetaryAmount.of("500"), FiatCurrency.BRL, PaymentRail.PIX),
+                                null,
+                                Instant.now(),
+                                "system",
+                            ),
+                        ),
+                    occurredAt = Instant.now(),
+                    createdAt = Instant.now(),
+                    createdBy = "system",
+                ).copy(status = TransactionStatus.ROLLED_BACK)
 
         whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(false).thenReturn(true)
         whenever(idempotencyStore.find("idem-001", tenantId)).thenReturn(rolledBackId)
@@ -286,12 +374,24 @@ class PostTransactionServiceTest {
             inv.getArgument<Set<*>>(0).toSet()
         }
 
-        val result = service.execute(command(lines = listOf(
-            JournalLineRequest(debitAccountId, EntryType.DEBIT,
-                FiatEntry(MonetaryAmount.of("1000"), FiatCurrency.BRL, PaymentRail.PIX)),
-            JournalLineRequest(creditAccountId, EntryType.CREDIT,
-                FiatEntry(MonetaryAmount.of("999"), FiatCurrency.BRL, PaymentRail.PIX)),
-        )))
+        val result =
+            service.execute(
+                command(
+                    lines =
+                        listOf(
+                            JournalLineRequest(
+                                debitAccountId,
+                                EntryType.DEBIT,
+                                FiatEntry(MonetaryAmount.of("1000"), FiatCurrency.BRL, PaymentRail.PIX),
+                            ),
+                            JournalLineRequest(
+                                creditAccountId,
+                                EntryType.CREDIT,
+                                FiatEntry(MonetaryAmount.of("999"), FiatCurrency.BRL, PaymentRail.PIX),
+                            ),
+                        ),
+                ),
+            )
 
         assertTrue(result.isFailure)
         assertIs<InvariantViolation>(result.exceptionOrNull())
@@ -402,15 +502,16 @@ class PostTransactionServiceTest {
     ) = JournalLineRequest(
         accountId = accountId,
         entryType = entryType,
-        monetaryEntry = OnChainEntry(
-            amount = MonetaryAmount.of(amount),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.EVM,
-            txHash = "0xabc123",
-            blockNumber = 100L,
-            walletAddress = "0xwallet",
-            tokenContract = "0xcontract",
-        ),
+        monetaryEntry =
+            OnChainEntry(
+                amount = MonetaryAmount.of(amount),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                txHash = "0xabc123",
+                blockNumber = 100L,
+                walletAddress = "0xwallet",
+                tokenContract = "0xcontract",
+            ),
     )
 
     @Test
@@ -452,10 +553,11 @@ class PostTransactionServiceTest {
 
         val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
         val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
-        val missingResult = TravelRuleValidationResult.MissingData(
-            entry = debitLine.monetaryEntry as OnChainEntry,
-            reason = "Travel rule data required for transfers >= 1000",
-        )
+        val missingResult =
+            TravelRuleValidationResult.MissingData(
+                entry = debitLine.monetaryEntry as OnChainEntry,
+                reason = "Travel rule data required for transfers >= 1000",
+            )
         whenever(travelRuleValidator.validate(any(), anyOrNull()))
             .thenReturn(missingResult)
             .thenReturn(TravelRuleValidationResult.Exempt)
@@ -477,14 +579,16 @@ class PostTransactionServiceTest {
 
         val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
         val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
-        val missingDebit = TravelRuleValidationResult.MissingData(
-            entry = debitLine.monetaryEntry as OnChainEntry,
-            reason = "Travel rule data required for transfers >= 1000",
-        )
-        val missingCredit = TravelRuleValidationResult.MissingData(
-            entry = creditLine.monetaryEntry as OnChainEntry,
-            reason = "Travel rule data required for transfers >= 1000",
-        )
+        val missingDebit =
+            TravelRuleValidationResult.MissingData(
+                entry = debitLine.monetaryEntry as OnChainEntry,
+                reason = "Travel rule data required for transfers >= 1000",
+            )
+        val missingCredit =
+            TravelRuleValidationResult.MissingData(
+                entry = creditLine.monetaryEntry as OnChainEntry,
+                reason = "Travel rule data required for transfers >= 1000",
+            )
         whenever(travelRuleValidator.validate(any(), anyOrNull()))
             .thenReturn(missingDebit)
             .thenReturn(missingCredit)
@@ -507,19 +611,21 @@ class PostTransactionServiceTest {
 
         val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
         val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
-        val party = VaspTransferParty(
-            legalPerson = LegalPerson(name = "Acme Corp", registrationNumber = "123", country = "US"),
-            accountNumber = "0xabc",
-            vaspDid = "did:example:acme",
-        )
-        val validData = TravelRuleData(
-            transferId = "tx-valid-001",
-            originator = party,
-            beneficiary = party,
-            transferAmount = MonetaryAmount.of("1500.00"),
-            transferAsset = StablecoinToken.USDC,
-            threshold = TravelRuleData.defaultThresholdFor(StablecoinToken.USDC),
-        )
+        val party =
+            VaspTransferParty(
+                legalPerson = LegalPerson(name = "Acme Corp", registrationNumber = "123", country = "US"),
+                accountNumber = "0xabc",
+                vaspDid = "did:example:acme",
+            )
+        val validData =
+            TravelRuleData(
+                transferId = "tx-valid-001",
+                originator = party,
+                beneficiary = party,
+                transferAmount = MonetaryAmount.of("1500.00"),
+                transferAsset = StablecoinToken.USDC,
+                threshold = TravelRuleData.defaultThresholdFor(StablecoinToken.USDC),
+            )
         whenever(travelRuleValidator.validate(any(), anyOrNull()))
             .thenReturn(TravelRuleValidationResult.Valid(validData))
 
@@ -540,19 +646,21 @@ class PostTransactionServiceTest {
 
         val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
         val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
-        val party = VaspTransferParty(
-            legalPerson = LegalPerson(name = "Acme Corp", registrationNumber = "123", country = "US"),
-            accountNumber = "0xabc",
-            vaspDid = "did:example:acme",
-        )
-        val validData = TravelRuleData(
-            transferId = "tx-lgpd-001",
-            originator = party,
-            beneficiary = party,
-            transferAmount = MonetaryAmount.of("1500.00"),
-            transferAsset = StablecoinToken.USDC,
-            threshold = TravelRuleData.defaultThresholdFor(StablecoinToken.USDC),
-        )
+        val party =
+            VaspTransferParty(
+                legalPerson = LegalPerson(name = "Acme Corp", registrationNumber = "123", country = "US"),
+                accountNumber = "0xabc",
+                vaspDid = "did:example:acme",
+            )
+        val validData =
+            TravelRuleData(
+                transferId = "tx-lgpd-001",
+                originator = party,
+                beneficiary = party,
+                transferAmount = MonetaryAmount.of("1500.00"),
+                transferAsset = StablecoinToken.USDC,
+                threshold = TravelRuleData.defaultThresholdFor(StablecoinToken.USDC),
+            )
         whenever(travelRuleValidator.validate(any(), anyOrNull()))
             .thenReturn(TravelRuleValidationResult.Valid(validData))
 
@@ -595,10 +703,11 @@ class PostTransactionServiceTest {
 
         val debitLine = onChainLine(debitAccountId, EntryType.DEBIT)
         val creditLine = onChainLine(creditAccountId, EntryType.CREDIT)
-        val missingResult = TravelRuleValidationResult.MissingData(
-            entry = debitLine.monetaryEntry as OnChainEntry,
-            reason = "Travel rule data required",
-        )
+        val missingResult =
+            TravelRuleValidationResult.MissingData(
+                entry = debitLine.monetaryEntry as OnChainEntry,
+                reason = "Travel rule data required",
+            )
         whenever(travelRuleValidator.validate(any(), anyOrNull()))
             .thenReturn(missingResult)
             .thenReturn(TravelRuleValidationResult.Exempt)

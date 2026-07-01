@@ -13,20 +13,20 @@ import org.web3j.protocol.Web3j
 import java.math.BigDecimal
 
 class EvmChainReaderTest {
-
     private val usdcContract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
     private val watchedWallet = "0xabcdef1234567890abcdef1234567890abcdef34"
     private val tenantId = "a1b2c3d4-0000-0000-0000-000000000001"
 
-    private val watchedAddress = WatchedAddress(
-        chainKey = "EVM_1",
-        walletAddress = watchedWallet,
-        tokenContract = usdcContract,
-        token = StablecoinToken.USDC,
-        tenantId = tenantId,
-        debitAccountId = "a1b2c3d4-0000-0000-0000-000000000002",
-        creditAccountId = "a1b2c3d4-0000-0000-0000-000000000003",
-    )
+    private val watchedAddress =
+        WatchedAddress(
+            chainKey = "EVM_1",
+            walletAddress = watchedWallet,
+            tokenContract = usdcContract,
+            token = StablecoinToken.USDC,
+            tenantId = tenantId,
+            debitAccountId = "a1b2c3d4-0000-0000-0000-000000000002",
+            creditAccountId = "a1b2c3d4-0000-0000-0000-000000000003",
+        )
 
     private val mockRepo = mock<WatchedAddressRepository>()
     private val reader = EvmChainReader("EVM_1", mock<Web3j>(), mockRepo)
@@ -44,14 +44,15 @@ class EvmChainReaderTest {
 
     @Test
     fun `decodes ERC20 Transfer event to watched address`() {
-        val result = reader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, toPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = usdcContract,
-        )
+        val result =
+            reader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, toPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = usdcContract,
+            )
 
         assertEquals("EVM_1:$txHash:0", result!!.idempotencyKey)
         assertEquals(MonetaryAmount.of(BigDecimal("1.000000")), result.entry.amount)
@@ -67,28 +68,30 @@ class EvmChainReaderTest {
 
     @Test
     fun `normalizes contractAddress to lowercase in OnChainEntry`() {
-        val result = reader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, toPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = usdcContract.uppercase(),
-        )
+        val result =
+            reader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, toPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = usdcContract.uppercase(),
+            )
 
         assertEquals(usdcContract.lowercase(), result!!.entry.tokenContract)
     }
 
     @Test
     fun `ignores log with wrong contract address`() {
-        val result = reader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, toPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-        )
+        val result =
+            reader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, toPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+            )
 
         assertNull(result)
     }
@@ -97,64 +100,69 @@ class EvmChainReaderTest {
     fun `ignores log to unwatched wallet address`() {
         val unwatchedPadded = "0x000000000000000000000000ffffffffffffffffffffffffffffffffffffffff"
 
-        val result = reader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, unwatchedPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = usdcContract,
-        )
+        val result =
+            reader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, unwatchedPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = usdcContract,
+            )
 
         assertNull(result)
     }
 
     @Test
     fun `ignores log with fewer than 3 topics`() {
-        val result = reader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = usdcContract,
-        )
+        val result =
+            reader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = usdcContract,
+            )
 
         assertNull(result)
     }
 
     @Test
     fun `ignores log with wrong event signature in topic 0`() {
-        val result = reader.decodeTransfer(
-            topics = listOf("0x0000000000000000000000000000000000000000000000000000000000000000", fromPadded, toPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = usdcContract,
-        )
+        val result =
+            reader.decodeTransfer(
+                topics = listOf("0x0000000000000000000000000000000000000000000000000000000000000000", fromPadded, toPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = usdcContract,
+            )
 
         assertNull(result)
     }
 
     @Test
     fun `log index in idempotency key prevents collision on multi-transfer tx`() {
-        val result0 = reader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, toPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = usdcContract,
-        )
-        val result5 = reader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, toPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 5,
-            contractAddress = usdcContract,
-        )
+        val result0 =
+            reader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, toPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = usdcContract,
+            )
+        val result5 =
+            reader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, toPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 5,
+                contractAddress = usdcContract,
+            )
 
         assertEquals("EVM_1:$txHash:0", result0!!.idempotencyKey)
         assertEquals("EVM_1:$txHash:5", result5!!.idempotencyKey)
@@ -162,14 +170,15 @@ class EvmChainReaderTest {
 
     @Test
     fun `contract address comparison is case-insensitive`() {
-        val result = reader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, toPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = usdcContract.lowercase(),
-        )
+        val result =
+            reader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, toPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = usdcContract.lowercase(),
+            )
 
         assertEquals("EVM_1:$txHash:0", result!!.idempotencyKey)
     }
@@ -201,14 +210,15 @@ class EvmChainReaderTest {
         whenever(usdtRepo.findByChainKey("EVM_1")).thenReturn(listOf(usdtWatched))
         val usdtReader = EvmChainReader("EVM_1", mock<Web3j>(), usdtRepo)
 
-        val result = usdtReader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, toPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = usdtContract,
-        )
+        val result =
+            usdtReader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, toPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = usdtContract,
+            )
 
         assertEquals(StablecoinToken.USDT, result!!.entry.token)
         assertEquals(MonetaryAmount.of(BigDecimal("1.000000")), result.entry.amount)
@@ -222,14 +232,15 @@ class EvmChainReaderTest {
         whenever(pyusdRepo.findByChainKey("EVM_1")).thenReturn(listOf(pyusdWatched))
         val pyusdReader = EvmChainReader("EVM_1", mock<Web3j>(), pyusdRepo)
 
-        val result = pyusdReader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, toPadded),
-            data = oneUsdcData,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = pyusdContract,
-        )
+        val result =
+            pyusdReader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, toPadded),
+                data = oneUsdcData,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = pyusdContract,
+            )
 
         assertEquals(StablecoinToken.PYUSD, result!!.entry.token)
         assertEquals(MonetaryAmount.of(BigDecimal("1.000000")), result.entry.amount)
@@ -244,14 +255,15 @@ class EvmChainReaderTest {
         whenever(brzRepo.findByChainKey("EVM_1")).thenReturn(listOf(brzWatched))
         val brzReader = EvmChainReader("EVM_1", mock<Web3j>(), brzRepo)
 
-        val result = brzReader.decodeTransfer(
-            topics = listOf(transferTopic, fromPadded, toPadded),
-            data = oneEther,
-            txHash = txHash,
-            blockNumber = 19_000_000L,
-            logIndex = 0,
-            contractAddress = brzContract,
-        )
+        val result =
+            brzReader.decodeTransfer(
+                topics = listOf(transferTopic, fromPadded, toPadded),
+                data = oneEther,
+                txHash = txHash,
+                blockNumber = 19_000_000L,
+                logIndex = 0,
+                contractAddress = brzContract,
+            )
 
         assertEquals(StablecoinToken.BRZ, result!!.entry.token)
         assertEquals(MonetaryAmount.of(BigDecimal("1.000000000000000000")), result.entry.amount)

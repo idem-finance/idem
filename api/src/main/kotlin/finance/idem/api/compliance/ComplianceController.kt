@@ -32,7 +32,6 @@ class ComplianceController(
     private val exportAuditLogUseCase: ExportAuditLogUseCase,
     private val objectMapper: ObjectMapper,
 ) {
-
     companion object {
         private val NDJSON = MediaType("application", "x-ndjson")
         private val FILENAME_FMT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
@@ -55,16 +54,19 @@ class ComplianceController(
         @Parameter(description = "Filter by entry type: HUMAN, AGENT, or ALL (default)")
         @RequestParam(defaultValue = "ALL") type: AuditEntryType,
     ): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         if (from == null || to == null) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("MISSING_PARAMETER", "from and to are required"))
         }
 
         if (from.isAfter(to)) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("INVALID_RANGE", "from must not be after to"))
         }
 
@@ -72,7 +74,8 @@ class ComplianceController(
         val filename = "audit-${FILENAME_FMT.format(from)}-${FILENAME_FMT.format(to)}.ndjson"
         val ndjson = buildString { records.forEach { append(objectMapper.writeValueAsString(it)).append('\n') } }
 
-        return ResponseEntity.ok()
+        return ResponseEntity
+            .ok()
             .contentType(NDJSON)
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
             .body(ndjson)

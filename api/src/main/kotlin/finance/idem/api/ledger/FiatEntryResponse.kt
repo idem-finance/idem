@@ -12,11 +12,12 @@ data class FiatEntryResponse(
     val bankReference: String? = null,
 ) : MonetaryEntryResponse() {
     companion object {
-        fun from(entry: FiatEntry) = FiatEntryResponse(
-            amount = entry.amount.value,
-            currency = entry.currency,
-            rail = entry.rail,
-            bankReference = entry.bankReference,
-        )
+        fun from(entry: FiatEntry) =
+            FiatEntryResponse(
+                amount = entry.amount.value,
+                currency = entry.currency,
+                rail = entry.rail,
+                bankReference = entry.bankReference,
+            )
     }
 }

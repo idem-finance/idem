@@ -20,7 +20,6 @@ import org.web3j.protocol.http.HttpService
 import java.math.BigDecimal
 
 class EvmChainReaderIntegrationTest {
-
     private lateinit var wireMock: WireMockServer
     private lateinit var reader: EvmChainReader
 
@@ -28,15 +27,16 @@ class EvmChainReaderIntegrationTest {
     private val watchedWallet = "0xabcdef1234567890abcdef1234567890abcdef34"
     private val txHash = "0xabc123def456abc123def456abc123def456abc123def456abc123def456abc1"
 
-    private val watched = WatchedAddress(
-        chainKey = "EVM_1",
-        walletAddress = watchedWallet,
-        tokenContract = usdcContract,
-        token = StablecoinToken.USDC,
-        tenantId = "tenant-1",
-        debitAccountId = "debit-1",
-        creditAccountId = "credit-1",
-    )
+    private val watched =
+        WatchedAddress(
+            chainKey = "EVM_1",
+            walletAddress = watchedWallet,
+            tokenContract = usdcContract,
+            token = StablecoinToken.USDC,
+            tenantId = "tenant-1",
+            debitAccountId = "debit-1",
+            creditAccountId = "credit-1",
+        )
 
     @BeforeEach
     fun setUp() {
@@ -47,12 +47,13 @@ class EvmChainReaderIntegrationTest {
         whenever(mockRepo.findByChainKey("EVM_1")).thenReturn(listOf(watched))
 
         val web3j = Web3j.build(HttpService("http://localhost:${wireMock.port()}"))
-        reader = EvmChainReader(
-            chainKey = "EVM_1",
-            web3j = web3j,
-            watchedAddressRepository = mockRepo,
-            maxBlockRange = 1_000_000L,
-        )
+        reader =
+            EvmChainReader(
+                chainKey = "EVM_1",
+                web3j = web3j,
+                watchedAddressRepository = mockRepo,
+                maxBlockRange = 1_000_000L,
+            )
     }
 
     @AfterEach
@@ -70,8 +71,8 @@ class EvmChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(alchemyEthGetLogsResponse(txHash, watchedWallet, usdcContract))
-                )
+                        .withBody(alchemyEthGetLogsResponse(txHash, watchedWallet, usdcContract)),
+                ),
         )
 
         val result = reader.poll(19_000_000L)
@@ -100,8 +101,8 @@ class EvmChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(alchemyEthGetLogsResponse(txHash, unrelatedWallet, usdcContract))
-                )
+                        .withBody(alchemyEthGetLogsResponse(txHash, unrelatedWallet, usdcContract)),
+                ),
         )
 
         val result = reader.poll(19_000_000L)
@@ -119,8 +120,8 @@ class EvmChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("""{"jsonrpc":"2.0","id":1,"result":[]}""")
-                )
+                        .withBody("""{"jsonrpc":"2.0","id":1,"result":[]}"""),
+                ),
         )
 
         val result = reader.poll(19_000_000L)
@@ -136,12 +137,16 @@ class EvmChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("""{"jsonrpc":"2.0","id":1,"result":"$hex"}""")
-                )
+                        .withBody("""{"jsonrpc":"2.0","id":1,"result":"$hex"}"""),
+                ),
         )
     }
 
-    private fun alchemyEthGetLogsResponse(txHash: String, toWallet: String, contractAddress: String): String {
+    private fun alchemyEthGetLogsResponse(
+        txHash: String,
+        toWallet: String,
+        contractAddress: String,
+    ): String {
         val toPadded = "0x000000000000000000000000${toWallet.removePrefix("0x").lowercase()}"
         val fromPadded = "0x000000000000000000000000abcdef1234567890abcdef1234567890abcdef12"
         // 1_000_000 = 0xF4240 → 1 USDC (6 decimals)
@@ -169,6 +174,6 @@ class EvmChainReaderIntegrationTest {
                 }
               ]
             }
-        """.trimIndent()
+            """.trimIndent()
     }
 }

@@ -17,7 +17,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class TenantThresholdWarnServiceTest {
-
     private val telemetryStatsPort: TelemetryStatsPort = mock()
 
     private lateinit var logAppender: ListAppender<ILoggingEvent>
@@ -35,8 +34,7 @@ class TenantThresholdWarnServiceTest {
         logger.detachAppender(logAppender)
     }
 
-    private fun service(threshold: Long = 10) =
-        TenantThresholdWarnService(telemetryStatsPort, threshold)
+    private fun service(threshold: Long = 10) = TenantThresholdWarnService(telemetryStatsPort, threshold)
 
     @Test
     fun `no log when count is below threshold`() {

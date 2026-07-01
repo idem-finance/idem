@@ -21,7 +21,6 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class CreateAccountServiceTest {
-
     @Mock
     lateinit var accountRepository: AccountRepository
 
@@ -36,14 +35,15 @@ class CreateAccountServiceTest {
 
     @Test
     fun `execute creates and saves account, returns success with the saved account`() {
-        val cmd = CreateAccountCommand(
-            tenantId = tenantId,
-            name = "USDC Settlement",
-            description = "Incoming USDC settlements",
-            currency = FiatCurrency.USD,
-            type = AccountType.ASSET,
-            createdBy = "sk_live_abc",
-        )
+        val cmd =
+            CreateAccountCommand(
+                tenantId = tenantId,
+                name = "USDC Settlement",
+                description = "Incoming USDC settlements",
+                currency = FiatCurrency.USD,
+                type = AccountType.ASSET,
+                createdBy = "sk_live_abc",
+            )
 
         whenever(accountRepository.save(org.mockito.kotlin.any())).thenAnswer { it.arguments[0] as Account }
 
@@ -63,14 +63,15 @@ class CreateAccountServiceTest {
 
     @Test
     fun `execute calls accountRepository save with the correct account`() {
-        val cmd = CreateAccountCommand(
-            tenantId = tenantId,
-            name = "Fees",
-            description = null,
-            currency = FiatCurrency.BRL,
-            type = AccountType.REVENUE,
-            createdBy = "sk_live_xyz",
-        )
+        val cmd =
+            CreateAccountCommand(
+                tenantId = tenantId,
+                name = "Fees",
+                description = null,
+                currency = FiatCurrency.BRL,
+                type = AccountType.REVENUE,
+                createdBy = "sk_live_xyz",
+            )
 
         whenever(accountRepository.save(org.mockito.kotlin.any())).thenAnswer { it.arguments[0] as Account }
 
@@ -87,14 +88,15 @@ class CreateAccountServiceTest {
 
     @Test
     fun `execute propagates repository failure`() {
-        val cmd = CreateAccountCommand(
-            tenantId = tenantId,
-            name = "Test",
-            description = null,
-            currency = FiatCurrency.USD,
-            type = AccountType.ASSET,
-            createdBy = "sk_live_abc",
-        )
+        val cmd =
+            CreateAccountCommand(
+                tenantId = tenantId,
+                name = "Test",
+                description = null,
+                currency = FiatCurrency.USD,
+                type = AccountType.ASSET,
+                createdBy = "sk_live_abc",
+            )
 
         val ex = RuntimeException("DB connection lost")
         whenever(accountRepository.save(org.mockito.kotlin.any())).thenThrow(ex)

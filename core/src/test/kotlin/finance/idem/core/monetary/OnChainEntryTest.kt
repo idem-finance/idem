@@ -14,16 +14,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class OnChainEntryTest {
-
-    private val validEntry = OnChainEntry(
-        amount = MonetaryAmount.of("100"),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.EVM,
-        txHash = "0xdeadbeef",
-        blockNumber = 1_000_000L,
-        walletAddress = "0xRecipient",
-        tokenContract = "0xTokenContract",
-    )
+    private val validEntry =
+        OnChainEntry(
+            amount = MonetaryAmount.of("100"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.EVM,
+            txHash = "0xdeadbeef",
+            blockNumber = 1_000_000L,
+            walletAddress = "0xRecipient",
+            tokenContract = "0xTokenContract",
+        )
 
     @Test
     fun `valid entry without travelRuleData constructs successfully`() {
@@ -32,23 +32,26 @@ class OnChainEntryTest {
 
     @Test
     fun `valid entry with travelRuleData attaches the field`() {
-        val party = VaspTransferParty(
-            naturalPerson = NaturalPerson(
-                firstName = "Jane",
-                lastName = "Doe",
-                dateOfBirth = LocalDate.of(1990, 1, 1),
-                country = "BR",
-            ),
-            accountNumber = "0xAbCd",
-            vaspDid = "did:example:vasp",
-        )
-        val travelRule = TravelRuleData(
-            transferId = "tx-001",
-            originator = party,
-            beneficiary = party,
-            transferAmount = MonetaryAmount.of("1500"),
-            transferAsset = StablecoinToken.USDC,
-        )
+        val party =
+            VaspTransferParty(
+                naturalPerson =
+                    NaturalPerson(
+                        firstName = "Jane",
+                        lastName = "Doe",
+                        dateOfBirth = LocalDate.of(1990, 1, 1),
+                        country = "BR",
+                    ),
+                accountNumber = "0xAbCd",
+                vaspDid = "did:example:vasp",
+            )
+        val travelRule =
+            TravelRuleData(
+                transferId = "tx-001",
+                originator = party,
+                beneficiary = party,
+                transferAmount = MonetaryAmount.of("1500"),
+                transferAsset = StablecoinToken.USDC,
+            )
 
         val entry = validEntry.copy(travelRuleData = travelRule)
 

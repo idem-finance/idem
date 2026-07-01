@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
 class WebhookConfigUseCaseModelsTest {
-
     @Test
     fun `TenantWebhookConfig holds all fields`() {
         val config = TenantWebhookConfig("https://example.com/hook", "my-secret")

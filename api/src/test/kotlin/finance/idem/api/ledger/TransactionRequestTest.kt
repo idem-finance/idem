@@ -15,15 +15,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class TransactionRequestTest {
-
     @Test
     fun `FiatEntryDto toDomain produces correct FiatEntry`() {
-        val dto = FiatEntryDto(
-            amount = BigDecimal("100.00"),
-            currency = FiatCurrency.BRL,
-            rail = PaymentRail.PIX,
-            bankReference = "ref-001",
-        )
+        val dto =
+            FiatEntryDto(
+                amount = BigDecimal("100.00"),
+                currency = FiatCurrency.BRL,
+                rail = PaymentRail.PIX,
+                bankReference = "ref-001",
+            )
         val entry = assertIs<FiatEntry>(dto.toDomain())
         assertEquals(FiatCurrency.BRL, entry.currency)
         assertEquals(PaymentRail.PIX, entry.rail)
@@ -32,15 +32,16 @@ class TransactionRequestTest {
 
     @Test
     fun `OnChainEntryDto toDomain produces correct OnChainEntry`() {
-        val dto = OnChainEntryDto(
-            amount = BigDecimal("180.00"),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.EVM,
-            txHash = "0xabc",
-            blockNumber = 19_000_000L,
-            walletAddress = "0xWallet",
-            tokenContract = "0xContract",
-        )
+        val dto =
+            OnChainEntryDto(
+                amount = BigDecimal("180.00"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                txHash = "0xabc",
+                blockNumber = 19_000_000L,
+                walletAddress = "0xWallet",
+                tokenContract = "0xContract",
+            )
         val entry = assertIs<OnChainEntry>(dto.toDomain())
         assertEquals(StablecoinToken.USDC, entry.token)
         assertEquals(ChainId.EVM, entry.chainId)
@@ -69,17 +70,22 @@ class TransactionRequestTest {
     fun `toCommand maps all lines to domain`() {
         val tenantId = TenantId.generate()
         val accountId = UUID.randomUUID()
-        val request = PostTransactionRequest(
-            lines = listOf(
-                JournalLineRequestDto(
-                    accountId = accountId,
-                    entryType = EntryType.DEBIT,
-                    monetaryEntry = FiatEntryDto(
-                        BigDecimal("50"), FiatCurrency.USD, PaymentRail.ACH,
+        val request =
+            PostTransactionRequest(
+                lines =
+                    listOf(
+                        JournalLineRequestDto(
+                            accountId = accountId,
+                            entryType = EntryType.DEBIT,
+                            monetaryEntry =
+                                FiatEntryDto(
+                                    BigDecimal("50"),
+                                    FiatCurrency.USD,
+                                    PaymentRail.ACH,
+                                ),
+                        ),
                     ),
-                ),
-            ),
-        )
+            )
         val cmd = request.toCommand(tenantId, "idem-1")
         assertEquals(tenantId, cmd.tenantId)
         assertEquals("idem-1", cmd.idempotencyKey)

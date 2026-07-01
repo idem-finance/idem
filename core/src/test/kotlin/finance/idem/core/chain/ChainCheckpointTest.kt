@@ -6,7 +6,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class ChainCheckpointTest {
-
     @Test
     fun `equality is based on all fields`() {
         val now = Instant.now()

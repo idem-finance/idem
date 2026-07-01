@@ -8,26 +8,26 @@ import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
 import finance.idem.application.outbox.OutboxStatus
 import finance.idem.core.TenantId
+import finance.idem.infrastructure.outbox.WebhookUrlValidator
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxDataModel
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxJpaRepository
 import finance.idem.infrastructure.persistence.tenant.TenantDataModel
 import finance.idem.infrastructure.persistence.tenant.TenantJpaRepository
 import finance.idem.infrastructure.security.HmacSigner
 import jakarta.annotation.PostConstruct
+import net.javacrumbs.shedlock.core.LockConfiguration
+import net.javacrumbs.shedlock.core.SimpleLock
+import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.context.annotation.Import
-import net.javacrumbs.shedlock.core.LockConfiguration
-import net.javacrumbs.shedlock.core.SimpleLock
-import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider
-import org.springframework.jdbc.core.JdbcTemplate
-import finance.idem.infrastructure.outbox.WebhookUrlValidator
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -47,13 +47,13 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(WebhookOutboxPollerIntegrationTest.SeedConfig::class)
 class WebhookOutboxPollerIntegrationTest {
-
     companion object {
         @Container
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         val wireMock: WireMockServer = WireMockServer(wireMockConfig().dynamicPort())
 
@@ -119,9 +119,33 @@ class WebhookOutboxPollerIntegrationTest {
             wireMock.stubFor(post(urlPathEqualTo("/webhook/c")).willReturn(aResponse().withStatus(500)))
 
             val now = Instant.now()
-            tenantJpaRepository.save(TenantDataModel(id = tenantA.value, webhookUrl = "http://localhost:${wireMock.port()}/webhook/a", webhookSecret = secretA, createdAt = now, updatedAt = now))
-            tenantJpaRepository.save(TenantDataModel(id = tenantB.value, webhookUrl = "http://localhost:${wireMock.port()}/webhook/b", webhookSecret = secretB, createdAt = now, updatedAt = now))
-            tenantJpaRepository.save(TenantDataModel(id = tenantC.value, webhookUrl = "http://localhost:${wireMock.port()}/webhook/c", webhookSecret = secretC, createdAt = now, updatedAt = now))
+            tenantJpaRepository.save(
+                TenantDataModel(
+                    id = tenantA.value,
+                    webhookUrl = "http://localhost:${wireMock.port()}/webhook/a",
+                    webhookSecret = secretA,
+                    createdAt = now,
+                    updatedAt = now,
+                ),
+            )
+            tenantJpaRepository.save(
+                TenantDataModel(
+                    id = tenantB.value,
+                    webhookUrl = "http://localhost:${wireMock.port()}/webhook/b",
+                    webhookSecret = secretB,
+                    createdAt = now,
+                    updatedAt = now,
+                ),
+            )
+            tenantJpaRepository.save(
+                TenantDataModel(
+                    id = tenantC.value,
+                    webhookUrl = "http://localhost:${wireMock.port()}/webhook/c",
+                    webhookSecret = secretC,
+                    createdAt = now,
+                    updatedAt = now,
+                ),
+            )
             // tenantD: deliberately no tenants row -- "not configured yet"
 
             webhookOutboxJpaRepository.save(outboxRow(rowA, tenantA, payloadA, OutboxStatus.PENDING, attempts = 0))
@@ -130,7 +154,13 @@ class WebhookOutboxPollerIntegrationTest {
             webhookOutboxJpaRepository.save(outboxRow(rowD, tenantD, payloadD, OutboxStatus.PENDING, attempts = 0))
         }
 
-        private fun outboxRow(id: UUID, tenantId: TenantId, payload: String, status: OutboxStatus, attempts: Int): WebhookOutboxDataModel {
+        private fun outboxRow(
+            id: UUID,
+            tenantId: TenantId,
+            payload: String,
+            status: OutboxStatus,
+            attempts: Int,
+        ): WebhookOutboxDataModel {
             val now = Instant.now()
             return WebhookOutboxDataModel(
                 id = id,
@@ -204,7 +234,7 @@ class WebhookOutboxPollerIntegrationTest {
         // nextRetryAt appear to be in the past.
         assertTrue(
             row.nextRetryAt.isAfter(row.createdAt.plusSeconds(3)),
-            "backoff must push next_retry_at beyond createdAt+3s; nextRetryAt=${row.nextRetryAt} createdAt=${row.createdAt}"
+            "backoff must push next_retry_at beyond createdAt+3s; nextRetryAt=${row.nextRetryAt} createdAt=${row.createdAt}",
         )
     }
 
@@ -245,22 +275,25 @@ class WebhookOutboxPollerIntegrationTest {
         // Use a second LockProvider that identifies as "other-replica".
         // ShedLock's unlock() uses AND locked_by = :lockedBy, so only the holder can release,
         // preventing the production scheduler from inadvertently dropping our hold.
-        val otherReplicaLock = JdbcTemplateLockProvider(
-            JdbcTemplateLockProvider.Configuration.builder()
-                .withJdbcTemplate(JdbcTemplate(dataSource))
-                .usingDbTime()
-                .withLockedByValue("other-replica")
-                .build(),
-        )
+        val otherReplicaLock =
+            JdbcTemplateLockProvider(
+                JdbcTemplateLockProvider.Configuration
+                    .builder()
+                    .withJdbcTemplate(JdbcTemplate(dataSource))
+                    .usingDbTime()
+                    .withLockedByValue("other-replica")
+                    .build(),
+            )
 
         // Retry until the scheduler finishes its current tick and releases, then take the lock.
         // lockAtLeastFor="4s" on the production @SchedulerLock means the lock window is ~200ms
         // every 4.2 s. Allow 30 s so the test gets ~7 chances even on a heavily loaded CI runner.
         var heldLock: Optional<SimpleLock> = Optional.empty()
         await().atMost(Duration.ofSeconds(30)).until {
-            heldLock = otherReplicaLock.lock(
-                LockConfiguration(Instant.now(), "webhookOutboxPoll", Duration.ofSeconds(30), Duration.ZERO),
-            )
+            heldLock =
+                otherReplicaLock.lock(
+                    LockConfiguration(Instant.now(), "webhookOutboxPoll", Duration.ofSeconds(30), Duration.ZERO),
+                )
             heldLock.isPresent
         }
 
@@ -276,7 +309,7 @@ class WebhookOutboxPollerIntegrationTest {
                     webhookSecret = "secret-lock",
                     createdAt = now,
                     updatedAt = now,
-                )
+                ),
             )
             webhookOutboxJpaRepository.save(
                 WebhookOutboxDataModel(
@@ -291,7 +324,7 @@ class WebhookOutboxPollerIntegrationTest {
                     lastError = null,
                     createdAt = now,
                     deliveredAt = null,
-                )
+                ),
             )
 
             // Wait 3× the 200ms poll interval — any unlocked tick would have fired by now.

@@ -23,7 +23,6 @@ import java.util.UUID
 @WebMvcTest(ReconciliationController::class)
 @Import(TestSecurityConfig::class)
 class ReconciliationControllerTest {
-
     @Autowired
     lateinit var mockMvc: MockMvc
 
@@ -40,47 +39,51 @@ class ReconciliationControllerTest {
         whenever(reconcileBatchUseCase.execute(any()))
             .thenReturn(listOf(ReconcileBatchItemResult(txId, ReconcileOutcome.SETTLED)))
 
-        mockMvc.post("/api/v1/reconciliation/batch") {
-            with(authentication(reconcileAuth))
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"transactionIds":["${txId.value}"]}"""
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$[0].transactionId") { value(txId.value.toString()) }
-            jsonPath("$[0].outcome") { value("SETTLED") }
-        }
+        mockMvc
+            .post("/api/v1/reconciliation/batch") {
+                with(authentication(reconcileAuth))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"transactionIds":["${txId.value}"]}"""
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$[0].transactionId") { value(txId.value.toString()) }
+                jsonPath("$[0].outcome") { value("SETTLED") }
+            }
     }
 
     @Test
     fun `batch returns 400 for empty list`() {
-        mockMvc.post("/api/v1/reconciliation/batch") {
-            with(authentication(reconcileAuth))
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"transactionIds":[]}"""
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .post("/api/v1/reconciliation/batch") {
+                with(authentication(reconcileAuth))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"transactionIds":[]}"""
+            }.andExpect {
+                status { isBadRequest() }
+            }
     }
 
     @Test
     fun `batch returns 403 when wrong scope`() {
-        mockMvc.post("/api/v1/reconciliation/batch") {
-            with(authentication(wrongScopeAuth))
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"transactionIds":["${txId.value}"]}"""
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .post("/api/v1/reconciliation/batch") {
+                with(authentication(wrongScopeAuth))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"transactionIds":["${txId.value}"]}"""
+            }.andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
     fun `batch returns 401 with no auth`() {
-        mockMvc.post("/api/v1/reconciliation/batch") {
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"transactionIds":["${txId.value}"]}"""
-        }.andExpect {
-            status { isUnauthorized() }
-        }
+        mockMvc
+            .post("/api/v1/reconciliation/batch") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"transactionIds":["${txId.value}"]}"""
+            }.andExpect {
+                status { isUnauthorized() }
+            }
     }
 
     @Test
@@ -88,13 +91,14 @@ class ReconciliationControllerTest {
         whenever(reconcileBatchUseCase.execute(any()))
             .thenReturn(listOf(ReconcileBatchItemResult(txId, ReconcileOutcome.NOT_FOUND)))
 
-        mockMvc.post("/api/v1/reconciliation/batch") {
-            with(authentication(reconcileAuth))
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"transactionIds":["${txId.value}"]}"""
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$[0].outcome") { value("NOT_FOUND") }
-        }
+        mockMvc
+            .post("/api/v1/reconciliation/batch") {
+                with(authentication(reconcileAuth))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"transactionIds":["${txId.value}"]}"""
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$[0].outcome") { value("NOT_FOUND") }
+            }
     }
 }

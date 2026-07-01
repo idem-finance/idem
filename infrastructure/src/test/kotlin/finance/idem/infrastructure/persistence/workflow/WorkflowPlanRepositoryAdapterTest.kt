@@ -29,13 +29,13 @@ import kotlin.test.assertNull
 @Testcontainers
 @Import(WorkflowPlanRepositoryAdapter::class, PersistenceTestConfig::class)
 class WorkflowPlanRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -56,12 +56,13 @@ class WorkflowPlanRepositoryAdapterTest {
     private val tenantB = TenantId.generate()
     private val now = Instant.now()
 
-    private fun agentContext(planId: WorkflowPlanId) = AgentContext(
-        agentId = "agent-1",
-        sessionId = "sess-abc",
-        workflowPlanId = planId,
-        intent = "offramp",
-    )
+    private fun agentContext(planId: WorkflowPlanId) =
+        AgentContext(
+            agentId = "agent-1",
+            sessionId = "sess-abc",
+            workflowPlanId = planId,
+            intent = "offramp",
+        )
 
     private fun plan(tenantId: TenantId = tenantA): WorkflowPlan {
         val planId = WorkflowPlanId.generate()
@@ -165,8 +166,13 @@ class WorkflowPlanRepositoryAdapterTest {
         entityManager.clear()
 
         val rolledBackAt = Instant.now()
-        adapter.updateStatus(original.id, tenantA, WorkflowStatus.ROLLED_BACK,
-            rolledBackAt = rolledBackAt, rollbackReason = "compliance review")
+        adapter.updateStatus(
+            original.id,
+            tenantA,
+            WorkflowStatus.ROLLED_BACK,
+            rolledBackAt = rolledBackAt,
+            rollbackReason = "compliance review",
+        )
         entityManager.flush()
         entityManager.clear()
 

@@ -27,22 +27,26 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.junit.jupiter.MockitoSettings
-import org.mockito.quality.Strictness
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.quality.Strictness
 
 @ExtendWith(MockitoExtension::class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ExecuteWorkflowServicePolicyTest {
-
     @Mock lateinit var workflowPlanRepository: WorkflowPlanRepository
+
     @Mock lateinit var agentAuditRepository: AgentAuditRepository
+
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
+
     @Mock lateinit var postTransactionUseCase: PostTransactionUseCase
+
     @Mock lateinit var policyRepository: PolicyRepository
+
     @Mock lateinit var sessionDebitPort: SessionDebitPort
 
     private lateinit var service: ExecuteWorkflowService
@@ -54,32 +58,44 @@ class ExecuteWorkflowServicePolicyTest {
 
     @BeforeEach
     fun setUp() {
-        service = ExecuteWorkflowService(
-            workflowPlanRepository,
-            agentAuditRepository,
-            webhookOutboxRepository,
-            postTransactionUseCase,
-            policyRepository,
-            sessionDebitPort,
-        )
+        service =
+            ExecuteWorkflowService(
+                workflowPlanRepository,
+                agentAuditRepository,
+                webhookOutboxRepository,
+                postTransactionUseCase,
+                policyRepository,
+                sessionDebitPort,
+            )
         whenever(sessionDebitPort.sumDebitsForSession(any(), any())).thenReturn(MonetaryAmount.ZERO)
         whenever(sessionDebitPort.sumDebitsLastHour(any(), anyOrNull())).thenReturn(MonetaryAmount.ZERO)
     }
 
-    private fun cmd() = ExecuteWorkflowCommand(
-        tenantId = tenantId,
-        agentContext = agentContext,
-        steps = listOf(
-            WorkflowStepCommand(
-                "key-1",
-                lines = listOf(
-                    JournalLineRequest(debitId, EntryType.DEBIT, FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX)),
-                    JournalLineRequest(creditId, EntryType.CREDIT, FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX)),
+    private fun cmd() =
+        ExecuteWorkflowCommand(
+            tenantId = tenantId,
+            agentContext = agentContext,
+            steps =
+                listOf(
+                    WorkflowStepCommand(
+                        "key-1",
+                        lines =
+                            listOf(
+                                JournalLineRequest(
+                                    debitId,
+                                    EntryType.DEBIT,
+                                    FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
+                                ),
+                                JournalLineRequest(
+                                    creditId,
+                                    EntryType.CREDIT,
+                                    FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
+                                ),
+                            ),
+                    ),
                 ),
-            )
-        ),
-        createdBy = "agent-1",
-    )
+            createdBy = "agent-1",
+        )
 
     @Test
     fun `no configured rules — default MaxDebitPerSession(ZERO) blocks all debits`() {

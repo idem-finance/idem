@@ -6,6 +6,7 @@ import java.time.Instant
 
 interface WorkflowPlanRepository {
     fun insert(plan: WorkflowPlan)
+
     fun updateStatus(
         id: WorkflowPlanId,
         tenantId: TenantId,
@@ -14,6 +15,15 @@ interface WorkflowPlanRepository {
         rolledBackAt: Instant? = null,
         rollbackReason: String? = null,
     )
-    fun updateStep(id: WorkflowPlanId, tenantId: TenantId, step: WorkflowStep)
-    fun findById(id: WorkflowPlanId, tenantId: TenantId): WorkflowPlan?
+
+    fun updateStep(
+        id: WorkflowPlanId,
+        tenantId: TenantId,
+        step: WorkflowStep,
+    )
+
+    fun findById(
+        id: WorkflowPlanId,
+        tenantId: TenantId,
+    ): WorkflowPlan?
 }

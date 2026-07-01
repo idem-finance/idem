@@ -16,20 +16,20 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class JournalLineResponseTest {
-
     @Test
     fun `from maps JournalLine fields including description`() {
-        val line = JournalLine(
-            id = UUID.randomUUID(),
-            transactionId = TransactionId.generate(),
-            accountId = AccountId.generate(),
-            tenantId = TenantId.generate(),
-            entryType = EntryType.CREDIT,
-            monetaryEntry = FiatEntry(MonetaryAmount.of("10.00"), FiatCurrency.BRL, PaymentRail.PIX),
-            description = "Pix received",
-            createdAt = Instant.parse("2026-06-01T00:00:00Z"),
-            createdBy = "system",
-        )
+        val line =
+            JournalLine(
+                id = UUID.randomUUID(),
+                transactionId = TransactionId.generate(),
+                accountId = AccountId.generate(),
+                tenantId = TenantId.generate(),
+                entryType = EntryType.CREDIT,
+                monetaryEntry = FiatEntry(MonetaryAmount.of("10.00"), FiatCurrency.BRL, PaymentRail.PIX),
+                description = "Pix received",
+                createdAt = Instant.parse("2026-06-01T00:00:00Z"),
+                createdBy = "system",
+            )
 
         val dto = JournalLineResponse.from(line)
 
@@ -61,13 +61,14 @@ class JournalLineResponseTest {
     fun `description defaults to null when omitted from constructor`() {
         val monetary = FiatEntryResponse.from(FiatEntry(MonetaryAmount.of("10.00"), FiatCurrency.BRL, PaymentRail.PIX))
 
-        val dto = JournalLineResponse(
-            entryId = UUID.randomUUID(),
-            transactionId = UUID.randomUUID(),
-            type = EntryType.DEBIT,
-            monetary = monetary,
-            createdAt = Instant.parse("2026-06-01T00:00:00Z"),
-        )
+        val dto =
+            JournalLineResponse(
+                entryId = UUID.randomUUID(),
+                transactionId = UUID.randomUUID(),
+                type = EntryType.DEBIT,
+                monetary = monetary,
+                createdAt = Instant.parse("2026-06-01T00:00:00Z"),
+            )
 
         assertNull(dto.description)
     }

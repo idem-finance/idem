@@ -27,7 +27,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class WebhookOutboxPollerTest {
-
     private lateinit var webhookOutboxRepository: WebhookOutboxRepository
     private lateinit var tenantRepository: TenantRepository
     private lateinit var httpClient: HttpClient
@@ -44,17 +43,21 @@ class WebhookOutboxPollerTest {
         urlValidator = WebhookUrlValidator { Result.success(Unit) }
     }
 
-    private fun poller(maxAttempts: Int = 5) = WebhookOutboxPoller(
-        webhookOutboxRepository = webhookOutboxRepository,
-        tenantRepository = tenantRepository,
-        httpClient = httpClient,
-        urlValidator = urlValidator,
-        timeoutMs = 5000,
-        maxAttempts = maxAttempts,
-        batchSize = 50,
-    )
+    private fun poller(maxAttempts: Int = 5) =
+        WebhookOutboxPoller(
+            webhookOutboxRepository = webhookOutboxRepository,
+            tenantRepository = tenantRepository,
+            httpClient = httpClient,
+            urlValidator = urlValidator,
+            timeoutMs = 5000,
+            maxAttempts = maxAttempts,
+            batchSize = 50,
+        )
 
-    private fun dispatch(attempts: Int = 0, tenant: TenantId = tenantId) = WebhookOutboxDispatch(
+    private fun dispatch(
+        attempts: Int = 0,
+        tenant: TenantId = tenantId,
+    ) = WebhookOutboxDispatch(
         id = UUID.randomUUID(),
         tenantId = tenant,
         eventType = "transaction.committed",
@@ -231,7 +234,11 @@ class WebhookOutboxPollerTest {
         verify(httpClient).send(requestCaptor.capture(), any<HttpResponse.BodyHandler<String>>())
 
         val expectedSignature = "sha256=" + HmacSigner.hexHmacSha256(webhookConfig.webhookSecret, entry.payload)
-        val actualSignature = requestCaptor.firstValue.headers().firstValue("X-Idem-Signature").orElse(null)
+        val actualSignature =
+            requestCaptor.firstValue
+                .headers()
+                .firstValue("X-Idem-Signature")
+                .orElse(null)
         assertEquals(expectedSignature, actualSignature)
         assertEquals(webhookConfig.webhookUrl, requestCaptor.firstValue.uri().toString())
     }

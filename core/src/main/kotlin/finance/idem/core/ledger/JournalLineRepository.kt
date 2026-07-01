@@ -38,8 +38,14 @@ interface JournalLineRepository {
         limit: Int,
     ): List<JournalLine>
 
-    fun countByAccountId(accountId: AccountId, tenantId: TenantId): Long
+    fun countByAccountId(
+        accountId: AccountId,
+        tenantId: TenantId,
+    ): Long
 
     /** Returns the single most recent entry for [accountId], or `null` if the account has no entries. */
-    fun findMostRecentEntry(accountId: AccountId, tenantId: TenantId): JournalLine?
+    fun findMostRecentEntry(
+        accountId: AccountId,
+        tenantId: TenantId,
+    ): JournalLine?
 }

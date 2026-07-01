@@ -11,7 +11,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class GetBalanceModelsTest {
-
     private val accountId = AccountId.generate()
     private val tenantId = TenantId.generate()
     private val now = Instant.now()

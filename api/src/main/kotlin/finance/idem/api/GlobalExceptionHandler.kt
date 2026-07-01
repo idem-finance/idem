@@ -37,7 +37,6 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  */
 @RestControllerAdvice
 class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     // Override the parent's MethodArgumentNotValidException handler to return our error shape.
@@ -47,35 +46,43 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
         status: HttpStatusCode,
         request: WebRequest,
     ): ResponseEntity<Any>? {
-        val message = ex.bindingResult.fieldErrors
-            .firstOrNull()?.defaultMessage ?: "Request validation failed"
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        val message =
+            ex.bindingResult.fieldErrors
+                .firstOrNull()
+                ?.defaultMessage ?: "Request validation failed"
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse("VALIDATION_ERROR", message))
     }
 
     @ExceptionHandler(AccessDeniedException::class)
     fun handleAccessDenied(): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.FORBIDDEN)
+        ResponseEntity
+            .status(HttpStatus.FORBIDDEN)
             .body(ErrorResponse("insufficient_scope", "API key does not have the required scope"))
 
     @ExceptionHandler(PolicyViolationException::class)
     fun handlePolicyViolation(ex: PolicyViolationException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        ResponseEntity
+            .status(HttpStatus.UNPROCESSABLE_ENTITY)
             .body(ErrorResponse("POLICY_VIOLATION", ex.violations.joinToString("; ") { it.message }))
 
     @ExceptionHandler(LedgerInvariantViolation::class)
     fun handleLedgerInvariantViolation(ex: LedgerInvariantViolation): ResponseEntity<ErrorResponse> =
-        ResponseEntity.badRequest()
+        ResponseEntity
+            .badRequest()
             .body(ErrorResponse("INVARIANT_VIOLATION", ex.message ?: "Ledger invariant violated"))
 
     @ExceptionHandler(InvariantViolation::class)
     fun handleInvariantViolation(ex: InvariantViolation): ResponseEntity<ErrorResponse> =
-        ResponseEntity.badRequest()
+        ResponseEntity
+            .badRequest()
             .body(ErrorResponse("INVARIANT_VIOLATION", ex.detail))
 
     @ExceptionHandler(IdempotencyConflict::class)
     fun handleIdempotencyConflict(ex: IdempotencyConflict): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.CONFLICT)
+        ResponseEntity
+            .status(HttpStatus.CONFLICT)
             .body(ErrorResponse("IDEMPOTENCY_CONFLICT", ex.message ?: ""))
 
     @ExceptionHandler(
@@ -85,43 +92,51 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
         StatementAccountNotFound::class,
     )
     fun handleAccountNotFound(ex: Exception): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.NOT_FOUND)
+        ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse("ACCOUNT_NOT_FOUND", ex.message ?: "Account not found"))
 
     @ExceptionHandler(InvalidStatementRange::class)
     fun handleInvalidStatementRange(ex: InvalidStatementRange): ResponseEntity<ErrorResponse> =
-        ResponseEntity.badRequest()
+        ResponseEntity
+            .badRequest()
             .body(ErrorResponse("INVALID_RANGE", ex.message ?: "Invalid statement range"))
 
     @ExceptionHandler(InvalidCursor::class)
     fun handleInvalidCursor(ex: InvalidCursor): ResponseEntity<ErrorResponse> =
-        ResponseEntity.badRequest()
+        ResponseEntity
+            .badRequest()
             .body(ErrorResponse("INVALID_CURSOR", ex.message ?: "Invalid cursor"))
 
     @ExceptionHandler(SettlementNotFound::class)
     fun handleSettlementNotFound(ex: SettlementNotFound): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.NOT_FOUND)
+        ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse("SETTLEMENT_NOT_FOUND", ex.message ?: "Settlement not found"))
 
     @ExceptionHandler(SettlementAlreadyTerminal::class)
     fun handleSettlementAlreadyTerminal(ex: SettlementAlreadyTerminal): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.CONFLICT)
+        ResponseEntity
+            .status(HttpStatus.CONFLICT)
             .body(ErrorResponse("SETTLEMENT_ALREADY_TERMINAL", ex.message ?: "Settlement is already terminal"))
 
     @ExceptionHandler(AccountNotFoundForSettlement::class)
     fun handleAccountNotFoundForSettlement(ex: AccountNotFoundForSettlement): ResponseEntity<ErrorResponse> =
-        ResponseEntity.unprocessableEntity()
+        ResponseEntity
+            .unprocessableEntity()
             .body(ErrorResponse("ACCOUNT_NOT_FOUND", ex.message ?: "Account not found"))
 
     @ExceptionHandler(SettlementIdempotencyConflict::class)
     fun handleSettlementIdempotencyConflict(ex: SettlementIdempotencyConflict): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.CONFLICT)
+        ResponseEntity
+            .status(HttpStatus.CONFLICT)
             .body(ErrorResponse("IDEMPOTENCY_CONFLICT", ex.message ?: ""))
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(ex: Exception): ResponseEntity<ErrorResponse> {
         log.error("Unhandled exception", ex)
-        return ResponseEntity.internalServerError()
+        return ResponseEntity
+            .internalServerError()
             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
     }
 }

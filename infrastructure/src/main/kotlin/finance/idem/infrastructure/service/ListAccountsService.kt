@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service
 class ListAccountsService(
     private val accountRepository: AccountRepository,
 ) : ListAccountsUseCase {
-
     override fun execute(query: ListAccountsQuery): Result<List<Account>> =
         Result.success(accountRepository.findAllByTenantId(query.tenantId))
 }

@@ -16,5 +16,8 @@ interface TenantRepository {
      * Persists (insert or update) the webhook URL and secret for a tenant.
      * Creates the tenant row if it does not yet exist.
      */
-    fun upsertWebhookConfig(tenantId: TenantId, config: TenantWebhookConfig)
+    fun upsertWebhookConfig(
+        tenantId: TenantId,
+        config: TenantWebhookConfig,
+    )
 }

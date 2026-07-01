@@ -20,14 +20,15 @@ data class AccountSummaryResponse(
     val createdAt: Instant,
 ) {
     companion object {
-        fun from(account: Account) = AccountSummaryResponse(
-            id = account.id.value,
-            name = account.name,
-            description = account.description,
-            currency = account.currency,
-            type = account.type,
-            normalBalance = account.normalBalance,
-            createdAt = account.createdAt,
-        )
+        fun from(account: Account) =
+            AccountSummaryResponse(
+                id = account.id.value,
+                name = account.name,
+                description = account.description,
+                currency = account.currency,
+                type = account.type,
+                normalBalance = account.normalBalance,
+                createdAt = account.createdAt,
+            )
     }
 }

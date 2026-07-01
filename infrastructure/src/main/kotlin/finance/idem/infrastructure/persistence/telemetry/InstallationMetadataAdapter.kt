@@ -11,7 +11,6 @@ import java.util.UUID
 class InstallationMetadataAdapter(
     private val jpaRepository: InstallationMetadataJpaRepository,
 ) : InstallationMetadataPort {
-
     @Transactional
     override fun getOrCreateId(): UUID {
         val existing = jpaRepository.findById(SINGLETON_KEY).orElse(null)

@@ -33,7 +33,6 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class ApiKeyServiceTest {
-
     @Mock
     private lateinit var apiKeyRepository: ApiKeyRepository
 
@@ -152,12 +151,13 @@ class ApiKeyServiceTest {
         verify(redisTemplate).delete("apikey:${key.prefix}")
     }
 
-    private fun apiKey() = ApiKey(
-        id = ApiKeyId.generate(),
-        tenantId = tenantId,
-        keyHash = "\$2a\$12\$fakehash",
-        prefix = "sk_live_test",
-        scopes = setOf(ApiScope.TRANSACTIONS_READ),
-        createdAt = Instant.now(),
-    )
+    private fun apiKey() =
+        ApiKey(
+            id = ApiKeyId.generate(),
+            tenantId = tenantId,
+            keyHash = "\$2a\$12\$fakehash",
+            prefix = "sk_live_test",
+            scopes = setOf(ApiScope.TRANSACTIONS_READ),
+            createdAt = Instant.now(),
+        )
 }

@@ -17,7 +17,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 class GetEntriesModelsTest {
-
     private val accountId = AccountId.generate()
     private val tenantId = TenantId.generate()
     private val now = Instant.now()
@@ -45,16 +44,17 @@ class GetEntriesModelsTest {
 
     @Test
     fun `EntryPage holds all fields`() {
-        val line = JournalLine(
-            id = UUID.randomUUID(),
-            transactionId = TransactionId.generate(),
-            accountId = accountId,
-            tenantId = tenantId,
-            entryType = EntryType.DEBIT,
-            monetaryEntry = FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
-            createdAt = now,
-            createdBy = "test",
-        )
+        val line =
+            JournalLine(
+                id = UUID.randomUUID(),
+                transactionId = TransactionId.generate(),
+                accountId = accountId,
+                tenantId = tenantId,
+                entryType = EntryType.DEBIT,
+                monetaryEntry = FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
+                createdAt = now,
+                createdBy = "test",
+            )
 
         val page = EntryPage(accountId, listOf(line), "next-cursor")
 

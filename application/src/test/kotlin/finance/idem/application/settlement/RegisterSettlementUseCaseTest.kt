@@ -12,21 +12,21 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RegisterSettlementUseCaseTest {
-
     private val tenantId = TenantId.generate()
     private val accountId = AccountId.generate()
 
-    private fun cmd(expectedFromAddress: String? = null) = RegisterSettlementCommand(
-        tenantId = tenantId,
-        accountId = accountId,
-        amount = MonetaryAmount.of("100.00"),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.SOLANA,
-        walletAddress = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS",
-        expectedFromAddress = expectedFromAddress,
-        createdBy = "api-user",
-        idempotencyKey = "idem-key-001",
-    )
+    private fun cmd(expectedFromAddress: String? = null) =
+        RegisterSettlementCommand(
+            tenantId = tenantId,
+            accountId = accountId,
+            amount = MonetaryAmount.of("100.00"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.SOLANA,
+            walletAddress = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS",
+            expectedFromAddress = expectedFromAddress,
+            createdBy = "api-user",
+            idempotencyKey = "idem-key-001",
+        )
 
     @Test
     fun `command carries all required fields`() {

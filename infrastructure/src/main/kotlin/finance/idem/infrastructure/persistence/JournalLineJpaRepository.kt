@@ -7,7 +7,6 @@ import java.time.Instant
 import java.util.UUID
 
 interface JournalLineJpaRepository : JpaRepository<JournalLineDataModel, UUID> {
-
     // Nullable filter params are wrapped in CAST(... AS type) so Postgres can resolve their type
     // when they appear only in an `IS NULL` context — without it, pgjdbc fails with
     // "could not determine data type of parameter $N".

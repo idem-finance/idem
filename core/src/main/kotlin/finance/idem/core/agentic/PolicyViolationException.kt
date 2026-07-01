@@ -12,5 +12,5 @@ package finance.idem.core.agentic
 class PolicyViolationException(
     val violations: List<PolicyViolation>,
 ) : RuntimeException(
-    "Policy denied: ${violations.joinToString("; ") { it.message }}"
-)
+        "Policy denied: ${violations.joinToString("; ") { it.message }}",
+    )

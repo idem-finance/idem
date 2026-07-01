@@ -3,8 +3,8 @@ package finance.idem.api.ledger
 import finance.idem.application.ledger.IdempotencyConflict
 import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.PostTransactionError
-import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TenantId
 import io.swagger.v3.oas.annotations.Operation
@@ -30,7 +30,6 @@ import org.springframework.web.bind.annotation.RestController
 class TransactionController(
     private val postTransactionUseCase: PostTransactionUseCase,
 ) {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     @PostMapping
@@ -49,43 +48,59 @@ class TransactionController(
         @RequestHeader("Idempotency-Key") idempotencyKey: String,
         @Valid @RequestBody request: PostTransactionRequest,
     ): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         if (idempotencyKey.isBlank() || idempotencyKey.length > 255) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be non-blank and at most 255 characters"))
         }
 
-        val cmd = try {
-            request.toCommand(tenantId, idempotencyKey)
-        } catch (e: LedgerInvariantViolation) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_REQUEST", e.message ?: "Invalid monetary entry"))
-        } catch (e: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_REQUEST", e.message ?: "Invalid request"))
-        }
+        val cmd =
+            try {
+                request.toCommand(tenantId, idempotencyKey)
+            } catch (e: LedgerInvariantViolation) {
+                return ResponseEntity
+                    .badRequest()
+                    .body(ErrorResponse("INVALID_REQUEST", e.message ?: "Invalid monetary entry"))
+            } catch (e: IllegalArgumentException) {
+                return ResponseEntity
+                    .badRequest()
+                    .body(ErrorResponse("INVALID_REQUEST", e.message ?: "Invalid request"))
+            }
 
         return postTransactionUseCase.execute(cmd).fold(
             onSuccess = { txId ->
-                ResponseEntity.status(HttpStatus.CREATED)
+                ResponseEntity
+                    .status(HttpStatus.CREATED)
                     .body(PostTransactionResponse(txId.value))
             },
             onFailure = { error ->
                 when (error) {
-                    is IdempotencyConflict ->
-                        ResponseEntity.status(HttpStatus.CONFLICT)
+                    is IdempotencyConflict -> {
+                        ResponseEntity
+                            .status(HttpStatus.CONFLICT)
                             .body(ErrorResponse("IDEMPOTENCY_CONFLICT", error.message ?: ""))
-                    is TransactionAccountNotFound ->
-                        ResponseEntity.unprocessableEntity()
+                    }
+
+                    is TransactionAccountNotFound -> {
+                        ResponseEntity
+                            .unprocessableEntity()
                             .body(ErrorResponse("ACCOUNT_NOT_FOUND", error.message ?: ""))
-                    is InvariantViolation ->
-                        ResponseEntity.unprocessableEntity()
+                    }
+
+                    is InvariantViolation -> {
+                        ResponseEntity
+                            .unprocessableEntity()
                             .body(ErrorResponse("INVARIANT_VIOLATION", error.message ?: ""))
+                    }
+
                     else -> {
                         log.error("Unexpected error posting transaction", error)
-                        ResponseEntity.internalServerError()
+                        ResponseEntity
+                            .internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
                     }
                 }

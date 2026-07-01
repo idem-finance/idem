@@ -14,7 +14,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class WorkflowPlanTest {
-
     private val tenantId = TenantId.generate()
     private val planId = WorkflowPlanId.generate()
     private val agentContext = AgentContext(agentId = "agent-1", sessionId = "sess-abc")
@@ -22,13 +21,14 @@ class WorkflowPlanTest {
 
     @Test
     fun `create initializes with PLANNED status and PENDING steps`() {
-        val plan = WorkflowPlan.create(
-            id = planId,
-            tenantId = tenantId,
-            agentContext = agentContext,
-            stepDescriptions = listOf("Transfer funds", "Settle on-chain"),
-            createdAt = now,
-        )
+        val plan =
+            WorkflowPlan.create(
+                id = planId,
+                tenantId = tenantId,
+                agentContext = agentContext,
+                stepDescriptions = listOf("Transfer funds", "Settle on-chain"),
+                createdAt = now,
+            )
 
         assertEquals(WorkflowStatus.PLANNED, plan.status)
         assertEquals(2, plan.steps.size)
@@ -95,9 +95,10 @@ class WorkflowPlanTest {
         val txId = TransactionId.generate()
         val compensatingTxId = TransactionId.generate()
 
-        val plan = planWithSteps()
-            .withStepExecuted(0, txId)
-            .withStepRolledBack(0, compensatingTxId)
+        val plan =
+            planWithSteps()
+                .withStepExecuted(0, txId)
+                .withStepRolledBack(0, compensatingTxId)
 
         assertEquals(StepStatus.ROLLED_BACK, plan.steps[0].status)
         assertEquals(compensatingTxId, plan.steps[0].compensatingTransactionId)
@@ -107,9 +108,10 @@ class WorkflowPlanTest {
     @Test
     fun `executedSteps returns only EXECUTED steps`() {
         val txId = TransactionId.generate()
-        val plan = planWithSteps()
-            .withStepExecuted(stepOrder = 0, txId = txId)
-            .withStepFailed(stepOrder = 1)
+        val plan =
+            planWithSteps()
+                .withStepExecuted(stepOrder = 0, txId = txId)
+                .withStepFailed(stepOrder = 1)
 
         val executed = plan.executedSteps()
 
@@ -130,10 +132,11 @@ class WorkflowPlanTest {
         val tx1 = TransactionId.generate()
         val compensating = TransactionId.generate()
 
-        val plan = planWithSteps()
-            .withStepExecuted(0, tx0)
-            .withStepExecuted(1, tx1)
-            .withStepRolledBack(0, compensating)
+        val plan =
+            planWithSteps()
+                .withStepExecuted(0, tx0)
+                .withStepExecuted(1, tx1)
+                .withStepRolledBack(0, compensating)
 
         // Only step 1 is still EXECUTED; step 0 was rolled back
         val executed = plan.executedSteps()
@@ -146,22 +149,32 @@ class WorkflowPlanTest {
         val completedAt = Instant.now()
         val rolledBackAt = Instant.now()
         val stepId = UUID.randomUUID()
-        val steps = listOf(
-            WorkflowStep(stepId, 0, "Transfer", TransactionId.generate(), StepStatus.ROLLED_BACK, completedAt, TransactionId.generate()),
-            WorkflowStep(UUID.randomUUID(), 1, "Settle", null, StepStatus.PENDING, null, null),
-        )
+        val steps =
+            listOf(
+                WorkflowStep(
+                    stepId,
+                    0,
+                    "Transfer",
+                    TransactionId.generate(),
+                    StepStatus.ROLLED_BACK,
+                    completedAt,
+                    TransactionId.generate(),
+                ),
+                WorkflowStep(UUID.randomUUID(), 1, "Settle", null, StepStatus.PENDING, null, null),
+            )
 
-        val plan = WorkflowPlan.reconstitute(
-            id = planId,
-            tenantId = tenantId,
-            agentContext = agentContext,
-            status = WorkflowStatus.ROLLED_BACK,
-            steps = steps,
-            createdAt = now,
-            completedAt = completedAt,
-            rolledBackAt = rolledBackAt,
-            rollbackReason = "compliance",
-        )
+        val plan =
+            WorkflowPlan.reconstitute(
+                id = planId,
+                tenantId = tenantId,
+                agentContext = agentContext,
+                status = WorkflowStatus.ROLLED_BACK,
+                steps = steps,
+                createdAt = now,
+                completedAt = completedAt,
+                rolledBackAt = rolledBackAt,
+                rollbackReason = "compliance",
+            )
 
         assertEquals(planId, plan.id)
         assertEquals(tenantId, plan.tenantId)
@@ -192,9 +205,10 @@ class WorkflowPlanTest {
 
     @Test
     fun `withStepExecuted throws when plan is COMMITTED`() {
-        val plan = planWithSteps()
-            .withStatus(WorkflowStatus.EXECUTING)
-            .withStatus(WorkflowStatus.COMMITTED)
+        val plan =
+            planWithSteps()
+                .withStatus(WorkflowStatus.EXECUTING)
+                .withStatus(WorkflowStatus.COMMITTED)
         assertFailsWith<LedgerInvariantViolation> {
             plan.withStepExecuted(0, TransactionId.generate())
         }
@@ -210,9 +224,10 @@ class WorkflowPlanTest {
 
     @Test
     fun `withStatus throws when transitioning from COMMITTED to non-rollback status`() {
-        val plan = planWithSteps()
-            .withStatus(WorkflowStatus.EXECUTING)
-            .withStatus(WorkflowStatus.COMMITTED)
+        val plan =
+            planWithSteps()
+                .withStatus(WorkflowStatus.EXECUTING)
+                .withStatus(WorkflowStatus.COMMITTED)
         assertFailsWith<LedgerInvariantViolation> {
             plan.withStatus(WorkflowStatus.EXECUTING)
         }
@@ -220,18 +235,20 @@ class WorkflowPlanTest {
 
     @Test
     fun `withStatus allows COMMITTED to ROLLED_BACK for saga compensation`() {
-        val plan = planWithSteps()
-            .withStatus(WorkflowStatus.EXECUTING)
-            .withStatus(WorkflowStatus.COMMITTED)
+        val plan =
+            planWithSteps()
+                .withStatus(WorkflowStatus.EXECUTING)
+                .withStatus(WorkflowStatus.COMMITTED)
         val rolledBack = plan.withStatus(WorkflowStatus.ROLLED_BACK)
         assertEquals(WorkflowStatus.ROLLED_BACK, rolledBack.status)
     }
 
-    private fun planWithSteps() = WorkflowPlan.create(
-        id = planId,
-        tenantId = tenantId,
-        agentContext = agentContext,
-        stepDescriptions = listOf("step-0", "step-1"),
-        createdAt = now,
-    )
+    private fun planWithSteps() =
+        WorkflowPlan.create(
+            id = planId,
+            tenantId = tenantId,
+            agentContext = agentContext,
+            stepDescriptions = listOf("step-0", "step-1"),
+            createdAt = now,
+        )
 }

@@ -21,7 +21,6 @@ class WorkflowPlanRepositoryAdapter(
     private val jpaRepository: WorkflowPlanJpaRepository,
     private val entityManager: EntityManager,
 ) : WorkflowPlanRepository {
-
     @Transactional
     override fun insert(plan: WorkflowPlan) {
         entityManager.setRlsTenantId(plan.tenantId)
@@ -47,18 +46,26 @@ class WorkflowPlanRepositoryAdapter(
     }
 
     @Transactional
-    override fun updateStep(id: WorkflowPlanId, tenantId: TenantId, step: WorkflowStep) {
+    override fun updateStep(
+        id: WorkflowPlanId,
+        tenantId: TenantId,
+        step: WorkflowStep,
+    ) {
         entityManager.setRlsTenantId(tenantId)
         val txIdSql = step.transactionId?.let { "'${it.value}'" } ?: "NULL"
         val executedAtSql = step.executedAt?.let { "'$it'" } ?: "NULL"
         val compensatingTxIdSql = step.compensatingTransactionId?.let { "'${it.value}'" } ?: "NULL"
-        entityManager.createNativeQuery(
-            "UPDATE workflow_steps SET status = '${step.status.name}', transaction_id = $txIdSql, executed_at = $executedAtSql, compensating_transaction_id = $compensatingTxIdSql WHERE workflow_plan_id = '${id.value}' AND step_order = ${step.stepOrder} AND tenant_id = '${tenantId.value}'"
-        ).executeUpdate()
+        entityManager
+            .createNativeQuery(
+                "UPDATE workflow_steps SET status = '${step.status.name}', transaction_id = $txIdSql, executed_at = $executedAtSql, compensating_transaction_id = $compensatingTxIdSql WHERE workflow_plan_id = '${id.value}' AND step_order = ${step.stepOrder} AND tenant_id = '${tenantId.value}'",
+            ).executeUpdate()
     }
 
     @Transactional(readOnly = true)
-    override fun findById(id: WorkflowPlanId, tenantId: TenantId): WorkflowPlan? {
+    override fun findById(
+        id: WorkflowPlanId,
+        tenantId: TenantId,
+    ): WorkflowPlan? {
         entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByIdAndTenantId(id.value, tenantId.value)?.toDomain()
     }
@@ -70,17 +77,19 @@ private fun WorkflowPlanDataModel.toDomain(): WorkflowPlan =
     WorkflowPlan.reconstitute(
         id = WorkflowPlanId(id),
         tenantId = TenantId(tenantId),
-        agentContext = AgentContext(
-            agentId = agentId,
-            sessionId = sessionId,
-            workflowPlanId = WorkflowPlanId(id),
-            intent = intent,
-            apiKeyPrefix = apiKeyPrefix,
-        ),
+        agentContext =
+            AgentContext(
+                agentId = agentId,
+                sessionId = sessionId,
+                workflowPlanId = WorkflowPlanId(id),
+                intent = intent,
+                apiKeyPrefix = apiKeyPrefix,
+            ),
         status = WorkflowStatus.valueOf(status),
-        steps = steps
-            .sortedBy { it.stepOrder }
-            .map { it.toDomain() },
+        steps =
+            steps
+                .sortedBy { it.stepOrder }
+                .map { it.toDomain() },
         createdAt = createdAt,
         completedAt = completedAt,
         rolledBackAt = rolledBackAt,
@@ -101,19 +110,20 @@ private fun WorkflowStepDataModel.toDomain(): WorkflowStep =
 // ── Domain → Entity ──────────────────────────────────────────────────────────
 
 private fun WorkflowPlan.toEntity(): WorkflowPlanDataModel {
-    val entity = WorkflowPlanDataModel(
-        id = id.value,
-        tenantId = tenantId.value,
-        agentId = agentContext.agentId,
-        sessionId = agentContext.sessionId,
-        apiKeyPrefix = agentContext.apiKeyPrefix,
-        intent = agentContext.intent,
-        status = status.name,
-        createdAt = createdAt,
-        completedAt = completedAt,
-        rolledBackAt = rolledBackAt,
-        rollbackReason = rollbackReason,
-    )
+    val entity =
+        WorkflowPlanDataModel(
+            id = id.value,
+            tenantId = tenantId.value,
+            agentId = agentContext.agentId,
+            sessionId = agentContext.sessionId,
+            apiKeyPrefix = agentContext.apiKeyPrefix,
+            intent = agentContext.intent,
+            status = status.name,
+            createdAt = createdAt,
+            completedAt = completedAt,
+            rolledBackAt = rolledBackAt,
+            rollbackReason = rollbackReason,
+        )
     steps.map { it.toEntity(entity) }.forEach { entity.steps.add(it) }
     return entity
 }

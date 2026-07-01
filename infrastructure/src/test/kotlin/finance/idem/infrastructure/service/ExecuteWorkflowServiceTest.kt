@@ -1,6 +1,7 @@
 package finance.idem.infrastructure.service
 
 import finance.idem.application.agentic.ExecuteWorkflowCommand
+import finance.idem.application.agentic.SessionDebitPort
 import finance.idem.application.agentic.WorkflowStepCommand
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionUseCase
@@ -16,7 +17,6 @@ import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.AgentAuditStatus
-import finance.idem.application.agentic.SessionDebitPort
 import finance.idem.core.agentic.AgentContext
 import finance.idem.core.agentic.PolicyRepository
 import finance.idem.core.agentic.PolicyRule
@@ -33,7 +33,6 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.junit.jupiter.MockitoSettings
-import org.mockito.quality.Strictness
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
@@ -41,6 +40,7 @@ import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.quality.Strictness
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -48,12 +48,16 @@ import kotlin.test.assertTrue
 @ExtendWith(MockitoExtension::class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ExecuteWorkflowServiceTest {
-
     @Mock lateinit var workflowPlanRepository: WorkflowPlanRepository
+
     @Mock lateinit var agentAuditRepository: AgentAuditRepository
+
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
+
     @Mock lateinit var postTransactionUseCase: PostTransactionUseCase
+
     @Mock lateinit var policyRepository: PolicyRepository
+
     @Mock lateinit var sessionDebitPort: SessionDebitPort
 
     private lateinit var service: ExecuteWorkflowService
@@ -65,35 +69,47 @@ class ExecuteWorkflowServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = ExecuteWorkflowService(
-            workflowPlanRepository,
-            agentAuditRepository,
-            webhookOutboxRepository,
-            postTransactionUseCase,
-            policyRepository,
-            sessionDebitPort,
-        )
+        service =
+            ExecuteWorkflowService(
+                workflowPlanRepository,
+                agentAuditRepository,
+                webhookOutboxRepository,
+                postTransactionUseCase,
+                policyRepository,
+                sessionDebitPort,
+            )
         whenever(policyRepository.findEffective(any(), anyOrNull()))
             .thenReturn(listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("99999"))))
         whenever(sessionDebitPort.sumDebitsForSession(any(), any())).thenReturn(MonetaryAmount.ZERO)
         whenever(sessionDebitPort.sumDebitsLastHour(any(), anyOrNull())).thenReturn(MonetaryAmount.ZERO)
     }
 
-    private fun brlLine(accountId: AccountId, type: EntryType) = JournalLineRequest(
+    private fun brlLine(
+        accountId: AccountId,
+        type: EntryType,
+    ) = JournalLineRequest(
         accountId = accountId,
         entryType = type,
         monetaryEntry = FiatEntry(MonetaryAmount.of("100"), FiatCurrency.BRL, PaymentRail.PIX),
     )
 
-    private fun twoStepCommand() = ExecuteWorkflowCommand(
-        tenantId = tenantId,
-        agentContext = agentContext,
-        steps = listOf(
-            WorkflowStepCommand("step-0-idem", lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
-            WorkflowStepCommand("step-1-idem", lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
-        ),
-        createdBy = "sk_agent_test",
-    )
+    private fun twoStepCommand() =
+        ExecuteWorkflowCommand(
+            tenantId = tenantId,
+            agentContext = agentContext,
+            steps =
+                listOf(
+                    WorkflowStepCommand(
+                        "step-0-idem",
+                        lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT)),
+                    ),
+                    WorkflowStepCommand(
+                        "step-1-idem",
+                        lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT)),
+                    ),
+                ),
+            createdBy = "sk_agent_test",
+        )
 
     @Test
     fun `happy path — two steps succeed and plan reaches COMMITTED`() {
@@ -187,14 +203,20 @@ class ExecuteWorkflowServiceTest {
     fun `agentContext in step commands carries the generated workflowPlanId`() {
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId.generate()))
 
-        service.execute(ExecuteWorkflowCommand(
-            tenantId = tenantId,
-            agentContext = agentContext,
-            steps = listOf(
-                WorkflowStepCommand("single-step", lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT))),
+        service.execute(
+            ExecuteWorkflowCommand(
+                tenantId = tenantId,
+                agentContext = agentContext,
+                steps =
+                    listOf(
+                        WorkflowStepCommand(
+                            "single-step",
+                            lines = listOf(brlLine(debitAccountId, EntryType.DEBIT), brlLine(creditAccountId, EntryType.CREDIT)),
+                        ),
+                    ),
+                createdBy = "sk_agent_test",
             ),
-            createdBy = "sk_agent_test",
-        ))
+        )
 
         val captor = argumentCaptor<finance.idem.application.ledger.PostTransactionCommand>()
         verify(postTransactionUseCase).execute(captor.capture())

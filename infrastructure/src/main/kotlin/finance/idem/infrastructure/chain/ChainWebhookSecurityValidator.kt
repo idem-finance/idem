@@ -12,8 +12,9 @@ import org.springframework.stereotype.Component
  */
 @Component
 @Profile("!dev")
-class ChainWebhookSecurityValidator(private val config: ChainConfig) {
-
+class ChainWebhookSecurityValidator(
+    private val config: ChainConfig,
+) {
     @PostConstruct
     fun validate() {
         check(config.alchemyWebhookSigningKey.isNotBlank()) {

@@ -9,7 +9,6 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class PolicyEvaluationResultTest {
-
     private val anyRule = PolicyRule.MaxDebitPerSession(MonetaryAmount.of("100"))
     private val anyViolation = PolicyViolation(rule = anyRule, message = "over limit")
 

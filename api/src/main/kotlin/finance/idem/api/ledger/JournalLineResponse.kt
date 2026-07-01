@@ -21,13 +21,14 @@ data class JournalLineResponse(
     val createdAt: Instant,
 ) {
     companion object {
-        fun from(line: JournalLine) = JournalLineResponse(
-            entryId = line.id,
-            transactionId = line.transactionId.value,
-            type = line.entryType,
-            monetary = MonetaryEntryResponse.from(line.monetaryEntry),
-            description = line.description,
-            createdAt = line.createdAt,
-        )
+        fun from(line: JournalLine) =
+            JournalLineResponse(
+                entryId = line.id,
+                transactionId = line.transactionId.value,
+                type = line.entryType,
+                monetary = MonetaryEntryResponse.from(line.monetaryEntry),
+                description = line.description,
+                createdAt = line.createdAt,
+            )
     }
 }

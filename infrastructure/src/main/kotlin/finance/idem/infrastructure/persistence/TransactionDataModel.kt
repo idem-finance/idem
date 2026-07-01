@@ -17,38 +17,36 @@ import java.util.UUID
 class TransactionDataModel(
     @Id
     val id: UUID,
-
     @Column(name = "tenant_id", nullable = false)
     val tenantId: UUID,
-
     @Column(name = "idempotency_key", nullable = false)
     val idempotencyKey: String,
-
     @Column(nullable = false)
     val status: String,
-
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "agent_context", columnDefinition = "jsonb")
     val agentContext: String?,
-
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     val metadata: String,
-
     @Column(name = "occurred_at", nullable = false)
     val occurredAt: Instant,
-
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant,
-
     @Column(name = "created_by", nullable = false)
     val createdBy: String,
-
     @OneToMany(mappedBy = "transaction", cascade = [CascadeType.ALL], fetch = FetchType.EAGER, orphanRemoval = true)
     val lines: MutableList<JournalLineDataModel> = mutableListOf(),
 ) {
     constructor() : this(
-        UUID.randomUUID(), UUID.randomUUID(), "", "PENDING",
-        null, "{}", Instant.now(), Instant.now(), "",
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        "",
+        "PENDING",
+        null,
+        "{}",
+        Instant.now(),
+        Instant.now(),
+        "",
     )
 }

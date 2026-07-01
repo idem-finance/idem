@@ -15,14 +15,11 @@ class SettlementIdempotencyKeyDataModel(
     @Id
     @Column(name = "tenant_id", nullable = false)
     val tenantId: UUID,
-
     @Id
     @Column(name = "key", nullable = false)
     val key: String,
-
     @Column(name = "settlement_id", nullable = false)
     val settlementId: UUID,
-
     @Column(name = "expires_at", nullable = false)
     val expiresAt: Instant,
 ) {

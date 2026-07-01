@@ -6,7 +6,6 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 
 abstract class PostgresServiceIntegrationTestBase {
-
     @Autowired
     protected lateinit var entityManager: EntityManager
 
@@ -21,7 +20,10 @@ abstract class PostgresServiceIntegrationTestBase {
     }
 
     protected fun outboxCount(eventType: String): Long =
-        (entityManager.createNativeQuery("SELECT COUNT(*) FROM webhook_outbox WHERE event_type = ?")
-            .setParameter(1, eventType)
-            .singleResult as Number).toLong()
+        (
+            entityManager
+                .createNativeQuery("SELECT COUNT(*) FROM webhook_outbox WHERE event_type = ?")
+                .setParameter(1, eventType)
+                .singleResult as Number
+        ).toLong()
 }

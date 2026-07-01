@@ -4,5 +4,8 @@ import org.springframework.data.jpa.repository.JpaRepository
 import java.util.UUID
 
 interface PolicyRuleJpaRepository : JpaRepository<PolicyRuleDataModel, UUID> {
-    fun findByIdAndTenantId(id: UUID, tenantId: UUID): PolicyRuleDataModel?
+    fun findByIdAndTenantId(
+        id: UUID,
+        tenantId: UUID,
+    ): PolicyRuleDataModel?
 }

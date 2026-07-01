@@ -16,15 +16,16 @@ data class OnChainEntryResponse(
     val fromAddress: String? = null,
 ) : MonetaryEntryResponse() {
     companion object {
-        fun from(entry: OnChainEntry) = OnChainEntryResponse(
-            amount = entry.amount.value,
-            token = entry.token,
-            chainId = entry.chainId,
-            txHash = entry.txHash,
-            blockNumber = entry.blockNumber,
-            walletAddress = entry.walletAddress,
-            tokenContract = entry.tokenContract,
-            fromAddress = entry.fromAddress,
-        )
+        fun from(entry: OnChainEntry) =
+            OnChainEntryResponse(
+                amount = entry.amount.value,
+                token = entry.token,
+                chainId = entry.chainId,
+                txHash = entry.txHash,
+                blockNumber = entry.blockNumber,
+                walletAddress = entry.walletAddress,
+                tokenContract = entry.tokenContract,
+                fromAddress = entry.fromAddress,
+            )
     }
 }
