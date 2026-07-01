@@ -1,0 +1,56 @@
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+# ktlint owns all formatting enforcement (see .editorconfig + ktlint-check).
+# The `formatting` ruleset lives in a separate detekt-formatting module that
+# isn't loaded by this CLI setup, so there is nothing to disable here — its
+# absence already means no formatting findings come from detekt.
+
+complexity:
+  active: true
+  LongMethod:
+    active: true
+    threshold: 80
+  LongParameterList:
+    active: true
+    functionThreshold: 8
+    constructorThreshold: 8
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 20
+  TooManyFunctions:
+    active: true
+    thresholdInClasses: 15
+    thresholdInFiles: 15
+  LargeClass:
+    active: true
+    threshold: 700
+  NestedBlockDepth:
+    active: true
+    threshold: 5
+
+style:
+  active: true
+  MaxLineLength:
+    active: true
+    # Match ktlint/.editorconfig's max_line_length (140) so the two tools agree.
+    maxLineLength: 140
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+    # Codebase idiom: JUnit5 backtick-quoted descriptive test names
+    # (e.g. `fun \`returns error when input invalid\`()`) alongside standard camelCase.
+    functionPattern: '^([a-z][a-zA-Z0-9]*)|(`.+`)$'
+  ClassNaming:
+    active: true
+    classPattern: '[A-Z][a-zA-Z0-9]*'
+  VariableNaming:
+    active: true
+    variablePattern: '[a-z][A-Za-z0-9]*'
+  TopLevelPropertyNaming:
+    active: true
+  PackageNaming:
+    active: true

@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>EmptyFunctionBlock:IdemApplicationTests.kt$IdemApplicationTests${ }</ID>
+    <ID>LongMethod:McpServerIntegrationTest.kt$McpServerIntegrationTest$@Test fun `demo scenario - execute workflow, reconcile batch, rollback, verify full audit trail`()</ID>
+    <ID>LongParameterList:AlchemyWebhookIntegrationTest.kt$AlchemyWebhookIntegrationTest$( txHash: String, toAddress: String, contract: String, rawValue: String = "0x000f4240", // 1.000000 USDC (6 decimals) blockNum: String = "0x12a05f2", // 19_531_250 logIndex: String = "0x0", network: String = "ETH_MAINNET", fromAddress: String = "0xfrom0000000000000000000000000000000000", )</ID>
+    <ID>SpreadOperator:IdemApplication.kt$(*args)</ID>
+  </CurrentIssues>
+</SmellBaseline>

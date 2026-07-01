@@ -1,0 +1,8 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MagicNumber:IdemMcpServer.kt$IdemMcpServer$200</ID>
+    <ID>TooGenericExceptionThrown:IdemMcpServer.kt$IdemMcpServer$throw RuntimeException("Tool execution failed")</ID>
+  </CurrentIssues>
+</SmellBaseline>
