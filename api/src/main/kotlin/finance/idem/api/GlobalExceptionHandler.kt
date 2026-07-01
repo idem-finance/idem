@@ -9,6 +9,10 @@ import finance.idem.application.ledger.InvalidStatementRange
 import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.TransactionAccountNotFound
+import finance.idem.application.settlement.AccountNotFoundForSettlement
+import finance.idem.application.settlement.SettlementAlreadyTerminal
+import finance.idem.application.settlement.SettlementIdempotencyConflict
+import finance.idem.application.settlement.SettlementNotFound
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.agentic.PolicyViolationException
 import org.slf4j.LoggerFactory
@@ -93,6 +97,26 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleInvalidCursor(ex: InvalidCursor): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest()
             .body(ErrorResponse("INVALID_CURSOR", ex.message ?: "Invalid cursor"))
+
+    @ExceptionHandler(SettlementNotFound::class)
+    fun handleSettlementNotFound(ex: SettlementNotFound): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse("SETTLEMENT_NOT_FOUND", ex.message ?: "Settlement not found"))
+
+    @ExceptionHandler(SettlementAlreadyTerminal::class)
+    fun handleSettlementAlreadyTerminal(ex: SettlementAlreadyTerminal): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse("SETTLEMENT_ALREADY_TERMINAL", ex.message ?: "Settlement is already terminal"))
+
+    @ExceptionHandler(AccountNotFoundForSettlement::class)
+    fun handleAccountNotFoundForSettlement(ex: AccountNotFoundForSettlement): ResponseEntity<ErrorResponse> =
+        ResponseEntity.unprocessableEntity()
+            .body(ErrorResponse("ACCOUNT_NOT_FOUND", ex.message ?: "Account not found"))
+
+    @ExceptionHandler(SettlementIdempotencyConflict::class)
+    fun handleSettlementIdempotencyConflict(ex: SettlementIdempotencyConflict): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse("IDEMPOTENCY_CONFLICT", ex.message ?: ""))
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(ex: Exception): ResponseEntity<ErrorResponse> {

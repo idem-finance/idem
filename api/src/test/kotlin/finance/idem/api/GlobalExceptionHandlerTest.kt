@@ -8,6 +8,11 @@ import finance.idem.application.ledger.InvalidStatementRange
 import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.StatementAccountNotFound
 import finance.idem.application.ledger.TransactionAccountNotFound
+import finance.idem.application.settlement.AccountNotFoundForSettlement
+import finance.idem.application.settlement.SettlementAlreadyTerminal
+import finance.idem.application.settlement.SettlementIdempotencyConflict
+import finance.idem.application.settlement.SettlementNotFound
+import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.AccountId
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.MonetaryAmount
@@ -134,6 +139,38 @@ class GlobalExceptionHandlerTest {
         }
     }
 
+    @Test
+    fun `SettlementNotFound returns 404`() {
+        mockMvc.get("/throw?type=settlement-not-found").andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("SETTLEMENT_NOT_FOUND") }
+        }
+    }
+
+    @Test
+    fun `SettlementAlreadyTerminal returns 409`() {
+        mockMvc.get("/throw?type=settlement-already-terminal").andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("SETTLEMENT_ALREADY_TERMINAL") }
+        }
+    }
+
+    @Test
+    fun `AccountNotFoundForSettlement returns 422`() {
+        mockMvc.get("/throw?type=account-not-found-for-settlement").andExpect {
+            status { isUnprocessableEntity() }
+            jsonPath("$.code") { value("ACCOUNT_NOT_FOUND") }
+        }
+    }
+
+    @Test
+    fun `SettlementIdempotencyConflict returns 409`() {
+        mockMvc.get("/throw?type=settlement-idempotency-conflict").andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("IDEMPOTENCY_CONFLICT") }
+        }
+    }
+
     @RestController
     class ThrowingController {
         private val accountId = AccountId(UUID.randomUUID())
@@ -154,6 +191,10 @@ class GlobalExceptionHandlerTest {
                 "policy-violation" -> PolicyViolationException(
                     listOf(PolicyViolation(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("1000")), "Debit exceeds session limit"))
                 )
+                "settlement-not-found" -> SettlementNotFound(UUID.randomUUID())
+                "settlement-already-terminal" -> SettlementAlreadyTerminal(EntryStatus.SETTLED)
+                "account-not-found-for-settlement" -> AccountNotFoundForSettlement(finance.idem.core.AccountId(UUID.randomUUID()))
+                "settlement-idempotency-conflict" -> SettlementIdempotencyConflict("key-123")
                 else -> RuntimeException("unexpected boom")
             }
         }

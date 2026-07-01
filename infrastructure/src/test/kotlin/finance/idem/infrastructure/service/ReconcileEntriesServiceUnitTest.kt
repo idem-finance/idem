@@ -68,6 +68,7 @@ class ReconcileEntriesServiceUnitTest {
         override fun findById(id: UUID, tenantId: TenantId): Settlement? = null
         override fun findUnmatchedInWindow(tenantId: TenantId, accountId: AccountId?, from: Instant, to: Instant) = emptyList<Settlement>()
         override fun findPendingCandidates(tenantId: TenantId, accountIds: Set<AccountId>, token: StablecoinToken, chainId: ChainId, walletAddress: String, since: Instant) = emptyList<Settlement>()
+        override fun findPage(tenantId: TenantId, status: finance.idem.core.ledger.EntryStatus?, from: Instant?, to: Instant?, afterCreatedAt: Instant?, afterId: UUID?, limit: Int) = emptyList<Settlement>()
     }
 
     @Test
@@ -111,6 +112,8 @@ class ReconcileEntriesServiceUnitTest {
                 if (token == StablecoinToken.USDC) throw RuntimeException("simulated DB failure")
                 return emptyList()
             }
+
+            override fun findPage(tenantId: TenantId, status: finance.idem.core.ledger.EntryStatus?, from: Instant?, to: Instant?, afterCreatedAt: Instant?, afterId: UUID?, limit: Int) = emptyList<Settlement>()
         }
 
         val service = ReconcileEntriesService(repo, outboxRepo, txManager, BigDecimal.ZERO)

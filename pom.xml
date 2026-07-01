@@ -207,6 +207,7 @@
                                           (excluded via agent config in infrastructure/pom.xml).
                                         -->
                                         <exclude>finance.idem.infrastructure.persistence.idempotency.IdempotencyKeyDataModel</exclude>
+                                        <exclude>finance.idem.infrastructure.persistence.idempotency.SettlementIdempotencyKeyDataModel</exclude>
                                         <exclude>finance.idem.infrastructure.persistence.chain.ChainCheckpointDataModel</exclude>
                                         <exclude>finance.idem.infrastructure.persistence.chain.FailedChainTransferDataModel</exclude>
                                         <!-- Kotlin data class request/response DTOs in api.reconciliation -->
