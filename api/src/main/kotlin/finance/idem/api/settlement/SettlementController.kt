@@ -55,7 +55,7 @@ class SettlementController(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @PostMapping("/pending")
+    @PostMapping
     @PreAuthorize("hasAuthority('TRANSACTIONS_WRITE')")
     @Operation(summary = "Register a pending settlement expectation")
     @ApiResponses(
@@ -134,7 +134,7 @@ class SettlementController(
         )
     }
 
-    @GetMapping("/pending")
+    @GetMapping
     @PreAuthorize("hasAuthority('TRANSACTIONS_READ')")
     @Operation(summary = "List settlements for this tenant with optional filters")
     @ApiResponses(
@@ -241,7 +241,7 @@ class SettlementController(
         )
     }
 
-    @DeleteMapping("/{id}/cancel")
+    @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('TRANSACTIONS_WRITE')")
     @Operation(summary = "Cancel a PENDING settlement")
     @ApiResponses(

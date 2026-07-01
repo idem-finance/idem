@@ -1,7 +1,7 @@
 -- Idempotency key store for settlement registration. Mirrors idempotency_keys (V7) —
 -- tryRecord() uses INSERT ON CONFLICT DO NOTHING to atomically claim a key before
 -- any settlement writes, preventing duplicate PENDING settlements from a retried
--- POST /api/v1/settlements/pending. Separate table (rather than reusing
+-- POST /api/v1/settlements. Separate table (rather than reusing
 -- idempotency_keys) because that table's transaction_id column is transaction-specific.
 CREATE TABLE settlement_idempotency_keys (
     tenant_id      UUID        NOT NULL,

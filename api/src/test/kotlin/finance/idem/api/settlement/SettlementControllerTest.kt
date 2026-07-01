@@ -80,13 +80,13 @@ class SettlementControllerTest {
         }
     """
 
-    // ── POST /api/v1/settlements/pending ──────────────────────────────────────
+    // ── POST /api/v1/settlements ──────────────────────────────────────
 
     @Test
     fun `POST pending returns 201 on success`() {
         whenever(registerSettlementUseCase.execute(any())).thenReturn(Result.success(pendingSettlement()))
 
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
@@ -104,7 +104,7 @@ class SettlementControllerTest {
         whenever(registerSettlementUseCase.execute(any())).thenReturn(Result.success(pendingSettlement()))
         whenever(getSettlementUseCase.execute(any())).thenReturn(Result.success(pendingSettlement()))
 
-        val postResult = mockMvc.post("/api/v1/settlements/pending") {
+        val postResult = mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
@@ -125,7 +125,7 @@ class SettlementControllerTest {
 
     @Test
     fun `POST pending returns 400 for invalid token`() {
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
@@ -138,7 +138,7 @@ class SettlementControllerTest {
 
     @Test
     fun `POST pending returns 400 for invalid chainId`() {
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
@@ -154,7 +154,7 @@ class SettlementControllerTest {
         whenever(registerSettlementUseCase.execute(any()))
             .thenReturn(Result.failure(finance.idem.application.settlement.AccountNotFoundForSettlement(accountId)))
 
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
@@ -167,7 +167,7 @@ class SettlementControllerTest {
 
     @Test
     fun `POST pending returns 403 with wrong scope`() {
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(wrongScopeAuth))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
@@ -177,7 +177,7 @@ class SettlementControllerTest {
 
     @Test
     fun `POST pending returns 401 with no auth`() {
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
             content = validBody
@@ -186,7 +186,7 @@ class SettlementControllerTest {
 
     @Test
     fun `POST pending returns 400 for invalid amount`() {
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
@@ -199,7 +199,7 @@ class SettlementControllerTest {
 
     @Test
     fun `POST pending returns 400 when Idempotency-Key is missing`() {
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             contentType = MediaType.APPLICATION_JSON
             content = validBody
@@ -210,7 +210,7 @@ class SettlementControllerTest {
 
     @Test
     fun `POST pending returns 400 when Idempotency-Key is blank`() {
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             header("Idempotency-Key", "   ")
             contentType = MediaType.APPLICATION_JSON
@@ -223,7 +223,7 @@ class SettlementControllerTest {
 
     @Test
     fun `POST pending returns 400 when Idempotency-Key exceeds 255 characters`() {
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             header("Idempotency-Key", "k".repeat(256))
             contentType = MediaType.APPLICATION_JSON
@@ -239,7 +239,7 @@ class SettlementControllerTest {
         whenever(registerSettlementUseCase.execute(any()))
             .thenReturn(Result.failure(SettlementIdempotencyConflict(idempotencyKey)))
 
-        mockMvc.post("/api/v1/settlements/pending") {
+        mockMvc.post("/api/v1/settlements") {
             with(authentication(writeAuth))
             header("Idempotency-Key", idempotencyKey)
             contentType = MediaType.APPLICATION_JSON
@@ -250,14 +250,14 @@ class SettlementControllerTest {
         }
     }
 
-    // ── GET /api/v1/settlements/pending ───────────────────────────────────────
+    // ── GET /api/v1/settlements ───────────────────────────────────────
 
     @Test
     fun `GET pending returns 200 with settlement list`() {
         whenever(listSettlementsUseCase.execute(any()))
             .thenReturn(Result.success(SettlementPage(listOf(pendingSettlement()), null)))
 
-        mockMvc.get("/api/v1/settlements/pending") {
+        mockMvc.get("/api/v1/settlements") {
             with(authentication(readAuth))
         }.andExpect {
             status { isOk() }
@@ -268,7 +268,7 @@ class SettlementControllerTest {
 
     @Test
     fun `GET pending returns 400 for invalid limit`() {
-        mockMvc.get("/api/v1/settlements/pending?limit=0") {
+        mockMvc.get("/api/v1/settlements?limit=0") {
             with(authentication(readAuth))
         }.andExpect {
             status { isBadRequest() }
@@ -278,7 +278,7 @@ class SettlementControllerTest {
 
     @Test
     fun `GET pending returns 400 for invalid status`() {
-        mockMvc.get("/api/v1/settlements/pending?status=BOGUS") {
+        mockMvc.get("/api/v1/settlements?status=BOGUS") {
             with(authentication(readAuth))
         }.andExpect {
             status { isBadRequest() }
@@ -288,7 +288,7 @@ class SettlementControllerTest {
 
     @Test
     fun `GET pending returns 400 for limit over 200`() {
-        mockMvc.get("/api/v1/settlements/pending?limit=201") {
+        mockMvc.get("/api/v1/settlements?limit=201") {
             with(authentication(readAuth))
         }.andExpect {
             status { isBadRequest() }
@@ -298,7 +298,7 @@ class SettlementControllerTest {
 
     @Test
     fun `GET pending returns 400 for from after to`() {
-        mockMvc.get("/api/v1/settlements/pending?from=2025-06-20T00:00:00Z&to=2025-06-01T00:00:00Z") {
+        mockMvc.get("/api/v1/settlements?from=2025-06-20T00:00:00Z&to=2025-06-01T00:00:00Z") {
             with(authentication(readAuth))
         }.andExpect {
             status { isBadRequest() }
@@ -311,7 +311,7 @@ class SettlementControllerTest {
         whenever(listSettlementsUseCase.execute(any()))
             .thenReturn(Result.failure(finance.idem.application.ledger.InvalidCursor("bad")))
 
-        mockMvc.get("/api/v1/settlements/pending?cursor=notbase64") {
+        mockMvc.get("/api/v1/settlements?cursor=notbase64") {
             with(authentication(readAuth))
         }.andExpect {
             status { isBadRequest() }
@@ -324,7 +324,7 @@ class SettlementControllerTest {
         whenever(listSettlementsUseCase.execute(any()))
             .thenReturn(Result.success(SettlementPage(listOf(pendingSettlement()), "next-cursor-token")))
 
-        mockMvc.get("/api/v1/settlements/pending") {
+        mockMvc.get("/api/v1/settlements") {
             with(authentication(readAuth))
         }.andExpect {
             status { isOk() }
@@ -334,7 +334,7 @@ class SettlementControllerTest {
 
     @Test
     fun `GET pending returns 403 with wrong scope`() {
-        mockMvc.get("/api/v1/settlements/pending") {
+        mockMvc.get("/api/v1/settlements") {
             with(authentication(wrongScopeAuth))
         }.andExpect { status { isForbidden() } }
     }
@@ -365,14 +365,14 @@ class SettlementControllerTest {
         }
     }
 
-    // ── DELETE /api/v1/settlements/{id}/cancel ────────────────────────────────
+    // ── DELETE /api/v1/settlements/{id} ───────────────────────────────────────
 
     @Test
     fun `DELETE cancel returns 200 with cancelled settlement`() {
         val cancelled = pendingSettlement().copy(status = EntryStatus.CANCELLED)
         whenever(cancelSettlementUseCase.execute(any())).thenReturn(Result.success(cancelled))
 
-        mockMvc.delete("/api/v1/settlements/$settlementId/cancel") {
+        mockMvc.delete("/api/v1/settlements/$settlementId") {
             with(authentication(writeAuth))
         }.andExpect {
             status { isOk() }
@@ -385,7 +385,7 @@ class SettlementControllerTest {
     fun `DELETE cancel returns 404 when not found`() {
         whenever(cancelSettlementUseCase.execute(any())).thenReturn(Result.failure(SettlementNotFound(settlementId)))
 
-        mockMvc.delete("/api/v1/settlements/$settlementId/cancel") {
+        mockMvc.delete("/api/v1/settlements/$settlementId") {
             with(authentication(writeAuth))
         }.andExpect {
             status { isNotFound() }
@@ -398,7 +398,7 @@ class SettlementControllerTest {
         whenever(cancelSettlementUseCase.execute(any()))
             .thenReturn(Result.failure(SettlementAlreadyTerminal(EntryStatus.SETTLED)))
 
-        mockMvc.delete("/api/v1/settlements/$settlementId/cancel") {
+        mockMvc.delete("/api/v1/settlements/$settlementId") {
             with(authentication(writeAuth))
         }.andExpect {
             status { isConflict() }
@@ -408,7 +408,7 @@ class SettlementControllerTest {
 
     @Test
     fun `DELETE cancel returns 403 with wrong scope`() {
-        mockMvc.delete("/api/v1/settlements/$settlementId/cancel") {
+        mockMvc.delete("/api/v1/settlements/$settlementId") {
             with(authentication(wrongScopeAuth))
         }.andExpect { status { isForbidden() } }
     }
