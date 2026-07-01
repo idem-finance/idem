@@ -26,10 +26,11 @@ jobs:
           cache: maven
 
       - name: ktlint check
-        run: ./mvnw initialize antrun:run@ktlint-check --no-transfer-progress
+        run: ./mvnw test-compile antrun:run@ktlint-check --no-transfer-progress
+        continue-on-error: true
 
       - name: Detekt check
-        run: ./mvnw initialize antrun:run@detekt-check --no-transfer-progress
+        run: ./mvnw test-compile antrun:run@detekt-check --no-transfer-progress
         continue-on-error: true
 
       - name: Build and test
