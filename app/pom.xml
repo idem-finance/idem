@@ -136,6 +136,10 @@
                         <artifactId>native-maven-plugin</artifactId>
                         <configuration>
                             <mainClass>finance.idem.IdemApplicationKt</mainClass>
+                            <!-- Deterministic output name — without this it defaults to
+                                 project.build.finalName (e.g. app-0.1.0-SNAPSHOT), which the
+                                 native-build.yml CI job and Dockerfile.native both assume is "idem". -->
+                            <imageName>idem</imageName>
                             <buildArgs>
                                 <!-- Fully static binary linked against musl — required to run in the
                                      FROM scratch base image in Dockerfile.native (no libc present). -->
