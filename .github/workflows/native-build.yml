@@ -1,0 +1,37 @@
+name: Native Build
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  native-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up GraalVM
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm-community'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-musl: 'true'
+
+      - name: Build native binary
+        run: ./mvnw -Pnative native:compile -pl app -am --no-transfer-progress
+
+      - name: Rename artifact
+        run: mv app/target/idem idem-native-linux-amd64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: idem-native-linux-amd64
+          path: idem-native-linux-amd64
+          if-no-files-found: error
