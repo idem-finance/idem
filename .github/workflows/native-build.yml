@@ -23,8 +23,11 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-musl: 'true'
 
+      - name: Install dependency modules
+        run: ./mvnw install -pl app -am -DskipTests --no-transfer-progress
+
       - name: Build native binary
-        run: ./mvnw -Pnative native:compile -pl app -am --no-transfer-progress
+        run: ./mvnw -Pnative native:compile -pl app --no-transfer-progress
 
       - name: Rename artifact
         run: mv app/target/idem idem-native-linux-amd64
