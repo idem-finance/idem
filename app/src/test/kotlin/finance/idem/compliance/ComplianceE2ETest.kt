@@ -23,8 +23,6 @@ import finance.idem.core.security.ApiScope
 import finance.idem.infrastructure.persistence.AccountRepositoryAdapter
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
 import finance.idem.infrastructure.security.ApiKeyService
-import jakarta.persistence.EntityManager
-import org.hibernate.Session
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -39,6 +37,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.test.context.TestPropertySource
 import java.math.BigInteger
+import java.sql.Connection
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -46,6 +45,7 @@ import java.util.Base64
 import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -58,11 +58,11 @@ private const val AUDIT_HMAC_SECRET = "test-only-insecure-compliance-hmac-secret
  * back out through the real HTTP `GET /api/v1/compliance/audit-export` endpoint with a real
  * API key and an independently-recomputed HMAC.
  *
- * `OnChainEntryDto` (api module) has no `travelRuleData` field, so the `Valid` branch of
- * `TravelRuleValidator` cannot be driven through the public HTTP request body today — that
- * scenario calls the real, Spring-wired [PostTransactionUseCase] bean directly instead of
- * going through `POST /api/v1/transactions`. `Exempt` and `MissingData` *are* reachable over
- * HTTP and are exercised that way.
+ * `OnChainEntryDto` (api module) has no `travelRuleData` field, so the `Valid` and
+ * `IncompleteData` branches of `TravelRuleValidator` cannot be driven through the public HTTP
+ * request body today — those scenarios call the real, Spring-wired [PostTransactionUseCase]
+ * bean directly instead of going through `POST /api/v1/transactions`. `Exempt` and
+ * `MissingData` *are* reachable over HTTP and are exercised that way.
  */
 @Import(TestcontainersConfiguration::class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -84,7 +84,7 @@ class ComplianceE2ETest {
 
     @Autowired lateinit var webhookOutboxAdapter: WebhookOutboxRepositoryAdapter
 
-    @Autowired lateinit var entityManager: EntityManager
+    @Autowired lateinit var dataSource: DataSource
 
     @Autowired lateinit var objectMapper: ObjectMapper
 
@@ -222,7 +222,16 @@ class ComplianceE2ETest {
                 createdBy = "compliance-e2e-test",
             )
 
+        // LgpdRetentionRepositoryAdapter.schedule() computes deletionDueAt from its own
+        // Instant.now() during the use-case call, not from an instant the test controls.
+        // Comparing against a fresh Instant.now() taken at assertion time is flaky around
+        // UTC year boundaries (schedule-time and assertion-time `now()` could fall on either
+        // side of a rollover) — bracket the expected value with timestamps captured
+        // immediately before/after the call instead, so the window is exact regardless of
+        // wall-clock timing.
+        val before = Instant.now()
         val result = postTransactionUseCase.execute(cmd)
+        val after = Instant.now()
 
         assertTrue(result.isSuccess)
         assertTrue(findComplianceQueueRows(f.tenantId).isEmpty())
@@ -233,23 +242,85 @@ class ComplianceE2ETest {
         assertEquals(2, retentionRows.size)
         assertTrue(retentionRows.all { it.entityType == "TravelRuleData" })
         assertTrue(retentionRows.all { it.entityId == travelRuleData.transferId })
-        assertTrue(
-            retentionRows.all {
-                it.deletionDueAt.atZone(ZoneOffset.UTC).year == Instant.now().atZone(ZoneOffset.UTC).year + 7
-            },
-        )
+        val minDueAt = before.atOffset(ZoneOffset.UTC).plusYears(7).toInstant()
+        val maxDueAt = after.atOffset(ZoneOffset.UTC).plusYears(7).toInstant()
+        assertTrue(retentionRows.all { !it.deletionDueAt.isBefore(minDueAt) && !it.deletionDueAt.isAfter(maxDueAt) })
     }
 
-    // ── Scenario 4: audit export scope enforcement + date range filtering, end to end ──
+    // ── Scenario 4: above threshold, incomplete IVMS 101 data -> IncompleteData, queued for review ──
+
+    @Test
+    fun `on-chain entry above threshold with an incomplete originator is queued as incomplete data`() {
+        val f = fixture(4)
+        val incompleteTravelRuleData =
+            TravelRuleData(
+                transferId = "tr-4",
+                originator =
+                    VaspTransferParty(
+                        // No nationalId — the one IVMS 101 field the domain model allows to be
+                        // omitted, which is what makes this party incomplete.
+                        naturalPerson =
+                            NaturalPerson(
+                                firstName = "Ana",
+                                lastName = "Silva",
+                                dateOfBirth = LocalDate.of(1990, 1, 1),
+                                country = "BR",
+                            ),
+                        accountNumber = "acct-orig-4",
+                        vaspDid = "did:example:originator-4",
+                    ),
+                beneficiary =
+                    VaspTransferParty(
+                        legalPerson = LegalPerson(name = "Acme Corp", registrationNumber = "123456", country = "US"),
+                        accountNumber = "acct-benef-4",
+                        vaspDid = "did:example:beneficiary-4",
+                    ),
+                transferAmount = MonetaryAmount.of("1500.000000"),
+                transferAsset = StablecoinToken.USDC,
+            )
+        val onChainEntry =
+            OnChainEntry(
+                amount = MonetaryAmount.of("1500.000000"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                txHash = txHashFor(4),
+                blockNumber = 19_000_000L,
+                walletAddress = walletFor(4),
+                tokenContract = contractFor(4),
+                travelRuleData = incompleteTravelRuleData,
+            )
+        val cmd =
+            PostTransactionCommand(
+                tenantId = f.tenantId,
+                idempotencyKey = "compliance-e2e-4",
+                lines =
+                    listOf(
+                        JournalLineRequest(f.debitAccountId, EntryType.DEBIT, onChainEntry),
+                        JournalLineRequest(f.creditAccountId, EntryType.CREDIT, onChainEntry),
+                    ),
+                createdBy = "compliance-e2e-test",
+            )
+
+        val result = postTransactionUseCase.execute(cmd)
+
+        assertTrue(result.isSuccess)
+        val queueRows = findComplianceQueueRows(f.tenantId)
+        assertEquals(2, queueRows.size)
+        assertTrue(queueRows.all { it.reason == "INCOMPLETE_DATA" })
+        assertTrue(queueRows.all { it.missingFields.contains("originator.naturalPerson.nationalId") })
+        assertTrue(findLgpdRetentionRows(f.tenantId).isEmpty())
+    }
+
+    // ── Scenario 5: audit export scope enforcement + date range filtering, end to end ──
 
     @Test
     fun `audit export enforces COMPLIANCE_EXPORT scope and date range filtering`() {
-        val f = fixture(4)
+        val f = fixture(5)
         val (writeOnlyKey, _) = apiKeyService.generate(f.tenantId, setOf(ApiScope.TRANSACTIONS_WRITE))
         val (exportKey, _) = apiKeyService.generate(f.tenantId, setOf(ApiScope.TRANSACTIONS_WRITE, ApiScope.COMPLIANCE_EXPORT))
 
         val before = Instant.now().minusSeconds(5)
-        val postResponse = postFiatTransaction(writeOnlyKey, f, idempotencyKey = "compliance-e2e-4")
+        val postResponse = postFiatTransaction(writeOnlyKey, f, idempotencyKey = "compliance-e2e-5")
         assertEquals(HttpStatus.CREATED, postResponse.statusCode)
         val after = Instant.now().plusSeconds(5)
 
@@ -405,6 +476,7 @@ class ComplianceE2ETest {
         val txHash: String,
         val chainId: String,
         val reason: String,
+        val missingFields: String,
     )
 
     private data class LgpdRetentionRow(
@@ -421,12 +493,19 @@ class ComplianceE2ETest {
         val rows = mutableListOf<ComplianceQueueRow>()
         withTenantConnection(tenantId) { conn ->
             conn
-                .prepareStatement("SELECT tx_hash, chain_id, reason FROM compliance_queue WHERE tenant_id = ?::uuid")
-                .use { stmt ->
+                .prepareStatement(
+                    "SELECT tx_hash, chain_id, reason, missing_fields FROM compliance_queue WHERE tenant_id = ?::uuid",
+                ).use { stmt ->
                     stmt.setString(1, tenantId.value.toString())
                     val rs = stmt.executeQuery()
                     while (rs.next()) {
-                        rows += ComplianceQueueRow(rs.getString("tx_hash"), rs.getString("chain_id"), rs.getString("reason"))
+                        rows +=
+                            ComplianceQueueRow(
+                                rs.getString("tx_hash"),
+                                rs.getString("chain_id"),
+                                rs.getString("reason"),
+                                rs.getString("missing_fields"),
+                            )
                     }
                 }
         }
@@ -480,18 +559,20 @@ class ComplianceE2ETest {
 
     /**
      * `compliance_queue`/`lgpd_retention_schedule`/`audit_log` have RLS policies scoped to
-     * `app.tenant_id` — verification reads must `SET LOCAL` on the same JDBC connection the
-     * subsequent query runs on, mirroring `AlchemyWebhookIntegrationTest`'s raw-SQL helpers.
+     * `app.tenant_id`, and `SET LOCAL` only applies for the remainder of the current
+     * transaction — so `SET LOCAL` and the subsequent query must run on the same explicit
+     * transaction on a dedicated connection, not rely on whatever transaction/autocommit state
+     * Hibernate's EntityManager happens to be in. Mirrors `SecurityHttpE2ETest.insertAccount`.
      */
     private fun withTenantConnection(
         tenantId: TenantId,
-        block: (java.sql.Connection) -> Unit,
+        block: (Connection) -> Unit,
     ) {
-        val session = entityManager.unwrap(Session::class.java)
-        session.doWork { conn ->
+        dataSource.connection.use { conn ->
+            conn.autoCommit = false
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
             block(conn)
+            conn.commit()
         }
-        entityManager.clear()
     }
 }

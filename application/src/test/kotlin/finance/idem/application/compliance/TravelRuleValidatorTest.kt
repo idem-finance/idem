@@ -24,6 +24,7 @@ class TravelRuleValidatorTest {
                     firstName = "Jane",
                     lastName = "Doe",
                     dateOfBirth = LocalDate.of(1990, 1, 1),
+                    nationalId = "123.456.789-00",
                     country = "BR",
                 ),
             accountNumber = "0xAbCd",
@@ -144,7 +145,8 @@ class TravelRuleValidatorTest {
             )
         val naturalBeneficiary =
             VaspTransferParty(
-                naturalPerson = NaturalPerson("John", "Smith", LocalDate.of(1985, 3, 20), country = "US"),
+                naturalPerson =
+                    NaturalPerson("John", "Smith", LocalDate.of(1985, 3, 20), nationalId = "P-778899", country = "US"),
                 accountNumber = "0xJohn",
                 vaspDid = "did:example:john",
             )
@@ -153,10 +155,79 @@ class TravelRuleValidatorTest {
         assertIs<TravelRuleValidationResult.Valid>(result)
     }
 
-    // Note: IncompleteData is a defensive path. VaspTransferParty.init enforces non-blank vaspDid
-    // and requires at least one of naturalPerson / legalPerson, so this result cannot be returned
-    // by a properly-constructed domain object — there is no case for it above because validate()
-    // has no reachable path that produces it. The sealed-class shape itself (missingFields, entry)
-    // is exercised directly via ComplianceQueueItem.from(IncompleteData, tenantId) in
-    // ComplianceQueueItemTest. It guards against future optional IVMS fields.
+    // ---- IncompleteData ----
+
+    // VaspTransferParty.init enforces non-blank vaspDid/accountNumber and exactly one of
+    // naturalPerson / legalPerson, and LegalPerson requires non-blank name/registrationNumber
+    // at construction — so those fields can never be "incomplete" by the time validate() sees
+    // them. NaturalPerson.nationalId is the one IVMS 101 field the domain model allows to be
+    // omitted, so a natural-person party missing it is the reachable incomplete-data case.
+
+    @Test
+    fun `IncompleteData when originator natural person has no nationalId`() {
+        val incompleteOriginator =
+            VaspTransferParty(
+                naturalPerson = NaturalPerson("Jane", "Doe", LocalDate.of(1990, 1, 1), country = "BR"),
+                accountNumber = "0xAbCd",
+                vaspDid = "did:example:originator",
+            )
+        val data = travelRuleData(orig = incompleteOriginator)
+        val result = validator.validate(entry("1500"), data)
+        val incomplete = assertIs<TravelRuleValidationResult.IncompleteData>(result)
+        assertEquals(listOf("originator.naturalPerson.nationalId"), incomplete.missingFields)
+        assertEquals(entry("1500"), incomplete.entry)
+    }
+
+    @Test
+    fun `IncompleteData when beneficiary natural person has no nationalId`() {
+        val incompleteBeneficiary =
+            VaspTransferParty(
+                naturalPerson = NaturalPerson("John", "Smith", LocalDate.of(1985, 3, 20), country = "US"),
+                accountNumber = "0xJohn",
+                vaspDid = "did:example:john",
+            )
+        val data = travelRuleData(bene = incompleteBeneficiary)
+        val result = validator.validate(entry("1500"), data)
+        val incomplete = assertIs<TravelRuleValidationResult.IncompleteData>(result)
+        assertEquals(listOf("beneficiary.naturalPerson.nationalId"), incomplete.missingFields)
+    }
+
+    @Test
+    fun `IncompleteData lists both parties when neither natural person has a nationalId`() {
+        val incompleteOriginator =
+            VaspTransferParty(
+                naturalPerson = NaturalPerson("Jane", "Doe", LocalDate.of(1990, 1, 1), country = "BR"),
+                accountNumber = "0xAbCd",
+                vaspDid = "did:example:originator",
+            )
+        val incompleteBeneficiary =
+            VaspTransferParty(
+                naturalPerson = NaturalPerson("John", "Smith", LocalDate.of(1985, 3, 20), country = "US"),
+                accountNumber = "0xJohn",
+                vaspDid = "did:example:john",
+            )
+        val data = travelRuleData(orig = incompleteOriginator, bene = incompleteBeneficiary)
+        val result = validator.validate(entry("1500"), data)
+        val incomplete = assertIs<TravelRuleValidationResult.IncompleteData>(result)
+        assertEquals(
+            listOf("originator.naturalPerson.nationalId", "beneficiary.naturalPerson.nationalId"),
+            incomplete.missingFields,
+        )
+    }
+
+    @Test
+    fun `IncompleteData is not returned when the incomplete party is a legal person`() {
+        // Beneficiary in the shared fixture is a LegalPerson, which has no optional fields —
+        // an originator missing nationalId is still incomplete regardless of the other side.
+        val incompleteOriginator =
+            VaspTransferParty(
+                naturalPerson = NaturalPerson("Jane", "Doe", LocalDate.of(1990, 1, 1), country = "BR"),
+                accountNumber = "0xAbCd",
+                vaspDid = "did:example:originator",
+            )
+        val data = travelRuleData(orig = incompleteOriginator, bene = beneficiary)
+        val result = validator.validate(entry("1500"), data)
+        val incomplete = assertIs<TravelRuleValidationResult.IncompleteData>(result)
+        assertEquals(listOf("originator.naturalPerson.nationalId"), incomplete.missingFields)
+    }
 }
