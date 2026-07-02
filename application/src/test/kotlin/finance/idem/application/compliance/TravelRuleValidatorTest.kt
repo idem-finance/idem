@@ -155,5 +155,8 @@ class TravelRuleValidatorTest {
 
     // Note: IncompleteData is a defensive path. VaspTransferParty.init enforces non-blank vaspDid
     // and requires at least one of naturalPerson / legalPerson, so this result cannot be returned
-    // by a properly-constructed domain object. It guards against future optional IVMS fields.
+    // by a properly-constructed domain object — there is no case for it above because validate()
+    // has no reachable path that produces it. The sealed-class shape itself (missingFields, entry)
+    // is exercised directly via ComplianceQueueItem.from(IncompleteData, tenantId) in
+    // ComplianceQueueItemTest. It guards against future optional IVMS fields.
 }
