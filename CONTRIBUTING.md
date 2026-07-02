@@ -61,7 +61,7 @@ sdk-kotlin  →  (nothing in this repo)
 - `infrastructure` and `api` depend on `application`, never on each other.
 - `app` is the only module allowed to depend on everything.
 
-Spring Modulith enforces these boundaries at test time and **fails the build** on violations — this isn't a style preference, it's a compile-time gate.
+ArchUnit-based architecture tests (`app/src/test/kotlin/finance/idem/ModularityTest.kt`) enforce these boundaries at test time and **fail the build** on violations — this isn't a style preference, it's a compile-time gate.
 
 ---
 
@@ -89,7 +89,7 @@ Every public function in `core` and `application` needs a unit test. Features th
 - One class per file.
 - `core` must compile with zero Spring (or any framework) on the classpath — if it doesn't, that's a bug, not a style nit.
 
-There's no automated linter wired into the build yet (no ktlint/detekt plugin in `pom.xml`) — style is enforced through code review. If you're touching a file with a different local convention, match the surrounding code rather than reformatting unrelated lines.
+ktlint and Detekt are wired into the build and gate `./mvnw verify` (see `pom.xml`'s `ktlint-check`/`detekt-check` executions). Run `./mvnw antrun:run@ktlint-format` to auto-fix formatting locally before pushing. Detekt violations in pre-existing code are tracked via per-module baseline files (`detekt-baseline-<artifactId>.xml`) — don't add new violations, and don't expand the baseline to hide new ones.
 
 ---
 

@@ -15,6 +15,6 @@ Closes #
 ## Checklist
 
 - [ ] All commits are signed off (`git commit -s`) — required by DCO
-- [ ] No new dependency on `core` or `application` from Spring, JPA, or any framework
+- [ ] No new framework dependencies in `core` or `application` (Spring/JPA/web/persistence/etc)
 - [ ] Module dependency rules respected (see [CONTRIBUTING.md](../CONTRIBUTING.md#module-dependency-rules--cannot-be-violated))
 - [ ] Docs updated if behavior changed (KDoc, OpenAPI, README, Bruno collection)
