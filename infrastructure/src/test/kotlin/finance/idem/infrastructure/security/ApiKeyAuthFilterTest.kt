@@ -22,10 +22,12 @@ import kotlin.test.assertNull
 
 @ExtendWith(MockitoExtension::class)
 class ApiKeyAuthFilterTest {
-
     @Mock lateinit var apiKeyService: ApiKeyService
+
     @Mock lateinit var request: HttpServletRequest
+
     @Mock lateinit var response: HttpServletResponse
+
     @Mock lateinit var chain: FilterChain
 
     private lateinit var filter: ApiKeyAuthFilter

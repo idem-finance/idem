@@ -28,7 +28,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RegisterSettlementServiceTest {
-
     private val accountRepository: AccountRepository = mock()
     private val settlementRepository: SettlementRepository = mock()
     private val settlementIdempotencyStore: SettlementIdempotencyStore = mock()
@@ -37,7 +36,10 @@ class RegisterSettlementServiceTest {
     private val tenantId = TenantId.generate()
     private val accountId = AccountId.generate()
 
-    private fun cmd(expectedFromAddress: String? = null, idempotencyKey: String = "idem-key-001") = RegisterSettlementCommand(
+    private fun cmd(
+        expectedFromAddress: String? = null,
+        idempotencyKey: String = "idem-key-001",
+    ) = RegisterSettlementCommand(
         tenantId = tenantId,
         accountId = accountId,
         amount = MonetaryAmount.of("250.00"),
@@ -96,18 +98,19 @@ class RegisterSettlementServiceTest {
     @Test
     fun `returns cached settlement when idempotency key already claimed and settlement exists`() {
         val existingId = UUID.randomUUID()
-        val existing = Settlement(
-            id = existingId,
-            tenantId = tenantId,
-            accountId = accountId,
-            amount = MonetaryAmount.of("250.00"),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.SOLANA,
-            walletAddress = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS",
-            status = EntryStatus.PENDING,
-            createdAt = Instant.now(),
-            createdBy = "api-user",
-        )
+        val existing =
+            Settlement(
+                id = existingId,
+                tenantId = tenantId,
+                accountId = accountId,
+                amount = MonetaryAmount.of("250.00"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.SOLANA,
+                walletAddress = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS",
+                status = EntryStatus.PENDING,
+                createdAt = Instant.now(),
+                createdBy = "api-user",
+            )
         whenever(settlementIdempotencyStore.tryRecord(any(), any(), any())).thenReturn(false)
         whenever(settlementIdempotencyStore.find("idem-key-001", tenantId)).thenReturn(existingId)
         whenever(settlementRepository.findById(existingId, tenantId)).thenReturn(existing)

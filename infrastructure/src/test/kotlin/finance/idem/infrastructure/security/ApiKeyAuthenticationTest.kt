@@ -9,7 +9,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ApiKeyAuthenticationTest {
-
     private val tenantId = TenantId(UUID.randomUUID())
     private val keyPrefix = "sk_live_abcd"
 
@@ -33,10 +32,11 @@ class ApiKeyAuthenticationTest {
 
     @Test
     fun `authorities are stored correctly`() {
-        val scopes = listOf(
-            SimpleGrantedAuthority("TRANSACTIONS_READ"),
-            SimpleGrantedAuthority("ACCOUNTS_READ"),
-        )
+        val scopes =
+            listOf(
+                SimpleGrantedAuthority("TRANSACTIONS_READ"),
+                SimpleGrantedAuthority("ACCOUNTS_READ"),
+            )
         val auth = ApiKeyAuthentication(tenantId, keyPrefix, scopes)
         assertEquals(setOf("TRANSACTIONS_READ", "ACCOUNTS_READ"), auth.authorities.map { it.authority }.toSet())
     }

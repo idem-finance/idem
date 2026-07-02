@@ -15,10 +15,11 @@ data class JournalLineRequestDto(
     val monetaryEntry: MonetaryEntryRequestDto,
     val description: String? = null,
 ) {
-    fun toDomain() = JournalLineRequest(
-        accountId = AccountId(accountId),
-        entryType = entryType,
-        monetaryEntry = monetaryEntry.toDomain(),
-        description = description,
-    )
+    fun toDomain() =
+        JournalLineRequest(
+            accountId = AccountId(accountId),
+            entryType = entryType,
+            monetaryEntry = monetaryEntry.toDomain(),
+            description = description,
+        )
 }

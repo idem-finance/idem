@@ -32,9 +32,10 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class DescribeAccountServiceTest {
-
     @Mock lateinit var accountRepository: AccountRepository
+
     @Mock lateinit var journalLineRepository: JournalLineRepository
+
     @Mock lateinit var getBalanceUseCase: GetBalanceUseCase
 
     private lateinit var service: DescribeAccountService
@@ -60,28 +61,30 @@ class DescribeAccountServiceTest {
     @Test
     fun `returns AccountDescription with correct fields`() {
         val now = Instant.now()
-        val account = Account.reconstitute(
-            id = accountId,
-            tenantId = tenantId,
-            name = "Treasury",
-            currency = FiatCurrency.USD,
-            type = AccountType.ASSET,
-            createdAt = now,
-            createdBy = "test",
-        )
+        val account =
+            Account.reconstitute(
+                id = accountId,
+                tenantId = tenantId,
+                name = "Treasury",
+                currency = FiatCurrency.USD,
+                type = AccountType.ASSET,
+                createdAt = now,
+                createdBy = "test",
+            )
         val balance = Balance(accountId, FiatCurrency.USD, MonetaryAmount.of("250.00"), EntryType.DEBIT, now)
 
-        val line = JournalLine(
-            id = UUID.randomUUID(),
-            transactionId = finance.idem.core.TransactionId(UUID.randomUUID()),
-            accountId = accountId,
-            tenantId = tenantId,
-            entryType = EntryType.DEBIT,
-            monetaryEntry = FiatEntry(MonetaryAmount.of("100"), FiatCurrency.USD, finance.idem.core.PaymentRail.WIRE),
-            description = null,
-            createdAt = now,
-            createdBy = "test",
-        )
+        val line =
+            JournalLine(
+                id = UUID.randomUUID(),
+                transactionId = finance.idem.core.TransactionId(UUID.randomUUID()),
+                accountId = accountId,
+                tenantId = tenantId,
+                entryType = EntryType.DEBIT,
+                monetaryEntry = FiatEntry(MonetaryAmount.of("100"), FiatCurrency.USD, finance.idem.core.PaymentRail.WIRE),
+                description = null,
+                createdAt = now,
+                createdBy = "test",
+            )
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(account)
         whenever(journalLineRepository.countByAccountId(accountId, tenantId)).thenReturn(7L)
@@ -104,15 +107,16 @@ class DescribeAccountServiceTest {
     @Test
     fun `lastActivityAt is null when account has no entries`() {
         val now = Instant.now()
-        val account = Account.reconstitute(
-            id = accountId,
-            tenantId = tenantId,
-            name = "Empty",
-            currency = FiatCurrency.BRL,
-            type = AccountType.LIABILITY,
-            createdAt = now,
-            createdBy = "test",
-        )
+        val account =
+            Account.reconstitute(
+                id = accountId,
+                tenantId = tenantId,
+                name = "Empty",
+                currency = FiatCurrency.BRL,
+                type = AccountType.LIABILITY,
+                createdAt = now,
+                createdBy = "test",
+            )
         val balance = Balance(accountId, FiatCurrency.BRL, MonetaryAmount.ZERO, EntryType.CREDIT, now)
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(account)

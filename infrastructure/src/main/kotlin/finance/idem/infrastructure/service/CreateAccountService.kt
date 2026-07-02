@@ -14,18 +14,18 @@ import java.time.Instant
 class CreateAccountService(
     private val accountRepository: AccountRepository,
 ) : CreateAccountUseCase {
-
     override fun execute(cmd: CreateAccountCommand): Result<Account> {
-        val account = Account.create(
-            id = AccountId.generate(),
-            tenantId = cmd.tenantId,
-            name = cmd.name,
-            description = cmd.description,
-            currency = cmd.currency,
-            type = cmd.type,
-            createdAt = Instant.now(),
-            createdBy = cmd.createdBy,
-        )
+        val account =
+            Account.create(
+                id = AccountId.generate(),
+                tenantId = cmd.tenantId,
+                name = cmd.name,
+                description = cmd.description,
+                currency = cmd.currency,
+                type = cmd.type,
+                createdAt = Instant.now(),
+                createdBy = cmd.createdBy,
+            )
         accountRepository.save(account)
         return Result.success(account)
     }

@@ -6,7 +6,16 @@ import finance.idem.core.agentic.PolicyRuleId
 import finance.idem.core.agentic.PolicyRuleRecord
 
 interface ManagePolicyRulesUseCase {
-    fun create(tenantId: TenantId, agentKeyPrefix: String?, rule: PolicyRule): PolicyRuleRecord
+    fun create(
+        tenantId: TenantId,
+        agentKeyPrefix: String?,
+        rule: PolicyRule,
+    ): PolicyRuleRecord
+
     fun findAll(tenantId: TenantId): List<PolicyRuleRecord>
-    fun delete(tenantId: TenantId, ruleId: PolicyRuleId): Boolean
+
+    fun delete(
+        tenantId: TenantId,
+        ruleId: PolicyRuleId,
+    ): Boolean
 }

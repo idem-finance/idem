@@ -20,7 +20,6 @@ import java.util.concurrent.Executors
  */
 @Configuration
 class ChainRecoveryExecutorConfig {
-
     @Bean(name = [BEAN_NAME], destroyMethod = "shutdownNow")
     fun chainRecoveryExecutor(): ExecutorService =
         Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("chain-recovery-", 0).factory())

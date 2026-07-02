@@ -9,7 +9,6 @@ import java.time.Instant
 import java.util.UUID
 
 interface WebhookOutboxJpaRepository : JpaRepository<WebhookOutboxDataModel, UUID> {
-
     fun findByTenantIdAndStatusInOrderByCreatedAtAsc(
         tenantId: UUID,
         statuses: List<OutboxStatus>,
@@ -29,7 +28,9 @@ interface WebhookOutboxJpaRepository : JpaRepository<WebhookOutboxDataModel, UUI
         """,
         nativeQuery = true,
     )
-    fun findDispatchable(@Param("limit") limit: Int): List<WebhookOutboxDataModel>
+    fun findDispatchable(
+        @Param("limit") limit: Int,
+    ): List<WebhookOutboxDataModel>
 
     @Modifying
     @Query(

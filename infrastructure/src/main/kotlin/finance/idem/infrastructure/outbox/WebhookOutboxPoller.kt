@@ -38,17 +38,19 @@ class WebhookOutboxPoller(
     @Scheduled(fixedDelayString = "\${idem.webhook.poll-interval-ms:5000}")
     @SchedulerLock(name = "webhookOutboxPoll", lockAtMostFor = "5m", lockAtLeastFor = "4s")
     fun poll() {
-        val rows = runCatching { webhookOutboxRepository.findDispatchable(batchSize) }
-            .onFailure { log.error("WebhookOutboxPoller: failed to fetch dispatchable rows", it) }
-            .getOrNull() ?: return
+        val rows =
+            runCatching { webhookOutboxRepository.findDispatchable(batchSize) }
+                .onFailure { log.error("WebhookOutboxPoller: failed to fetch dispatchable rows", it) }
+                .getOrNull() ?: return
 
         rows.forEach { dispatch(it) }
     }
 
     private fun dispatch(entry: WebhookOutboxDispatch) {
-        val config = runCatching { tenantRepository.findWebhookConfig(entry.tenantId) }
-            .onFailure { log.error("WebhookOutboxPoller: failed to load webhook config for tenant=${entry.tenantId.value}", it) }
-            .getOrNull()
+        val config =
+            runCatching { tenantRepository.findWebhookConfig(entry.tenantId) }
+                .onFailure { log.error("WebhookOutboxPoller: failed to load webhook config for tenant=${entry.tenantId.value}", it) }
+                .getOrNull()
 
         if (config == null) {
             log.debug("WebhookOutboxPoller: no webhook configured for tenant={} -- leaving id={} PENDING", entry.tenantId.value, entry.id)
@@ -63,17 +65,20 @@ class WebhookOutboxPoller(
             return
         }
 
-        val attemptResult = runCatching {
-            val signature = HmacSigner.hexHmacSha256(config.webhookSecret, entry.payload)
-            val request = HttpRequest.newBuilder()
-                .uri(URI.create(config.webhookUrl))
-                .timeout(Duration.ofMillis(timeoutMs))
-                .header("Content-Type", "application/json")
-                .header("X-Idem-Signature", "sha256=$signature")
-                .POST(HttpRequest.BodyPublishers.ofString(entry.payload))
-                .build()
-            httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-        }
+        val attemptResult =
+            runCatching {
+                val signature = HmacSigner.hexHmacSha256(config.webhookSecret, entry.payload)
+                val request =
+                    HttpRequest
+                        .newBuilder()
+                        .uri(URI.create(config.webhookUrl))
+                        .timeout(Duration.ofMillis(timeoutMs))
+                        .header("Content-Type", "application/json")
+                        .header("X-Idem-Signature", "sha256=$signature")
+                        .POST(HttpRequest.BodyPublishers.ofString(entry.payload))
+                        .build()
+                httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            }
 
         runCatching {
             attemptResult.fold(
@@ -89,7 +94,10 @@ class WebhookOutboxPoller(
         }.onFailure { e -> log.error("WebhookOutboxPoller: failed to update outbox row id=${entry.id}", e) }
     }
 
-    private fun handleFailure(entry: WebhookOutboxDispatch, error: String) {
+    private fun handleFailure(
+        entry: WebhookOutboxDispatch,
+        error: String,
+    ) {
         val attempts = entry.attempts + 1
         val delay = RetrySchedule.nextRetryDelay(attempts, maxAttempts)
         if (delay == null) {

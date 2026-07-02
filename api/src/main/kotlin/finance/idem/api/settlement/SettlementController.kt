@@ -52,7 +52,6 @@ class SettlementController(
     private val cancelSettlementUseCase: CancelSettlementUseCase,
     @Value("\${idem.reconciliation.matching-window-hours:24}") private val defaultMatchWindowHours: Long,
 ) {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     @PostMapping
@@ -60,7 +59,10 @@ class SettlementController(
     @Operation(summary = "Register a pending settlement expectation")
     @ApiResponses(
         ApiResponse(responseCode = "201", description = "Settlement registered — status PENDING, watching for on-chain transfer"),
-        ApiResponse(responseCode = "400", description = "Missing/invalid Idempotency-Key, malformed request body, or invalid token/chainId values"),
+        ApiResponse(
+            responseCode = "400",
+            description = "Missing/invalid Idempotency-Key, malformed request body, or invalid token/chainId values",
+        ),
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "403", description = "API key does not have the TRANSACTIONS_WRITE scope"),
         ApiResponse(responseCode = "409", description = "Duplicate idempotency key for an in-progress registration"),
@@ -74,59 +76,75 @@ class SettlementController(
         val tenantId = tenantId() ?: return unauthorized()
 
         if (idempotencyKey.isBlank() || idempotencyKey.length > 255) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be non-blank and at most 255 characters"))
         }
 
-        val amount = try {
-            MonetaryAmount.of(request.expectedAmount)
-        } catch (e: Exception) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_AMOUNT", "expectedAmount is not a valid decimal: ${request.expectedAmount}"))
-        }
+        val amount =
+            try {
+                MonetaryAmount.of(request.expectedAmount)
+            } catch (e: Exception) {
+                return ResponseEntity
+                    .badRequest()
+                    .body(ErrorResponse("INVALID_AMOUNT", "expectedAmount is not a valid decimal: ${request.expectedAmount}"))
+            }
 
-        val token = try {
-            StablecoinToken.valueOf(request.expectedToken.uppercase())
-        } catch (e: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_TOKEN", "expectedToken must be one of: ${StablecoinToken.entries.joinToString()}"))
-        }
+        val token =
+            try {
+                StablecoinToken.valueOf(request.expectedToken.uppercase())
+            } catch (e: IllegalArgumentException) {
+                return ResponseEntity
+                    .badRequest()
+                    .body(ErrorResponse("INVALID_TOKEN", "expectedToken must be one of: ${StablecoinToken.entries.joinToString()}"))
+            }
 
-        val chainId = try {
-            ChainId.valueOf(request.expectedChainId.uppercase())
-        } catch (e: IllegalArgumentException) {
-            return ResponseEntity.badRequest()
-                .body(ErrorResponse("INVALID_CHAIN_ID", "expectedChainId must be one of: ${ChainId.entries.joinToString()}"))
-        }
+        val chainId =
+            try {
+                ChainId.valueOf(request.expectedChainId.uppercase())
+            } catch (e: IllegalArgumentException) {
+                return ResponseEntity
+                    .badRequest()
+                    .body(ErrorResponse("INVALID_CHAIN_ID", "expectedChainId must be one of: ${ChainId.entries.joinToString()}"))
+            }
 
-        val cmd = RegisterSettlementCommand(
-            tenantId = tenantId,
-            accountId = AccountId(request.accountId),
-            amount = amount,
-            token = token,
-            chainId = chainId,
-            walletAddress = request.expectedWalletAddress,
-            expectedFromAddress = request.expectedFromAddress,
-            createdBy = SecurityContextHolder.getContext().authentication?.name ?: "unknown",
-            idempotencyKey = idempotencyKey,
-        )
+        val cmd =
+            RegisterSettlementCommand(
+                tenantId = tenantId,
+                accountId = AccountId(request.accountId),
+                amount = amount,
+                token = token,
+                chainId = chainId,
+                walletAddress = request.expectedWalletAddress,
+                expectedFromAddress = request.expectedFromAddress,
+                createdBy = SecurityContextHolder.getContext().authentication?.name ?: "unknown",
+                idempotencyKey = idempotencyKey,
+            )
 
         return registerSettlementUseCase.execute(cmd).fold(
             onSuccess = { settlement ->
-                ResponseEntity.status(HttpStatus.CREATED)
+                ResponseEntity
+                    .status(HttpStatus.CREATED)
                     .body(SettlementResponse.from(settlement, defaultMatchWindowHours))
             },
             onFailure = { error ->
                 when (error) {
-                    is finance.idem.application.settlement.AccountNotFoundForSettlement ->
-                        ResponseEntity.unprocessableEntity()
+                    is finance.idem.application.settlement.AccountNotFoundForSettlement -> {
+                        ResponseEntity
+                            .unprocessableEntity()
                             .body(ErrorResponse("ACCOUNT_NOT_FOUND", error.message ?: "Account not found"))
-                    is SettlementIdempotencyConflict ->
-                        ResponseEntity.status(HttpStatus.CONFLICT)
+                    }
+
+                    is SettlementIdempotencyConflict -> {
+                        ResponseEntity
+                            .status(HttpStatus.CONFLICT)
                             .body(ErrorResponse("IDEMPOTENCY_CONFLICT", error.message ?: ""))
+                    }
+
                     else -> {
                         log.error("Unexpected error registering settlement", error)
-                        ResponseEntity.internalServerError()
+                        ResponseEntity
+                            .internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
                     }
                 }
@@ -158,49 +176,59 @@ class SettlementController(
         val tenantId = tenantId() ?: return unauthorized()
 
         if (limit < 1 || limit > 200) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("INVALID_LIMIT", "limit must be between 1 and 200"))
         }
 
         if (from != null && to != null && from.isAfter(to)) {
-            return ResponseEntity.badRequest()
+            return ResponseEntity
+                .badRequest()
                 .body(ErrorResponse("INVALID_RANGE", "from must not be after to"))
         }
 
-        val entryStatus = status?.let {
-            try {
-                EntryStatus.valueOf(it.uppercase())
-            } catch (e: IllegalArgumentException) {
-                return ResponseEntity.badRequest()
-                    .body(ErrorResponse("INVALID_STATUS", "status must be one of: ${EntryStatus.entries.joinToString()}"))
+        val entryStatus =
+            status?.let {
+                try {
+                    EntryStatus.valueOf(it.uppercase())
+                } catch (e: IllegalArgumentException) {
+                    return ResponseEntity
+                        .badRequest()
+                        .body(ErrorResponse("INVALID_STATUS", "status must be one of: ${EntryStatus.entries.joinToString()}"))
+                }
             }
-        }
 
-        val query = ListSettlementsQuery(
-            tenantId = tenantId,
-            status = entryStatus,
-            from = from,
-            to = to,
-            limit = limit,
-            cursor = cursor,
-        )
+        val query =
+            ListSettlementsQuery(
+                tenantId = tenantId,
+                status = entryStatus,
+                from = from,
+                to = to,
+                limit = limit,
+                cursor = cursor,
+            )
 
         return listSettlementsUseCase.execute(query).fold(
             onSuccess = { page ->
-                val response = SettlementListResponse(
-                    settlements = page.settlements.map { SettlementResponse.from(it, defaultMatchWindowHours) },
-                    nextCursor = page.nextCursor,
-                )
+                val response =
+                    SettlementListResponse(
+                        settlements = page.settlements.map { SettlementResponse.from(it, defaultMatchWindowHours) },
+                        nextCursor = page.nextCursor,
+                    )
                 ResponseEntity.ok(response)
             },
             onFailure = { error ->
                 when (error) {
-                    is finance.idem.application.ledger.InvalidCursor ->
-                        ResponseEntity.badRequest()
+                    is finance.idem.application.ledger.InvalidCursor -> {
+                        ResponseEntity
+                            .badRequest()
                             .body(ErrorResponse("INVALID_CURSOR", error.message ?: "Invalid cursor"))
+                    }
+
                     else -> {
                         log.error("Unexpected error listing settlements", error)
-                        ResponseEntity.internalServerError()
+                        ResponseEntity
+                            .internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
                     }
                 }
@@ -228,12 +256,16 @@ class SettlementController(
             },
             onFailure = { error ->
                 when (error) {
-                    is SettlementNotFound ->
-                        ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    is SettlementNotFound -> {
+                        ResponseEntity
+                            .status(HttpStatus.NOT_FOUND)
                             .body(ErrorResponse("SETTLEMENT_NOT_FOUND", error.message ?: "Settlement not found"))
+                    }
+
                     else -> {
                         log.error("Unexpected error fetching settlement $id", error)
-                        ResponseEntity.internalServerError()
+                        ResponseEntity
+                            .internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
                     }
                 }
@@ -262,15 +294,22 @@ class SettlementController(
             },
             onFailure = { error ->
                 when (error) {
-                    is SettlementNotFound ->
-                        ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    is SettlementNotFound -> {
+                        ResponseEntity
+                            .status(HttpStatus.NOT_FOUND)
                             .body(ErrorResponse("SETTLEMENT_NOT_FOUND", error.message ?: "Settlement not found"))
-                    is SettlementAlreadyTerminal ->
-                        ResponseEntity.status(HttpStatus.CONFLICT)
+                    }
+
+                    is SettlementAlreadyTerminal -> {
+                        ResponseEntity
+                            .status(HttpStatus.CONFLICT)
                             .body(ErrorResponse("SETTLEMENT_ALREADY_TERMINAL", error.message ?: ""))
+                    }
+
                     else -> {
                         log.error("Unexpected error cancelling settlement $id", error)
-                        ResponseEntity.internalServerError()
+                        ResponseEntity
+                            .internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
                     }
                 }
@@ -278,9 +317,7 @@ class SettlementController(
         )
     }
 
-    private fun tenantId(): TenantId? =
-        SecurityContextHolder.getContext().authentication?.principal as? TenantId
+    private fun tenantId(): TenantId? = SecurityContextHolder.getContext().authentication?.principal as? TenantId
 
-    private fun unauthorized(): ResponseEntity<Any> =
-        ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+    private fun unauthorized(): ResponseEntity<Any> = ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 }

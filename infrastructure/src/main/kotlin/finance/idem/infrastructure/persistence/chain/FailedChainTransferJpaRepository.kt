@@ -9,7 +9,6 @@ import java.time.Instant
 import java.util.UUID
 
 interface FailedChainTransferJpaRepository : JpaRepository<FailedChainTransferDataModel, UUID> {
-
     /**
      * `ON CONFLICT (idempotency_key) DO NOTHING` — a given transfer is evaluated at most once
      * under normal checkpoint-advance semantics, but the upsert keeps [save] idempotent.

@@ -9,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional
 class FailedChainTransferRepositoryAdapter(
     private val jpaRepository: FailedChainTransferJpaRepository,
 ) : FailedChainTransferRepository {
-
     @Transactional
     override fun save(transfer: FailedChainTransfer) {
         jpaRepository.upsert(

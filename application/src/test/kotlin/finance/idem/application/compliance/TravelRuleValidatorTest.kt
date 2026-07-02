@@ -15,39 +15,43 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class TravelRuleValidatorTest {
-
     private val validator = TravelRuleValidator()
 
-    private val originator = VaspTransferParty(
-        naturalPerson = NaturalPerson(
-            firstName = "Jane",
-            lastName = "Doe",
-            dateOfBirth = LocalDate.of(1990, 1, 1),
-            country = "BR",
-        ),
-        accountNumber = "0xAbCd",
-        vaspDid = "did:example:originator",
-    )
+    private val originator =
+        VaspTransferParty(
+            naturalPerson =
+                NaturalPerson(
+                    firstName = "Jane",
+                    lastName = "Doe",
+                    dateOfBirth = LocalDate.of(1990, 1, 1),
+                    country = "BR",
+                ),
+            accountNumber = "0xAbCd",
+            vaspDid = "did:example:originator",
+        )
 
-    private val beneficiary = VaspTransferParty(
-        legalPerson = LegalPerson(
-            name = "Acme Corp",
-            registrationNumber = "12.345.678/0001-90",
-            country = "US",
-        ),
-        accountNumber = "0xDeFg",
-        vaspDid = "did:example:beneficiary",
-    )
+    private val beneficiary =
+        VaspTransferParty(
+            legalPerson =
+                LegalPerson(
+                    name = "Acme Corp",
+                    registrationNumber = "12.345.678/0001-90",
+                    country = "US",
+                ),
+            accountNumber = "0xDeFg",
+            vaspDid = "did:example:beneficiary",
+        )
 
-    private fun entry(amount: String) = OnChainEntry(
-        amount = MonetaryAmount.of(amount),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.EVM,
-        txHash = "0xabc123",
-        blockNumber = 1L,
-        walletAddress = "0xwallet",
-        tokenContract = "0xcontract",
-    )
+    private fun entry(amount: String) =
+        OnChainEntry(
+            amount = MonetaryAmount.of(amount),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.EVM,
+            txHash = "0xabc123",
+            blockNumber = 1L,
+            walletAddress = "0xwallet",
+            tokenContract = "0xcontract",
+        )
 
     private fun travelRuleData(
         amount: String = "1500",
@@ -132,16 +136,18 @@ class TravelRuleValidatorTest {
 
     @Test
     fun `Valid with legal person originator and natural person beneficiary`() {
-        val legalOriginator = VaspTransferParty(
-            legalPerson = LegalPerson("PayCorp", "BR-999", "BR"),
-            accountNumber = "0xPay",
-            vaspDid = "did:example:paycorp",
-        )
-        val naturalBeneficiary = VaspTransferParty(
-            naturalPerson = NaturalPerson("John", "Smith", LocalDate.of(1985, 3, 20), country = "US"),
-            accountNumber = "0xJohn",
-            vaspDid = "did:example:john",
-        )
+        val legalOriginator =
+            VaspTransferParty(
+                legalPerson = LegalPerson("PayCorp", "BR-999", "BR"),
+                accountNumber = "0xPay",
+                vaspDid = "did:example:paycorp",
+            )
+        val naturalBeneficiary =
+            VaspTransferParty(
+                naturalPerson = NaturalPerson("John", "Smith", LocalDate.of(1985, 3, 20), country = "US"),
+                accountNumber = "0xJohn",
+                vaspDid = "did:example:john",
+            )
         val data = travelRuleData(orig = legalOriginator, bene = naturalBeneficiary)
         val result = validator.validate(entry("1500"), data)
         assertIs<TravelRuleValidationResult.Valid>(result)

@@ -14,7 +14,6 @@ import kotlin.test.assertNull
 
 @ExtendWith(MockitoExtension::class)
 class GetWebhookConfigServiceTest {
-
     @Mock
     private lateinit var tenantRepository: TenantRepository
 

@@ -6,7 +6,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ValidatedApiKeyTest {
-
     private val tenantId = TenantId.generate()
 
     @Test

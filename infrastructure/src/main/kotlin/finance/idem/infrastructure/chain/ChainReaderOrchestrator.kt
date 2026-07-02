@@ -58,11 +58,12 @@ class ChainReaderOrchestrator(
 
     @EventListener(ApplicationStartedEvent::class)
     fun onApplicationStarted() {
-        val sweep = Runnable {
-            chainReaders
-                .filter { it.chainKey != TRON_CHAIN_KEY }
-                .forEach { pollAndPost(it, "chain-recovery") }
-        }
+        val sweep =
+            Runnable {
+                chainReaders
+                    .filter { it.chainKey != TRON_CHAIN_KEY }
+                    .forEach { pollAndPost(it, "chain-recovery") }
+            }
         chainRecoveryExecutor.execute {
             val executor = lockingTaskExecutor
             if (executor != null) {
@@ -84,7 +85,10 @@ class ChainReaderOrchestrator(
             .forEach { pollAndPost(it, "tron-poller") }
     }
 
-    private fun pollAndPost(reader: ChainReader, createdBy: String) {
+    private fun pollAndPost(
+        reader: ChainReader,
+        createdBy: String,
+    ) {
         try {
             val checkpoint = chainCheckpointRepository.findByChainKey(reader.chainKey)?.lastBlock ?: 0L
             val transfers = reader.poll(checkpoint)

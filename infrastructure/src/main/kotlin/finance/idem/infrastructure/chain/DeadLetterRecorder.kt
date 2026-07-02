@@ -23,14 +23,23 @@ class DeadLetterRecorder(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun record(transfer: DetectedTransfer, chainKey: String, source: String, error: Throwable, logPrefix: String) {
+    fun record(
+        transfer: DetectedTransfer,
+        chainKey: String,
+        source: String,
+        error: Throwable,
+        logPrefix: String,
+    ) {
         log.error("$logPrefix: failed to post transfer idempotencyKey=${transfer.idempotencyKey}: ${error.message}")
 
-        meterRegistry.counter(
-            ChainMetrics.DEAD_LETTER_COUNTER,
-            ChainMetrics.TAG_CHAIN_KEY, chainKey,
-            ChainMetrics.TAG_SOURCE, source,
-        ).increment()
+        meterRegistry
+            .counter(
+                ChainMetrics.DEAD_LETTER_COUNTER,
+                ChainMetrics.TAG_CHAIN_KEY,
+                chainKey,
+                ChainMetrics.TAG_SOURCE,
+                source,
+            ).increment()
 
         runCatching {
             failedChainTransferRepository.save(transfer.toFailedChainTransfer(chainKey, source, error))

@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MaxLineLength:IdemClientTest.kt$IdemClientTest$"""{"accountId":"$accountId","currency":"BRL","amount":100.00,"normalBalance":"CREDIT","computedAt":"2024-01-01T00:00:00Z"}"""</ID>
+    <ID>MaxLineLength:IdemClientTest.kt$IdemClientTest$"""{"accountId":"$accountId","currency":"BRL","from":"$from","to":"$to","openingBalance":100.00,"closingBalance":100.00,"movements":[]}"""</ID>
+    <ID>SwallowedException:IdemClient.kt$IdemClient$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:IdemClient.kt$IdemClient$e: Exception</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -18,8 +18,8 @@ import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
-import finance.idem.core.monetary.MonetaryEntry
 import finance.idem.core.monetary.FiatEntry
+import finance.idem.core.monetary.MonetaryEntry
 import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -38,8 +38,8 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class GenerateStatementServiceTest {
-
     @Mock lateinit var accountRepository: AccountRepository
+
     @Mock lateinit var transactionRepository: TransactionRepository
 
     private lateinit var service: GenerateStatementService
@@ -53,28 +53,51 @@ class GenerateStatementServiceTest {
         service = GenerateStatementService(accountRepository, transactionRepository)
     }
 
-    private fun account() = Account.create(
-        id = accountId, tenantId = tenantId, name = "Nostro BRL",
-        currency = FiatCurrency.BRL, type = AccountType.ASSET,
-        createdAt = now, createdBy = "system",
-    )
+    private fun account() =
+        Account.create(
+            id = accountId,
+            tenantId = tenantId,
+            name = "Nostro BRL",
+            currency = FiatCurrency.BRL,
+            type = AccountType.ASSET,
+            createdAt = now,
+            createdBy = "system",
+        )
 
-    private fun brlFiat(amount: String) = FiatEntry(
-        amount = MonetaryAmount.of(amount), currency = FiatCurrency.BRL, rail = PaymentRail.PIX,
-    )
+    private fun brlFiat(amount: String) =
+        FiatEntry(
+            amount = MonetaryAmount.of(amount),
+            currency = FiatCurrency.BRL,
+            rail = PaymentRail.PIX,
+        )
 
-    private fun usdFiat(amount: String) = FiatEntry(
-        amount = MonetaryAmount.of(amount), currency = FiatCurrency.USD, rail = PaymentRail.WIRE,
-    )
+    private fun usdFiat(amount: String) =
+        FiatEntry(
+            amount = MonetaryAmount.of(amount),
+            currency = FiatCurrency.USD,
+            rail = PaymentRail.WIRE,
+        )
 
-    private fun line(txId: TransactionId, entryType: EntryType, entry: MonetaryEntry, accId: AccountId = accountId) =
-        JournalLine(UUID.randomUUID(), txId, accId, tenantId, entryType, entry, null, now, "system")
+    private fun line(
+        txId: TransactionId,
+        entryType: EntryType,
+        entry: MonetaryEntry,
+        accId: AccountId = accountId,
+    ) = JournalLine(UUID.randomUUID(), txId, accId, tenantId, entryType, entry, null, now, "system")
 
-    private fun tx(occurredAt: Instant, lineBuilder: (TransactionId) -> List<JournalLine>): Transaction {
+    private fun tx(
+        occurredAt: Instant,
+        lineBuilder: (TransactionId) -> List<JournalLine>,
+    ): Transaction {
         val txId = TransactionId.generate()
         return Transaction.create(
-            id = txId, tenantId = tenantId, idempotencyKey = UUID.randomUUID().toString(),
-            lines = lineBuilder(txId), occurredAt = occurredAt, createdAt = now, createdBy = "system",
+            id = txId,
+            tenantId = tenantId,
+            idempotencyKey = UUID.randomUUID().toString(),
+            lines = lineBuilder(txId),
+            occurredAt = occurredAt,
+            createdAt = now,
+            createdBy = "system",
         )
     }
 
@@ -110,18 +133,27 @@ class GenerateStatementServiceTest {
         val other = otherAccountId()
         val acc = account()
 
-        val txBefore = tx(from.minusSeconds(60)) { id -> listOf(
-            line(id, EntryType.DEBIT, brlFiat("1000"), accountId),
-            line(id, EntryType.CREDIT, brlFiat("1000"), other),
-        ) }
-        val txInRange = tx(from.plusSeconds(60)) { id -> listOf(
-            line(id, EntryType.DEBIT, brlFiat("500"), accountId),
-            line(id, EntryType.CREDIT, brlFiat("500"), other),
-        ) }
-        val txAtTo = tx(to) { id -> listOf(
-            line(id, EntryType.CREDIT, brlFiat("200"), accountId),
-            line(id, EntryType.DEBIT, brlFiat("200"), other),
-        ) }
+        val txBefore =
+            tx(from.minusSeconds(60)) { id ->
+                listOf(
+                    line(id, EntryType.DEBIT, brlFiat("1000"), accountId),
+                    line(id, EntryType.CREDIT, brlFiat("1000"), other),
+                )
+            }
+        val txInRange =
+            tx(from.plusSeconds(60)) { id ->
+                listOf(
+                    line(id, EntryType.DEBIT, brlFiat("500"), accountId),
+                    line(id, EntryType.CREDIT, brlFiat("500"), other),
+                )
+            }
+        val txAtTo =
+            tx(to) { id ->
+                listOf(
+                    line(id, EntryType.CREDIT, brlFiat("200"), accountId),
+                    line(id, EntryType.DEBIT, brlFiat("200"), other),
+                )
+            }
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(acc)
         whenever(transactionRepository.findByAccountId(accountId, tenantId))
@@ -129,9 +161,10 @@ class GenerateStatementServiceTest {
 
         val statement = service.execute(GenerateStatementQuery(accountId, tenantId, from, to)).getOrThrow()
 
-        val net = statement.movements.fold(MonetaryAmount.ZERO) { acc2, m ->
-            if (m.type == acc.normalBalance) acc2 + m.amount else acc2 - m.amount
-        }
+        val net =
+            statement.movements.fold(MonetaryAmount.ZERO) { acc2, m ->
+                if (m.type == acc.normalBalance) acc2 + m.amount else acc2 - m.amount
+            }
         assertEquals(statement.closingBalance, statement.openingBalance + net)
         assertEquals(MonetaryAmount.of("1000"), statement.openingBalance)
         assertEquals(MonetaryAmount.of("1300"), statement.closingBalance)
@@ -144,10 +177,13 @@ class GenerateStatementServiceTest {
         val other = otherAccountId()
         val acc = account()
 
-        val txAtFrom = tx(from) { id -> listOf(
-            line(id, EntryType.DEBIT, brlFiat("300"), accountId),
-            line(id, EntryType.CREDIT, brlFiat("300"), other),
-        ) }
+        val txAtFrom =
+            tx(from) { id ->
+                listOf(
+                    line(id, EntryType.DEBIT, brlFiat("300"), accountId),
+                    line(id, EntryType.CREDIT, brlFiat("300"), other),
+                )
+            }
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(acc)
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(txAtFrom))
@@ -165,10 +201,13 @@ class GenerateStatementServiceTest {
         val other = otherAccountId()
         val acc = account()
 
-        val txAtTo = tx(to) { id -> listOf(
-            line(id, EntryType.DEBIT, brlFiat("150"), accountId),
-            line(id, EntryType.CREDIT, brlFiat("150"), other),
-        ) }
+        val txAtTo =
+            tx(to) { id ->
+                listOf(
+                    line(id, EntryType.DEBIT, brlFiat("150"), accountId),
+                    line(id, EntryType.CREDIT, brlFiat("150"), other),
+                )
+            }
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(acc)
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(txAtTo))
@@ -187,20 +226,31 @@ class GenerateStatementServiceTest {
         val other = otherAccountId()
         val acc = account()
 
-        val onChainEntry = OnChainEntry(
-            amount = MonetaryAmount.of("180.00"), token = StablecoinToken.USDC,
-            chainId = ChainId.EVM, txHash = "0xabc", blockNumber = 19_000_000L,
-            walletAddress = "0xWallet", tokenContract = "0xContract",
-        )
+        val onChainEntry =
+            OnChainEntry(
+                amount = MonetaryAmount.of("180.00"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                txHash = "0xabc",
+                blockNumber = 19_000_000L,
+                walletAddress = "0xWallet",
+                tokenContract = "0xContract",
+            )
 
-        val txOnChain = tx(from.plusSeconds(60)) { id -> listOf(
-            line(id, EntryType.DEBIT, onChainEntry, accountId),
-            line(id, EntryType.CREDIT, onChainEntry, other),
-        ) }
-        val txUsd = tx(from.plusSeconds(120)) { id -> listOf(
-            line(id, EntryType.DEBIT, usdFiat("100"), accountId),
-            line(id, EntryType.CREDIT, usdFiat("100"), other),
-        ) }
+        val txOnChain =
+            tx(from.plusSeconds(60)) { id ->
+                listOf(
+                    line(id, EntryType.DEBIT, onChainEntry, accountId),
+                    line(id, EntryType.CREDIT, onChainEntry, other),
+                )
+            }
+        val txUsd =
+            tx(from.plusSeconds(120)) { id ->
+                listOf(
+                    line(id, EntryType.DEBIT, usdFiat("100"), accountId),
+                    line(id, EntryType.CREDIT, usdFiat("100"), other),
+                )
+            }
 
         whenever(accountRepository.findById(accountId, tenantId)).thenReturn(acc)
         whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(listOf(txOnChain, txUsd))

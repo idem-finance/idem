@@ -16,7 +16,6 @@ import org.springframework.test.web.servlet.post
 @WebMvcTest(AlchemyWebhookController::class)
 @AutoConfigureMockMvc(addFilters = false)
 class AlchemyWebhookControllerTest {
-
     @Autowired
     lateinit var mockMvc: MockMvc
 
@@ -28,13 +27,14 @@ class AlchemyWebhookControllerTest {
         whenever(alchemyWebhookUseCase.handle(any(), any()))
             .thenReturn(Result.failure(IllegalArgumentException("bad sig")))
 
-        mockMvc.post("/internal/webhooks/alchemy") {
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"type":"ADDRESS_ACTIVITY"}"""
-            header("X-Alchemy-Signature", "deadbeef")
-        }.andExpect {
-            status { isUnauthorized() }
-        }
+        mockMvc
+            .post("/internal/webhooks/alchemy") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"type":"ADDRESS_ACTIVITY"}"""
+                header("X-Alchemy-Signature", "deadbeef")
+            }.andExpect {
+                status { isUnauthorized() }
+            }
     }
 
     @Test
@@ -42,13 +42,14 @@ class AlchemyWebhookControllerTest {
         whenever(alchemyWebhookUseCase.handle(any(), any()))
             .thenReturn(Result.success(Unit))
 
-        mockMvc.post("/internal/webhooks/alchemy") {
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"type":"ADDRESS_ACTIVITY","event":{"network":"ETH_MAINNET","activity":[]}}"""
-            header("X-Alchemy-Signature", "valid-hmac")
-        }.andExpect {
-            status { isOk() }
-        }
+        mockMvc
+            .post("/internal/webhooks/alchemy") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"type":"ADDRESS_ACTIVITY","event":{"network":"ETH_MAINNET","activity":[]}}"""
+                header("X-Alchemy-Signature", "valid-hmac")
+            }.andExpect {
+                status { isOk() }
+            }
     }
 
     @Test
@@ -56,11 +57,12 @@ class AlchemyWebhookControllerTest {
         whenever(alchemyWebhookUseCase.handle(isNull(), any()))
             .thenReturn(Result.success(Unit))
 
-        mockMvc.post("/internal/webhooks/alchemy") {
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"type":"ADDRESS_ACTIVITY","event":{"network":"ETH_MAINNET","activity":[]}}"""
-        }.andExpect {
-            status { isOk() }
-        }
+        mockMvc
+            .post("/internal/webhooks/alchemy") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"type":"ADDRESS_ACTIVITY","event":{"network":"ETH_MAINNET","activity":[]}}"""
+            }.andExpect {
+                status { isOk() }
+            }
     }
 }

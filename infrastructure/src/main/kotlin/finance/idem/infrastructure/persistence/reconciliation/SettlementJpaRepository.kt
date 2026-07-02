@@ -9,7 +9,6 @@ import java.time.Instant
 import java.util.UUID
 
 interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
-
     // PESSIMISTIC_WRITE (SELECT ... FOR UPDATE) so two concurrent reconcile() calls
     // for the same wallet/token can't both match the same PENDING row — the second
     // transaction blocks until the first commits, then re-evaluates the WHERE
@@ -26,7 +25,7 @@ interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
           AND p.status = 'PENDING'
           AND p.createdAt >= :since
         ORDER BY p.createdAt ASC
-        """
+        """,
     )
     fun findPendingCandidates(
         @Param("tenantId") tenantId: UUID,
@@ -50,7 +49,7 @@ interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
           AND s.createdAt < :to
           AND (:accountId IS NULL OR s.accountId = :accountId)
         ORDER BY s.createdAt ASC
-        """
+        """,
     )
     fun findUnmatchedInWindow(
         @Param("tenantId") tenantId: UUID,

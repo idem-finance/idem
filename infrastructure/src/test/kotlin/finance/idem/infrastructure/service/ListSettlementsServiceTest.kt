@@ -26,24 +26,24 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ListSettlementsServiceTest {
-
     private val settlementRepository: SettlementRepository = mock()
     private val service = ListSettlementsService(settlementRepository)
 
     private val tenantId = TenantId.generate()
 
-    private fun settlement(createdAt: Instant = Instant.now()) = Settlement(
-        id = UUID.randomUUID(),
-        tenantId = tenantId,
-        accountId = AccountId.generate(),
-        amount = MonetaryAmount.of("100.00"),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.SOLANA,
-        walletAddress = "wallet",
-        status = EntryStatus.PENDING,
-        createdAt = createdAt,
-        createdBy = "test",
-    )
+    private fun settlement(createdAt: Instant = Instant.now()) =
+        Settlement(
+            id = UUID.randomUUID(),
+            tenantId = tenantId,
+            accountId = AccountId.generate(),
+            amount = MonetaryAmount.of("100.00"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.SOLANA,
+            walletAddress = "wallet",
+            status = EntryStatus.PENDING,
+            createdAt = createdAt,
+            createdBy = "test",
+        )
 
     @Test
     fun `returns InvalidCursor for malformed cursor string`() {
@@ -99,10 +99,17 @@ class ListSettlementsServiceTest {
         val anchorId = UUID.randomUUID()
         val encodedCursor = SettlementCursor(anchorCreatedAt, anchorId).encode()
 
-        whenever(settlementRepository.findPage(
-            eq(tenantId), isNull(), isNull(), isNull(),
-            eq(anchorCreatedAt), eq(anchorId), eq(10),
-        )).thenReturn(emptyList())
+        whenever(
+            settlementRepository.findPage(
+                eq(tenantId),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(anchorCreatedAt),
+                eq(anchorId),
+                eq(10),
+            ),
+        ).thenReturn(emptyList())
 
         val result = service.execute(ListSettlementsQuery(tenantId, null, null, null, 10, encodedCursor))
 

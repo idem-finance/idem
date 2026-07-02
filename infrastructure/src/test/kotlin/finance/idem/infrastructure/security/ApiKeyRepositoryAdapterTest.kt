@@ -26,15 +26,15 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(ApiKeyRepositoryAdapter::class)
 class ApiKeyRepositoryAdapterTest {
-
     companion object {
         private val prefixSeq = AtomicInteger(0)
 
         @Container
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -144,10 +144,11 @@ class ApiKeyRepositoryAdapterTest {
         val myKey = apiKey()
         adapter.save(myKey)
 
-        val otherTenantKey = apiKey().copy(
-            id = ApiKeyId.generate(),
-            tenantId = TenantId.generate(),
-        )
+        val otherTenantKey =
+            apiKey().copy(
+                id = ApiKeyId.generate(),
+                tenantId = TenantId.generate(),
+            )
         adapter.save(
             ApiKey(
                 id = ApiKeyId.generate(),
@@ -156,7 +157,7 @@ class ApiKeyRepositoryAdapterTest {
                 prefix = "sk_test_othr",
                 scopes = setOf(ApiScope.TRANSACTIONS_READ),
                 createdAt = Instant.now(),
-            )
+            ),
         )
 
         val results = adapter.findAllByTenantId(tenantId)

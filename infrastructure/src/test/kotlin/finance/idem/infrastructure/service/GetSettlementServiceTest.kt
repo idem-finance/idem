@@ -20,24 +20,24 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class GetSettlementServiceTest {
-
     private val settlementRepository: SettlementRepository = mock()
     private val service = GetSettlementService(settlementRepository)
 
     private val tenantId = TenantId.generate()
 
-    private fun settlement(id: UUID = UUID.randomUUID()) = Settlement(
-        id = id,
-        tenantId = tenantId,
-        accountId = AccountId.generate(),
-        amount = MonetaryAmount.of("100.000000"),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.SOLANA,
-        walletAddress = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS",
-        status = EntryStatus.PENDING,
-        createdAt = Instant.now(),
-        createdBy = "api-user",
-    )
+    private fun settlement(id: UUID = UUID.randomUUID()) =
+        Settlement(
+            id = id,
+            tenantId = tenantId,
+            accountId = AccountId.generate(),
+            amount = MonetaryAmount.of("100.000000"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.SOLANA,
+            walletAddress = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS",
+            status = EntryStatus.PENDING,
+            createdAt = Instant.now(),
+            createdBy = "api-user",
+        )
 
     @Test
     fun `returns SettlementNotFound when repository returns null`() {

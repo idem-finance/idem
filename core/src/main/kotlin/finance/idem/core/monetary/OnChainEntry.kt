@@ -18,9 +18,11 @@ data class OnChainEntry(
     val travelRuleData: TravelRuleData? = null,
 ) : MonetaryEntry() {
     init {
-        if (!amount.isPositive()) throw LedgerInvariantViolation(
-            "OnChainEntry amount must be positive, got ${amount.value}"
-        )
+        if (!amount.isPositive()) {
+            throw LedgerInvariantViolation(
+                "OnChainEntry amount must be positive, got ${amount.value}",
+            )
+        }
         if (txHash.isBlank()) throw LedgerInvariantViolation("OnChainEntry txHash must not be blank")
         if (walletAddress.isBlank()) throw LedgerInvariantViolation("OnChainEntry walletAddress must not be blank")
         if (tokenContract.isBlank()) throw LedgerInvariantViolation("OnChainEntry tokenContract must not be blank")

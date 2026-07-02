@@ -14,9 +14,15 @@ import finance.idem.core.TenantId
  */
 interface SessionDebitPort {
     /** Sum of all DEBIT amounts on journal lines belonging to the given session. */
-    fun sumDebitsForSession(tenantId: TenantId, sessionId: String): MonetaryAmount
+    fun sumDebitsForSession(
+        tenantId: TenantId,
+        sessionId: String,
+    ): MonetaryAmount
 
     /** Sum of all DEBIT amounts on journal lines in the last hour for this tenant and agent key.
      *  Pass null to aggregate across all agents (no agent filter applied). */
-    fun sumDebitsLastHour(tenantId: TenantId, agentKeyPrefix: String?): MonetaryAmount
+    fun sumDebitsLastHour(
+        tenantId: TenantId,
+        agentKeyPrefix: String?,
+    ): MonetaryAmount
 }

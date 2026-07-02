@@ -9,12 +9,11 @@ import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
-import finance.idem.infrastructure.persistence.policy.PolicyRepositoryAdapter
+import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.AgentAuditStatus
 import finance.idem.core.agentic.AgentContext
-import finance.idem.core.TransactionId
 import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.ledger.Account
@@ -23,6 +22,7 @@ import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.ledger.Settlement
 import finance.idem.core.security.ApiScope
 import finance.idem.infrastructure.persistence.AccountRepositoryAdapter
+import finance.idem.infrastructure.persistence.policy.PolicyRepositoryAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
 import finance.idem.infrastructure.security.ApiKeyAuthentication
 import finance.idem.infrastructure.security.ApiKeyService
@@ -54,12 +54,16 @@ private const val HMAC_SECRET = "test-only-insecure-hmac-secret"
     ],
 )
 class McpServerIntegrationTest {
-
     @Autowired lateinit var toolCallbackProvider: ToolCallbackProvider
+
     @Autowired lateinit var apiKeyService: ApiKeyService
+
     @Autowired lateinit var accountRepository: AccountRepositoryAdapter
+
     @Autowired lateinit var settlementRepository: SettlementRepositoryAdapter
+
     @Autowired lateinit var policyRepository: PolicyRepositoryAdapter
+
     @Autowired lateinit var dataSource: DataSource
 
     private val objectMapper = jacksonObjectMapper()
@@ -100,16 +104,17 @@ class McpServerIntegrationTest {
     @Test
     fun `postTransaction valid returns COMMITTED workflowPlanId`() {
         withAuth(fixture.agentRawKey, fixture.agentScopes) {
-            val result = callTool(
-                "postTransaction",
-                mapOf(
-                    "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
-                    "idempotencyKey" to "mcp-it-post-001",
-                    "intentDescription" to "integration test",
-                    "agentId" to "agent-it",
-                    "sessionId" to "session-it-001",
-                ),
-            )
+            val result =
+                callTool(
+                    "postTransaction",
+                    mapOf(
+                        "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
+                        "idempotencyKey" to "mcp-it-post-001",
+                        "intentDescription" to "integration test",
+                        "agentId" to "agent-it",
+                        "sessionId" to "session-it-001",
+                    ),
+                )
 
             assertThat(result["status"].textValue()).isEqualTo("COMMITTED")
             val workflowPlanId = result["workflowPlanId"].textValue()
@@ -129,22 +134,25 @@ class McpServerIntegrationTest {
         val denyCreditId = AccountId.generate()
         val now = Instant.now()
         accountRepository.save(Account.create(denyDebitId, denyTenantId, "Asset", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
-        accountRepository.save(Account.create(denyCreditId, denyTenantId, "Liability", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
+        accountRepository.save(
+            Account.create(denyCreditId, denyTenantId, "Liability", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"),
+        )
         val (denyKey, _) = apiKeyService.generate(denyTenantId, setOf(ApiScope.AGENTS_EXECUTE))
         // No policy rules seeded for denyTenantId → MaxDebitPerSession(ZERO) default blocks all debits
 
         withAuth(denyTenantId, denyKey, setOf(ApiScope.AGENTS_EXECUTE)) {
-            val ex = assertThrows<ToolExecutionException> {
-                callTool(
-                    "postTransaction",
-                    mapOf(
-                        "entries" to brlEntries(denyDebitId, denyCreditId),
-                        "idempotencyKey" to "denied-policy-001",
-                        "agentId" to "agent-it",
-                        "sessionId" to "session-denied-001",
-                    ),
-                )
-            }
+            val ex =
+                assertThrows<ToolExecutionException> {
+                    callTool(
+                        "postTransaction",
+                        mapOf(
+                            "entries" to brlEntries(denyDebitId, denyCreditId),
+                            "idempotencyKey" to "denied-policy-001",
+                            "agentId" to "agent-it",
+                            "sessionId" to "session-denied-001",
+                        ),
+                    )
+                }
             assertThat(ex.cause).isInstanceOf(PolicyViolationException::class.java)
         }
     }
@@ -154,28 +162,30 @@ class McpServerIntegrationTest {
     @Test
     fun `rollbackWorkflow creates compensating transactions and marks plan ROLLED_BACK`() {
         withAuth(fixture.agentRawKey, fixture.agentScopes) {
-            val postResult = callTool(
-                "postTransaction",
-                mapOf(
-                    "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
-                    "idempotencyKey" to "mcp-rb-001",
-                    "intentDescription" to "to be rolled back",
-                    "agentId" to "agent-rb",
-                    "sessionId" to "session-rb-001",
-                ),
-            )
+            val postResult =
+                callTool(
+                    "postTransaction",
+                    mapOf(
+                        "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
+                        "idempotencyKey" to "mcp-rb-001",
+                        "intentDescription" to "to be rolled back",
+                        "agentId" to "agent-rb",
+                        "sessionId" to "session-rb-001",
+                    ),
+                )
             assertThat(postResult["status"].textValue()).isEqualTo("COMMITTED")
             val planId = postResult["workflowPlanId"].textValue()
 
-            val rbResult = callTool(
-                "rollbackWorkflow",
-                mapOf(
-                    "workflowPlanId" to planId,
-                    "reason" to "integration test rollback",
-                    "agentId" to "agent-rb",
-                    "sessionId" to "session-rb-001",
-                ),
-            )
+            val rbResult =
+                callTool(
+                    "rollbackWorkflow",
+                    mapOf(
+                        "workflowPlanId" to planId,
+                        "reason" to "integration test rollback",
+                        "agentId" to "agent-rb",
+                        "sessionId" to "session-rb-001",
+                    ),
+                )
 
             assertThat(rbResult["rollbackId"].textValue()).isEqualTo(planId)
             assertThat(rbResult["status"].textValue()).isEqualTo("ROLLED_BACK")
@@ -200,15 +210,16 @@ class McpServerIntegrationTest {
         withAuth(fixture.agentRawKey, fixture.agentScopes) {
             // Post a FIAT transaction to obtain a real TransactionId for matchedTransactionId.
             // FIAT-only transactions skip BasicReconciliationService, so no auto-settle occurs.
-            val seedTx = callTool(
-                "postTransaction",
-                mapOf(
-                    "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
-                    "idempotencyKey" to "reconcile-seed-tx-001",
-                    "agentId" to "agent-reconcile",
-                    "sessionId" to "session-reconcile-seed",
-                ),
-            )
+            val seedTx =
+                callTool(
+                    "postTransaction",
+                    mapOf(
+                        "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
+                        "idempotencyKey" to "reconcile-seed-tx-001",
+                        "agentId" to "agent-reconcile",
+                        "sessionId" to "session-reconcile-seed",
+                    ),
+                )
             val seedTxId = fetchFirstTransactionId(seedTx["workflowPlanId"].textValue())
 
             // PENDING settlement — a journal line waiting for on-chain confirmation
@@ -225,7 +236,7 @@ class McpServerIntegrationTest {
                     expectedFromAddress = null,
                     createdAt = windowStart,
                     createdBy = "test",
-                )
+                ),
             )
 
             // UNMATCHED settlement — a chain event needing batch reconciliation.
@@ -248,17 +259,18 @@ class McpServerIntegrationTest {
                     expectedFromAddress = null,
                     createdAt = windowStart,
                     createdBy = "chain-reader",
-                )
-            )
-
-            val result = callTool(
-                "reconcileBatch",
-                mapOf(
-                    "accountId" to fixture.creditAccountId.value.toString(),
-                    "from" to windowStart.toString(),
-                    "to" to confirmedAt.plusSeconds(60).toString(),
                 ),
             )
+
+            val result =
+                callTool(
+                    "reconcileBatch",
+                    mapOf(
+                        "accountId" to fixture.creditAccountId.value.toString(),
+                        "from" to windowStart.toString(),
+                        "to" to confirmedAt.plusSeconds(60).toString(),
+                    ),
+                )
 
             assertThat(result["matched"].intValue()).isEqualTo(1)
             assertThat(result["unmatched"].intValue()).isEqualTo(0)
@@ -274,13 +286,14 @@ class McpServerIntegrationTest {
         val futureEnd = futureStart.plusSeconds(3600)
 
         withAuth(fixture.agentRawKey, fixture.agentScopes) {
-            val result = callTool(
-                "reconcileBatch",
-                mapOf(
-                    "from" to futureStart.toString(),
-                    "to" to futureEnd.toString(),
-                ),
-            )
+            val result =
+                callTool(
+                    "reconcileBatch",
+                    mapOf(
+                        "from" to futureStart.toString(),
+                        "to" to futureEnd.toString(),
+                    ),
+                )
 
             assertThat(result["matched"].intValue()).isEqualTo(0)
             assertThat(result["unmatched"].intValue()).isEqualTo(0)
@@ -307,10 +320,11 @@ class McpServerIntegrationTest {
                 ),
             )
 
-            val auditResult = callTool(
-                "getAgentAuditLog",
-                mapOf("sessionId" to sessionId, "limit" to 50),
-            )
+            val auditResult =
+                callTool(
+                    "getAgentAuditLog",
+                    mapOf("sessionId" to sessionId, "limit" to 50),
+                )
 
             val events = auditResult["auditEvents"]
             assertThat(events.isArray).isTrue()
@@ -334,17 +348,18 @@ class McpServerIntegrationTest {
             // Any exception thrown by the AOP proxy (including AccessDeniedException from
             // @PreAuthorize) is wrapped by Java in InvocationTargetException, which
             // MethodToolCallback then re-wraps as ToolExecutionException.
-            val ex = assertThrows<ToolExecutionException> {
-                callTool(
-                    "postTransaction",
-                    mapOf(
-                        "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
-                        "idempotencyKey" to "denied-scope-001",
-                        "agentId" to "agent-it",
-                        "sessionId" to "session-denied-002",
-                    ),
-                )
-            }
+            val ex =
+                assertThrows<ToolExecutionException> {
+                    callTool(
+                        "postTransaction",
+                        mapOf(
+                            "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
+                            "idempotencyKey" to "denied-scope-001",
+                            "agentId" to "agent-it",
+                            "sessionId" to "session-denied-002",
+                        ),
+                    )
+                }
             assertThat(ex.cause).isInstanceOf(AccessDeniedException::class.java)
         }
     }
@@ -360,18 +375,18 @@ class McpServerIntegrationTest {
         val confirmedAt = Instant.now()
 
         withAuth(fixture.agentRawKey, fixture.agentScopes) {
-
             // Step 1: execute the workflow
-            val postResult = callTool(
-                "postTransaction",
-                mapOf(
-                    "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
-                    "idempotencyKey" to "demo-exec-001",
-                    "intentDescription" to "demo cross-border transfer",
-                    "agentId" to "agent-demo",
-                    "sessionId" to sessionId,
-                ),
-            )
+            val postResult =
+                callTool(
+                    "postTransaction",
+                    mapOf(
+                        "entries" to brlEntries(fixture.debitAccountId, fixture.creditAccountId),
+                        "idempotencyKey" to "demo-exec-001",
+                        "intentDescription" to "demo cross-border transfer",
+                        "agentId" to "agent-demo",
+                        "sessionId" to sessionId,
+                    ),
+                )
             assertThat(postResult["status"].textValue()).isEqualTo("COMMITTED")
             val planId = postResult["workflowPlanId"].textValue()
             val seedTxId = fetchFirstTransactionId(planId)
@@ -390,7 +405,7 @@ class McpServerIntegrationTest {
                     expectedFromAddress = null,
                     createdAt = windowStart,
                     createdBy = "test",
-                )
+                ),
             )
             settlementRepository.save(
                 Settlement(
@@ -409,37 +424,40 @@ class McpServerIntegrationTest {
                     expectedFromAddress = null,
                     createdAt = windowStart,
                     createdBy = "chain-reader",
-                )
+                ),
             )
 
             // Step 3: reconcile — the UNMATCHED chain event matches the PENDING settlement
-            val reconcileResult = callTool(
-                "reconcileBatch",
-                mapOf(
-                    "accountId" to fixture.creditAccountId.value.toString(),
-                    "from" to windowStart.toString(),
-                    "to" to confirmedAt.plusSeconds(60).toString(),
-                ),
-            )
+            val reconcileResult =
+                callTool(
+                    "reconcileBatch",
+                    mapOf(
+                        "accountId" to fixture.creditAccountId.value.toString(),
+                        "from" to windowStart.toString(),
+                        "to" to confirmedAt.plusSeconds(60).toString(),
+                    ),
+                )
             assertThat(reconcileResult["matched"].intValue()).isEqualTo(1)
 
             // Step 4: rollback the workflow via saga compensation
-            val rbResult = callTool(
-                "rollbackWorkflow",
-                mapOf(
-                    "workflowPlanId" to planId,
-                    "reason" to "demo: reverting for compliance review",
-                    "agentId" to "agent-demo",
-                    "sessionId" to sessionId,
-                ),
-            )
+            val rbResult =
+                callTool(
+                    "rollbackWorkflow",
+                    mapOf(
+                        "workflowPlanId" to planId,
+                        "reason" to "demo: reverting for compliance review",
+                        "agentId" to "agent-demo",
+                        "sessionId" to sessionId,
+                    ),
+                )
             assertThat(rbResult["status"].textValue()).isEqualTo("ROLLED_BACK")
 
             // Step 5: audit log must contain events for both execute and rollback
-            val auditResult = callTool(
-                "getAgentAuditLog",
-                mapOf("sessionId" to sessionId, "limit" to 50),
-            )
+            val auditResult =
+                callTool(
+                    "getAgentAuditLog",
+                    mapOf("sessionId" to sessionId, "limit" to 50),
+                )
             val events = auditResult["auditEvents"]
             // execute: PENDING + COMPLETED; rollback: PENDING + COMPLETED = 4 events minimum
             assertThat(events.size()).isGreaterThanOrEqualTo(4)
@@ -456,7 +474,10 @@ class McpServerIntegrationTest {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private fun brlEntries(debitId: AccountId, creditId: AccountId) = listOf(
+    private fun brlEntries(
+        debitId: AccountId,
+        creditId: AccountId,
+    ) = listOf(
         mapOf(
             "accountId" to debitId.value.toString(),
             "entryType" to "DEBIT",
@@ -478,15 +499,24 @@ class McpServerIntegrationTest {
     // Sets a real ApiKeyAuthentication on the calling thread and clears it in finally.
     // Spring AI's MethodToolCallbackProvider invokes @Tool methods synchronously on the
     // same thread, so @PreAuthorize and tenantId() both see this SecurityContext.
-    private fun withAuth(rawKey: String, scopes: Set<ApiScope>, block: () -> Unit) =
-        withAuth(fixture.tenantId, rawKey, scopes, block)
+    private fun withAuth(
+        rawKey: String,
+        scopes: Set<ApiScope>,
+        block: () -> Unit,
+    ) = withAuth(fixture.tenantId, rawKey, scopes, block)
 
-    private fun withAuth(tenantId: TenantId, rawKey: String, scopes: Set<ApiScope>, block: () -> Unit) {
-        val auth = ApiKeyAuthentication(
-            tenantId = tenantId,
-            keyPrefix = rawKey.take(12),
-            authorities = scopes.map { SimpleGrantedAuthority(it.name) }.toSet(),
-        )
+    private fun withAuth(
+        tenantId: TenantId,
+        rawKey: String,
+        scopes: Set<ApiScope>,
+        block: () -> Unit,
+    ) {
+        val auth =
+            ApiKeyAuthentication(
+                tenantId = tenantId,
+                keyPrefix = rawKey.take(12),
+                authorities = scopes.map { SimpleGrantedAuthority(it.name) }.toSet(),
+            )
         SecurityContextHolder.getContext().authentication = auth
         try {
             block()
@@ -498,7 +528,10 @@ class McpServerIntegrationTest {
     // Invokes a tool via Spring AI's MethodToolCallbackProvider.
     // Because IdemMcpServer is a Spring-managed AOP proxy, the call goes through
     // @PreAuthorize before reaching the method body — same path as the SSE transport.
-    private fun callTool(name: String, args: Map<String, Any?>): JsonNode {
+    private fun callTool(
+        name: String,
+        args: Map<String, Any?>,
+    ): JsonNode {
         val cb = toolCallbackProvider.toolCallbacks.first { it.toolDefinition.name() == name }
         val filteredArgs = args.filterValues { it != null }
         return objectMapper.readTree(cb.call(objectMapper.writeValueAsString(filteredArgs)))
@@ -508,35 +541,41 @@ class McpServerIntegrationTest {
         dataSource.connection.use { conn ->
             conn.autoCommit = false
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${fixture.tenantId.value}'")
-            val txId = conn.prepareStatement(
-                "SELECT transaction_id FROM workflow_steps WHERE workflow_plan_id = ?::uuid LIMIT 1"
-            ).use { ps ->
-                ps.setString(1, planId)
-                ps.executeQuery().use { rs ->
-                    check(rs.next()) { "No workflow_steps row found for plan $planId" }
-                    rs.getString("transaction_id")
-                }
-            }
+            val txId =
+                conn
+                    .prepareStatement(
+                        "SELECT transaction_id FROM workflow_steps WHERE workflow_plan_id = ?::uuid LIMIT 1",
+                    ).use { ps ->
+                        ps.setString(1, planId)
+                        ps.executeQuery().use { rs ->
+                            check(rs.next()) { "No workflow_steps row found for plan $planId" }
+                            rs.getString("transaction_id")
+                        }
+                    }
             conn.commit()
             TransactionId.of(txId)
         }
 
-    private fun assertWorkflowStatus(planId: UUID, expectedStatus: String) {
+    private fun assertWorkflowStatus(
+        planId: UUID,
+        expectedStatus: String,
+    ) {
         dataSource.connection.use { conn ->
             conn.autoCommit = false
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${fixture.tenantId.value}'")
-            conn.prepareStatement(
-                "SELECT status FROM workflow_plans WHERE id = ?::uuid AND tenant_id = ?::uuid"
-            ).use { ps ->
-                ps.setString(1, planId.toString())
-                ps.setString(2, fixture.tenantId.value.toString())
-                ps.executeQuery().use { rs ->
-                    assertThat(rs.next())
-                        .withFailMessage("No workflow_plan row found for id=$planId")
-                        .isTrue()
-                    assertThat(rs.getString("status")).isEqualTo(expectedStatus)
+            conn
+                .prepareStatement(
+                    "SELECT status FROM workflow_plans WHERE id = ?::uuid AND tenant_id = ?::uuid",
+                ).use { ps ->
+                    ps.setString(1, planId.toString())
+                    ps.setString(2, fixture.tenantId.value.toString())
+                    ps.executeQuery().use { rs ->
+                        assertThat(rs.next())
+                            .withFailMessage("No workflow_plan row found for id=$planId")
+                            .isTrue()
+                        assertThat(rs.getString("status")).isEqualTo(expectedStatus)
+                    }
                 }
-            }
             conn.commit()
         }
     }
@@ -554,53 +593,57 @@ class McpServerIntegrationTest {
             val storedHmac: String,
         )
 
-        val rows: List<AuditRow> = dataSource.connection.use { conn ->
-            conn.autoCommit = false
-            conn.createStatement().execute("SET LOCAL app.tenant_id = '${fixture.tenantId.value}'")
-            val result = conn.prepareStatement(
-                """SELECT id, workflow_plan_id, agent_id, session_id, intent,
+        val rows: List<AuditRow> =
+            dataSource.connection.use { conn ->
+                conn.autoCommit = false
+                conn.createStatement().execute("SET LOCAL app.tenant_id = '${fixture.tenantId.value}'")
+                val result =
+                    conn
+                        .prepareStatement(
+                            """SELECT id, workflow_plan_id, agent_id, session_id, intent,
                           status, outcome, occurred_at, hmac
                    FROM agent_audit_events
                    WHERE session_id = ?
-                   ORDER BY occurred_at"""
-            ).use { ps ->
-                ps.setString(1, sessionId)
-                ps.executeQuery().use { rs ->
-                    val acc = mutableListOf<AuditRow>()
-                    while (rs.next()) {
-                        acc.add(
-                            AuditRow(
-                                id = rs.getObject("id", UUID::class.java),
-                                workflowPlanId = rs.getObject("workflow_plan_id", UUID::class.java),
-                                agentId = rs.getString("agent_id"),
-                                agentSessionId = rs.getString("session_id"),
-                                intent = rs.getString("intent"),
-                                status = rs.getString("status"),
-                                outcome = rs.getString("outcome"),
-                                occurredAt = rs.getTimestamp("occurred_at").toInstant(),
-                                storedHmac = rs.getString("hmac"),
-                            )
-                        )
-                    }
-                    acc.toList()
-                }
+                   ORDER BY occurred_at""",
+                        ).use { ps ->
+                            ps.setString(1, sessionId)
+                            ps.executeQuery().use { rs ->
+                                val acc = mutableListOf<AuditRow>()
+                                while (rs.next()) {
+                                    acc.add(
+                                        AuditRow(
+                                            id = rs.getObject("id", UUID::class.java),
+                                            workflowPlanId = rs.getObject("workflow_plan_id", UUID::class.java),
+                                            agentId = rs.getString("agent_id"),
+                                            agentSessionId = rs.getString("session_id"),
+                                            intent = rs.getString("intent"),
+                                            status = rs.getString("status"),
+                                            outcome = rs.getString("outcome"),
+                                            occurredAt = rs.getTimestamp("occurred_at").toInstant(),
+                                            storedHmac = rs.getString("hmac"),
+                                        ),
+                                    )
+                                }
+                                acc.toList()
+                            }
+                        }
+                conn.commit()
+                result
             }
-            conn.commit()
-            result
-        }
 
         assertThat(rows.size).isGreaterThan(0)
         rows.forEach { row ->
-            val event = AgentAuditEvent(
-                id = row.id,
-                workflowPlanId = WorkflowPlanId(row.workflowPlanId),
-                tenantId = fixture.tenantId,
-                agentContext = AgentContext(agentId = row.agentId, sessionId = row.agentSessionId),
-                status = AgentAuditStatus.valueOf(row.status),
-                intent = row.intent,
-                outcome = row.outcome,
-                occurredAt = row.occurredAt,
-            )
+            val event =
+                AgentAuditEvent(
+                    id = row.id,
+                    workflowPlanId = WorkflowPlanId(row.workflowPlanId),
+                    tenantId = fixture.tenantId,
+                    agentContext = AgentContext(agentId = row.agentId, sessionId = row.agentSessionId),
+                    status = AgentAuditStatus.valueOf(row.status),
+                    intent = row.intent,
+                    outcome = row.outcome,
+                    occurredAt = row.occurredAt,
+                )
             val recomputed = event.computeHmac(HMAC_SECRET)
             assertThat(recomputed)
                 .withFailMessage("HMAC mismatch for audit event id=${row.id} status=${row.status}")

@@ -23,7 +23,6 @@ import org.mockito.kotlin.whenever
 import java.math.BigDecimal
 
 class SolanaChainReaderIntegrationTest {
-
     private lateinit var wireMock: WireMockServer
     private lateinit var reader: SolanaChainReader
 
@@ -32,15 +31,16 @@ class SolanaChainReaderIntegrationTest {
     private val signature = "5j7s6XxnkqxAbcDE1234567890abcdefghijklmnopqrstuvwxyz1234567"
     private val slot = 250_000_000L
 
-    private val watched = WatchedAddress(
-        chainKey = "SOLANA",
-        walletAddress = watchedWallet,
-        tokenContract = usdcMint,
-        token = StablecoinToken.USDC,
-        tenantId = "tenant-1",
-        debitAccountId = "debit-1",
-        creditAccountId = "credit-1",
-    )
+    private val watched =
+        WatchedAddress(
+            chainKey = "SOLANA",
+            walletAddress = watchedWallet,
+            tokenContract = usdcMint,
+            token = StablecoinToken.USDC,
+            tenantId = "tenant-1",
+            debitAccountId = "debit-1",
+            creditAccountId = "credit-1",
+        )
 
     @BeforeEach
     fun setUp() {
@@ -84,7 +84,7 @@ class SolanaChainReaderIntegrationTest {
         stubSignatures(signature, slot)
         stubTransaction(signature, slot, usdcMint, watchedWallet, preAmount = 0, postAmount = 1_000_000, decimals = 6)
 
-        val result = reader.poll(slot)  // checkpoint == slot → filtered out
+        val result = reader.poll(slot) // checkpoint == slot → filtered out
 
         assertEquals(emptyList<DetectedTransfer>(), result)
     }
@@ -98,8 +98,8 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("""{"jsonrpc":"2.0","id":1,"result":[]}""")
-                )
+                        .withBody("""{"jsonrpc":"2.0","id":1,"result":[]}"""),
+                ),
         )
 
         val result = reader.poll(0L)
@@ -117,8 +117,8 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(failedTransactionResponse(signature, slot))
-                )
+                        .withBody(failedTransactionResponse(signature, slot)),
+                ),
         )
 
         val result = reader.poll(0L)
@@ -142,9 +142,8 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(twoSignaturesResponse(sig1, 300L, sig2, 200L))
-                )
-                .willSetStateTo("page2")
+                        .withBody(twoSignaturesResponse(sig1, 300L, sig2, 200L)),
+                ).willSetStateTo("page2"),
         )
         // Page 2: 1 item at slot=50 below checkpoint=100 → stops pagination
         wireMock.stubFor(
@@ -156,8 +155,8 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(signaturesResponse(sig3, 50L))
-                )
+                        .withBody(signaturesResponse(sig3, 50L)),
+                ),
         )
         // poll() batches sig2+sig1 in one request (sorted oldest-first, so id=0→sig2, id=1→sig1)
         wireMock.stubFor(
@@ -171,9 +170,9 @@ class SolanaChainReaderIntegrationTest {
                             transactionBatchResponse(
                                 transactionResultJson(sig2, 200L, usdcMint, watchedWallet, 0, 1_000_000, 6),
                                 transactionResultJson(sig1, 300L, usdcMint, watchedWallet, 0, 1_000_000, 6),
-                            )
-                        )
-                )
+                            ),
+                        ),
+                ),
         )
 
         val result = reader.poll(100L)
@@ -193,8 +192,8 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(errorSignatureResponse(signature, slot))
-                )
+                        .withBody(errorSignatureResponse(signature, slot)),
+                ),
         )
 
         val result = reader.poll(0L)
@@ -218,8 +217,8 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(twoSignaturesResponse(sigNew, 200L, sigOld, 100L))
-                )
+                        .withBody(twoSignaturesResponse(sigNew, 200L, sigOld, 100L)),
+                ),
         )
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
@@ -232,9 +231,9 @@ class SolanaChainReaderIntegrationTest {
                             transactionBatchResponse(
                                 transactionResultJson(sigOld, 100L, usdcMint, watchedWallet, 0, 1_000_000, 6),
                                 transactionResultJson(sigNew, 200L, usdcMint, watchedWallet, 0, 2_000_000, 6),
-                            )
-                        )
-                )
+                            ),
+                        ),
+                ),
         )
 
         val result = batchReader.poll(0L)
@@ -243,9 +242,10 @@ class SolanaChainReaderIntegrationTest {
         assertEquals(100L, result[0].entry.blockNumber)
         assertEquals(200L, result[1].entry.blockNumber)
 
-        val txRequests = wireMock.findAll(
-            postRequestedFor(urlPathEqualTo("/")).withRequestBody(containing("getTransaction"))
-        )
+        val txRequests =
+            wireMock.findAll(
+                postRequestedFor(urlPathEqualTo("/")).withRequestBody(containing("getTransaction")),
+            )
         assertEquals(1, txRequests.size, "expected exactly one batched getTransaction request per poll cycle")
         val body = txRequests[0].bodyAsString
         assertTrue(body.trimStart().startsWith("["), "batch request body must be a JSON array")
@@ -261,10 +261,13 @@ class SolanaChainReaderIntegrationTest {
 
         val mockRepo = mock<WatchedAddressRepository>()
         whenever(mockRepo.findByChainKey("SOLANA")).thenReturn(listOf(watched))
-        val batchReader = SolanaChainReader(
-            "http://localhost:${wireMock.port()}", mockRepo,
-            signaturePageSize = 10, transactionBatchSize = 2,
-        )
+        val batchReader =
+            SolanaChainReader(
+                "http://localhost:${wireMock.port()}",
+                mockRepo,
+                signaturePageSize = 10,
+                transactionBatchSize = 2,
+            )
 
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
@@ -273,8 +276,8 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(signaturesResponseFor(sig1 to 100L, sig2 to 200L, sig3 to 300L))
-                )
+                        .withBody(signaturesResponseFor(sig1 to 100L, sig2 to 200L, sig3 to 300L)),
+                ),
         )
         // Match each chunk by its distinct signature so each gets the correct response data.
         wireMock.stubFor(
@@ -288,9 +291,9 @@ class SolanaChainReaderIntegrationTest {
                             transactionBatchResponse(
                                 transactionResultJson(sig1, 100L, usdcMint, watchedWallet, 0, 1_000_000, 6),
                                 transactionResultJson(sig2, 200L, usdcMint, watchedWallet, 0, 2_000_000, 6),
-                            )
-                        )
-                )
+                            ),
+                        ),
+                ),
         )
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
@@ -302,9 +305,9 @@ class SolanaChainReaderIntegrationTest {
                         .withBody(
                             transactionBatchResponse(
                                 transactionResultJson(sig3, 300L, usdcMint, watchedWallet, 0, 3_000_000, 6),
-                            )
-                        )
-                )
+                            ),
+                        ),
+                ),
         )
 
         val result = batchReader.poll(0L)
@@ -314,9 +317,10 @@ class SolanaChainReaderIntegrationTest {
         assertEquals(200L, result[1].entry.blockNumber)
         assertEquals(300L, result[2].entry.blockNumber)
 
-        val txRequests = wireMock.findAll(
-            postRequestedFor(urlPathEqualTo("/")).withRequestBody(containing("getTransaction"))
-        )
+        val txRequests =
+            wireMock.findAll(
+                postRequestedFor(urlPathEqualTo("/")).withRequestBody(containing("getTransaction")),
+            )
         assertEquals(2, txRequests.size, "expected one request per batch chunk: chunk(2) + chunk(1)")
     }
 
@@ -338,9 +342,9 @@ class SolanaChainReaderIntegrationTest {
                                 transactionResultJson(sig1, 100L, usdcMint, watchedWallet, 0, 1_000_000, 6),
                                 transactionResultJson(sig2, 200L, usdcMint, watchedWallet, 0, 2_000_000, 6),
                                 // id=2 (sigMissing) intentionally absent from response
-                            )
-                        )
-                )
+                            ),
+                        ),
+                ),
         )
 
         val results = reader.getTransactionBatch(listOf(sig1, sig2, sigMissing))
@@ -365,7 +369,7 @@ class SolanaChainReaderIntegrationTest {
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
                 .withRequestBody(containing("getTransaction"))
-                .willReturn(aResponse().withStatus(500))
+                .willReturn(aResponse().withStatus(500)),
         )
 
         val results = reader.getTransactionBatch(listOf(sig1, sig2))
@@ -387,8 +391,8 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("""{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Internal error"}}""")
-                )
+                        .withBody("""{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Internal error"}}"""),
+                ),
         )
 
         val results = reader.getTransactionBatch(listOf(sig1, sig2))
@@ -398,7 +402,10 @@ class SolanaChainReaderIntegrationTest {
         assertNull(results[sig2])
     }
 
-    private fun stubSignatures(sig: String, slot: Long) {
+    private fun stubSignatures(
+        sig: String,
+        slot: Long,
+    ) {
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
                 .withRequestBody(containing("getSignaturesForAddress"))
@@ -406,8 +413,8 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(signaturesResponse(sig, slot))
-                )
+                        .withBody(signaturesResponse(sig, slot)),
+                ),
         )
     }
 
@@ -427,12 +434,15 @@ class SolanaChainReaderIntegrationTest {
                     aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(transactionResponse(sig, slot, mint, recipientWallet, preAmount, postAmount, decimals))
-                )
+                        .withBody(transactionResponse(sig, slot, mint, recipientWallet, preAmount, postAmount, decimals)),
+                ),
         )
     }
 
-    private fun signaturesResponse(sig: String, slot: Long) = """
+    private fun signaturesResponse(
+        sig: String,
+        slot: Long,
+    ) = """
         {
           "jsonrpc": "2.0",
           "id": 1,
@@ -446,9 +456,12 @@ class SolanaChainReaderIntegrationTest {
             }
           ]
         }
-    """.trimIndent()
+        """.trimIndent()
 
-    private fun errorSignatureResponse(sig: String, slot: Long) = """
+    private fun errorSignatureResponse(
+        sig: String,
+        slot: Long,
+    ) = """
         {
           "jsonrpc": "2.0",
           "id": 1,
@@ -462,7 +475,7 @@ class SolanaChainReaderIntegrationTest {
             }
           ]
         }
-    """.trimIndent()
+        """.trimIndent()
 
     private fun transactionResponse(
         sig: String,
@@ -477,7 +490,8 @@ class SolanaChainReaderIntegrationTest {
     // Wraps one or more transaction "result" JSON objects into a JSON-RPC batch array response.
     // "id"s are assigned 0, 1, ... matching the order getTransactionBatch sends them in its request.
     private fun transactionBatchResponse(vararg results: String) =
-        results.mapIndexed { i, result -> """{"jsonrpc":"2.0","id":$i,"result":$result}""" }
+        results
+            .mapIndexed { i, result -> """{"jsonrpc":"2.0","id":$i,"result":$result}""" }
             .joinToString(prefix = "[", postfix = "]", separator = ",")
 
     private fun transactionResultJson(
@@ -540,9 +554,14 @@ class SolanaChainReaderIntegrationTest {
           },
           "blockTime": 1699000000
         }
-    """.trimIndent()
+        """.trimIndent()
 
-    private fun twoSignaturesResponse(sig1: String, slot1: Long, sig2: String, slot2: Long) = """
+    private fun twoSignaturesResponse(
+        sig1: String,
+        slot1: Long,
+        sig2: String,
+        slot2: Long,
+    ) = """
         {
           "jsonrpc": "2.0",
           "id": 1,
@@ -561,21 +580,27 @@ class SolanaChainReaderIntegrationTest {
             }
           ]
         }
-    """.trimIndent()
+        """.trimIndent()
 
-    private fun signaturesResponseFor(vararg sigs: Pair<String, Long>) = buildString {
-        append("""{"jsonrpc":"2.0","id":1,"result":[""")
-        sigs.forEachIndexed { i, (sig, slot) ->
-            if (i > 0) append(",")
-            append("""{"signature":"$sig","slot":$slot,"err":null,"blockTime":1699000000}""")
+    private fun signaturesResponseFor(vararg sigs: Pair<String, Long>) =
+        buildString {
+            append("""{"jsonrpc":"2.0","id":1,"result":[""")
+            sigs.forEachIndexed { i, (sig, slot) ->
+                if (i > 0) append(",")
+                append("""{"signature":"$sig","slot":$slot,"err":null,"blockTime":1699000000}""")
+            }
+            append("]}")
         }
-        append("]}")
-    }
 
-    private fun failedTransactionResponse(sig: String, slot: Long) =
-        transactionBatchResponse(failedTransactionResultJson(sig, slot))
+    private fun failedTransactionResponse(
+        sig: String,
+        slot: Long,
+    ) = transactionBatchResponse(failedTransactionResultJson(sig, slot))
 
-    private fun failedTransactionResultJson(sig: String, slot: Long) = """
+    private fun failedTransactionResultJson(
+        sig: String,
+        slot: Long,
+    ) = """
         {
           "slot": $slot,
           "transaction": {
@@ -589,5 +614,5 @@ class SolanaChainReaderIntegrationTest {
             "postTokenBalances": []
           }
         }
-    """.trimIndent()
+        """.trimIndent()
 }

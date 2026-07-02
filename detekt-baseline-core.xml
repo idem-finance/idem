@@ -1,0 +1,15 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ForbiddenComment:AgentContext.kt$AgentContext$// TODO: verify agentId against a registered agent table when agent identity management is added.</ID>
+    <ID>LongParameterList:Account.kt$Account.Companion$( id: AccountId, tenantId: TenantId, name: String, currency: FiatCurrency, type: AccountType, createdAt: Instant, createdBy: String, description: String? = null, )</ID>
+    <ID>LongParameterList:Account.kt$Account.Companion$( id: AccountId, tenantId: TenantId, name: String, currency: FiatCurrency, type: AccountType, createdAt: Instant, createdBy: String, description: String? = null, updatedAt: Instant? = null, updatedBy: String? = null, )</ID>
+    <ID>LongParameterList:Transaction.kt$Transaction.Companion$( id: TransactionId, tenantId: TenantId, idempotencyKey: String, lines: List&lt;JournalLine&gt;, occurredAt: Instant, createdAt: Instant, createdBy: String, agentContext: AgentContext? = null, metadata: Map&lt;String, String&gt; = emptyMap(), )</ID>
+    <ID>LongParameterList:Transaction.kt$Transaction.Companion$( id: TransactionId, tenantId: TenantId, idempotencyKey: String, lines: List&lt;JournalLine&gt;, status: TransactionStatus, occurredAt: Instant, createdAt: Instant, createdBy: String, agentContext: AgentContext? = null, metadata: Map&lt;String, String&gt; = emptyMap(), )</ID>
+    <ID>LongParameterList:WorkflowPlan.kt$WorkflowPlan.Companion$( id: WorkflowPlanId, tenantId: TenantId, agentContext: AgentContext, status: WorkflowStatus, steps: List&lt;WorkflowStep&gt;, createdAt: Instant, completedAt: Instant?, rolledBackAt: Instant?, rollbackReason: String?, )</ID>
+    <ID>LoopWithTooManyJumpStatements:BalanceCalculator.kt$BalanceCalculator$for</ID>
+    <ID>ThrowsCount:Transaction.kt$Transaction$fun validate()</ID>
+    <ID>UnusedParameter:PolicyGuard.kt$PolicyGuard$context: AgentContext</ID>
+  </CurrentIssues>
+</SmellBaseline>

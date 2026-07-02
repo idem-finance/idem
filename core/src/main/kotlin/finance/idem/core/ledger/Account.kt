@@ -32,16 +32,17 @@ data class Account internal constructor(
             createdAt: Instant,
             createdBy: String,
             description: String? = null,
-        ): Account = Account(
-            id = id,
-            tenantId = tenantId,
-            name = name,
-            description = description,
-            currency = currency,
-            type = type,
-            createdAt = createdAt,
-            createdBy = createdBy,
-        )
+        ): Account =
+            Account(
+                id = id,
+                tenantId = tenantId,
+                name = name,
+                description = description,
+                currency = currency,
+                type = type,
+                createdAt = createdAt,
+                createdBy = createdBy,
+            )
 
         /** Rebuilds an Account from persisted data — skips creation-time validation. */
         fun reconstitute(
@@ -55,10 +56,18 @@ data class Account internal constructor(
             description: String? = null,
             updatedAt: Instant? = null,
             updatedBy: String? = null,
-        ): Account = Account(
-            id = id, tenantId = tenantId, name = name, description = description,
-            currency = currency, type = type, createdAt = createdAt, createdBy = createdBy,
-            updatedAt = updatedAt, updatedBy = updatedBy,
-        )
+        ): Account =
+            Account(
+                id = id,
+                tenantId = tenantId,
+                name = name,
+                description = description,
+                currency = currency,
+                type = type,
+                createdAt = createdAt,
+                createdBy = createdBy,
+                updatedAt = updatedAt,
+                updatedBy = updatedBy,
+            )
     }
 }

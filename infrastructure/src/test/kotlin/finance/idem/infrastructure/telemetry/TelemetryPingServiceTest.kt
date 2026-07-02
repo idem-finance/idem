@@ -13,17 +13,17 @@ import java.util.UUID
 import kotlin.test.assertEquals
 
 class TelemetryPingServiceTest {
-
     private val installationMetadataPort: InstallationMetadataPort = mock()
     private val telemetryStatsPort: TelemetryStatsPort = mock()
     private val objectMapper = ObjectMapper().registerKotlinModule()
 
-    private fun service(endpoint: String = "http://localhost:1/ping") = TelemetryPingService(
-        installationMetadataPort = installationMetadataPort,
-        telemetryStatsPort = telemetryStatsPort,
-        objectMapper = objectMapper,
-        endpoint = endpoint,
-    )
+    private fun service(endpoint: String = "http://localhost:1/ping") =
+        TelemetryPingService(
+            installationMetadataPort = installationMetadataPort,
+            telemetryStatsPort = telemetryStatsPort,
+            objectMapper = objectMapper,
+            endpoint = endpoint,
+        )
 
     @ParameterizedTest(name = "count={0} → bucket={1}")
     @CsvSource(
@@ -36,7 +36,10 @@ class TelemetryPingServiceTest {
         "51, 50+",
         "999, 50+",
     )
-    fun `bucket maps counts to correct label`(count: Long, expected: String) {
+    fun `bucket maps counts to correct label`(
+        count: Long,
+        expected: String,
+    ) {
         assertEquals(expected, service().bucket(count))
     }
 

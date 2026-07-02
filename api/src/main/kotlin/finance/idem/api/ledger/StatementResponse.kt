@@ -24,14 +24,15 @@ data class StatementResponse(
     val movements: List<StatementMovementResponse>,
 ) {
     companion object {
-        fun from(statement: AccountStatement) = StatementResponse(
-            accountId = statement.accountId.value,
-            currency = statement.currency,
-            from = statement.from,
-            to = statement.to,
-            openingBalance = statement.openingBalance.value,
-            closingBalance = statement.closingBalance.value,
-            movements = statement.movements.map { StatementMovementResponse.from(it) },
-        )
+        fun from(statement: AccountStatement) =
+            StatementResponse(
+                accountId = statement.accountId.value,
+                currency = statement.currency,
+                from = statement.from,
+                to = statement.to,
+                openingBalance = statement.openingBalance.value,
+                closingBalance = statement.closingBalance.value,
+                movements = statement.movements.map { StatementMovementResponse.from(it) },
+            )
     }
 }

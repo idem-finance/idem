@@ -33,21 +33,24 @@ class TelemetryPingService(
     @SchedulerLock(name = "telemetryPing", lockAtMostFor = "1m", lockAtLeastFor = "10s")
     fun ping() {
         runCatching {
-            val payload = objectMapper.writeValueAsString(
-                mapOf(
-                    "installationId" to installationMetadataPort.getOrCreateId().toString(),
-                    "idemVersion"    to (buildProperties?.version ?: "unknown"),
-                    "javaVersion"    to (System.getProperty("java.version") ?: "unknown"),
-                    "tenantBucket"   to bucket(telemetryStatsPort.tenantCount()),
-                    "entryBucket"    to bucket(telemetryStatsPort.journalLineCount()),
+            val payload =
+                objectMapper.writeValueAsString(
+                    mapOf(
+                        "installationId" to installationMetadataPort.getOrCreateId().toString(),
+                        "idemVersion" to (buildProperties?.version ?: "unknown"),
+                        "javaVersion" to (System.getProperty("java.version") ?: "unknown"),
+                        "tenantBucket" to bucket(telemetryStatsPort.tenantCount()),
+                        "entryBucket" to bucket(telemetryStatsPort.journalLineCount()),
+                    ),
                 )
-            )
-            val request = HttpRequest.newBuilder()
-                .uri(URI.create(endpoint))
-                .timeout(Duration.ofSeconds(10))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(payload))
-                .build()
+            val request =
+                HttpRequest
+                    .newBuilder()
+                    .uri(URI.create(endpoint))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(payload))
+                    .build()
             val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
             if (response.statusCode() !in 200..299) {
                 log.warn("TelemetryPingService: server returned HTTP {}", response.statusCode())
@@ -57,10 +60,11 @@ class TelemetryPingService(
         }
     }
 
-    internal fun bucket(count: Long): String = when {
-        count <= 1L  -> "1"
-        count <= 10L -> "2-10"
-        count <= 50L -> "11-50"
-        else         -> "50+"
-    }
+    internal fun bucket(count: Long): String =
+        when {
+            count <= 1L -> "1"
+            count <= 10L -> "2-10"
+            count <= 50L -> "11-50"
+            else -> "50+"
+        }
 }

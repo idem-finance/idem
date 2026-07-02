@@ -8,7 +8,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class AuditExportTypesTest {
-
     private val tenantId = TenantId.generate()
     private val from = Instant.parse("2026-01-01T00:00:00Z")
     private val to = Instant.parse("2026-12-31T23:59:59Z")
@@ -16,16 +15,17 @@ class AuditExportTypesTest {
 
     @Test
     fun `AuditExportRecord holds all fields`() {
-        val record = AuditExportRecord(
-            timestamp = from,
-            actor = "sk_live_test",
-            action = "POST_TRANSACTION",
-            entityType = "TRANSACTION",
-            entityId = entityId,
-            intentDescription = "offramp",
-            hmacSignature = "abc123",
-            outcome = null,
-        )
+        val record =
+            AuditExportRecord(
+                timestamp = from,
+                actor = "sk_live_test",
+                action = "POST_TRANSACTION",
+                entityType = "TRANSACTION",
+                entityId = entityId,
+                intentDescription = "offramp",
+                hmacSignature = "abc123",
+                outcome = null,
+            )
 
         assertEquals(from, record.timestamp)
         assertEquals("sk_live_test", record.actor)

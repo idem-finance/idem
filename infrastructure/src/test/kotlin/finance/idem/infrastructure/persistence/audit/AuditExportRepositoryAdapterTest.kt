@@ -1,9 +1,9 @@
 package finance.idem.infrastructure.persistence.audit
 
-import finance.idem.application.audit.AuditEntryType
-import finance.idem.application.audit.ExportAuditLogQuery
-import finance.idem.application.audit.AuditExportRecord
 import finance.idem.application.audit.AuditEntry
+import finance.idem.application.audit.AuditEntryType
+import finance.idem.application.audit.AuditExportRecord
+import finance.idem.application.audit.ExportAuditLogQuery
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
@@ -37,13 +37,13 @@ import kotlin.test.assertTrue
     PersistenceTestConfig::class,
 )
 class AuditExportRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -72,15 +72,16 @@ class AuditExportRepositoryAdapterTest {
     private val epochFrom = Instant.parse("2020-01-01T00:00:00Z")
     private val epochTo = Instant.parse("2030-01-01T00:00:00Z")
 
-    private fun auditEntry(tenantId: TenantId = tenantA) = AuditEntry(
-        id = UUID.randomUUID(),
-        transactionId = TransactionId.generate(),
-        tenantId = tenantId,
-        action = "POST_TRANSACTION",
-        agentContext = null,
-        createdBy = "sk_live_test",
-        occurredAt = Instant.now(),
-    )
+    private fun auditEntry(tenantId: TenantId = tenantA) =
+        AuditEntry(
+            id = UUID.randomUUID(),
+            transactionId = TransactionId.generate(),
+            tenantId = tenantId,
+            action = "POST_TRANSACTION",
+            agentContext = null,
+            createdBy = "sk_live_test",
+            occurredAt = Instant.now(),
+        )
 
     private fun agentContext(planId: WorkflowPlanId) =
         AgentContext(agentId = "agent-export", sessionId = "sess-export", workflowPlanId = planId)
@@ -125,8 +126,10 @@ class AuditExportRepositoryAdapterTest {
 
         val txEntry = auditEntry().copy(occurredAt = later)
         val planId = WorkflowPlanId.generate()
-        val agentEvent = AgentAuditEvent.pending(planId, tenantA, agentContext(planId), null)
-            .let { it.copy(occurredAt = earlier) }
+        val agentEvent =
+            AgentAuditEvent
+                .pending(planId, tenantA, agentContext(planId), null)
+                .let { it.copy(occurredAt = earlier) }
 
         auditRepositoryAdapter.save(txEntry)
         agentAuditRepositoryAdapter.save(agentEvent)

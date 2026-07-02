@@ -12,7 +12,7 @@ import finance.idem.core.monetary.MonetaryEntry
 import finance.idem.core.monetary.OnChainEntry
 import java.math.BigDecimal
 
-private const val TYPE_FIAT    = "FIAT"
+private const val TYPE_FIAT = "FIAT"
 private const val TYPE_ONCHAIN = "ONCHAIN"
 
 data class MonetaryEntryColumns(
@@ -22,30 +22,42 @@ data class MonetaryEntryColumns(
     val monetaryEntryData: String,
 )
 
-fun MonetaryEntry.toColumns(mapper: ObjectMapper): MonetaryEntryColumns = when (this) {
-    is FiatEntry -> MonetaryEntryColumns(
-        amount = amount.value,
-        currency = currency.name,
-        monetaryEntryType = TYPE_FIAT,
-        monetaryEntryData = mapper.writeValueAsString(mapOf(
-            "rail" to rail.name,
-            "bankReference" to bankReference,
-        )),
-    )
-    is OnChainEntry -> MonetaryEntryColumns(
-        amount = amount.value,
-        currency = token.name,
-        monetaryEntryType = TYPE_ONCHAIN,
-        monetaryEntryData = mapper.writeValueAsString(mapOf(
-            "chainId" to chainId.name,
-            "txHash" to txHash,
-            "blockNumber" to blockNumber,
-            "walletAddress" to walletAddress,
-            "tokenContract" to tokenContract,
-            "fromAddress" to fromAddress,
-        )),
-    )
-}
+fun MonetaryEntry.toColumns(mapper: ObjectMapper): MonetaryEntryColumns =
+    when (this) {
+        is FiatEntry -> {
+            MonetaryEntryColumns(
+                amount = amount.value,
+                currency = currency.name,
+                monetaryEntryType = TYPE_FIAT,
+                monetaryEntryData =
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "rail" to rail.name,
+                            "bankReference" to bankReference,
+                        ),
+                    ),
+            )
+        }
+
+        is OnChainEntry -> {
+            MonetaryEntryColumns(
+                amount = amount.value,
+                currency = token.name,
+                monetaryEntryType = TYPE_ONCHAIN,
+                monetaryEntryData =
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "chainId" to chainId.name,
+                            "txHash" to txHash,
+                            "blockNumber" to blockNumber,
+                            "walletAddress" to walletAddress,
+                            "tokenContract" to tokenContract,
+                            "fromAddress" to fromAddress,
+                        ),
+                    ),
+            )
+        }
+    }
 
 fun MonetaryEntryColumns.toDomain(mapper: ObjectMapper): MonetaryEntry {
     val monetaryAmount = MonetaryAmount.of(amount)
@@ -59,6 +71,7 @@ fun MonetaryEntryColumns.toDomain(mapper: ObjectMapper): MonetaryEntry {
                 bankReference = data["bankReference"],
             )
         }
+
         TYPE_ONCHAIN -> {
             val data: Map<String, Any?> = mapper.readValue(monetaryEntryData)
             OnChainEntry(
@@ -72,6 +85,9 @@ fun MonetaryEntryColumns.toDomain(mapper: ObjectMapper): MonetaryEntry {
                 fromAddress = data["fromAddress"] as String?,
             )
         }
-        else -> error("Unknown monetary_entry_type: $monetaryEntryType")
+
+        else -> {
+            error("Unknown monetary_entry_type: $monetaryEntryType")
+        }
     }
 }

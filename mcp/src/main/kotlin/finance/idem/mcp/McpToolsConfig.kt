@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Configuration
 
 @Configuration
 class McpToolsConfig {
-
     @Bean
     fun idemToolCallbackProvider(server: IdemMcpServer): ToolCallbackProvider =
         MethodToolCallbackProvider.builder().toolObjects(server).build()

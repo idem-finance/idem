@@ -29,13 +29,13 @@ import kotlin.test.assertNull
 @Testcontainers
 @Import(TravelRuleRepositoryAdapter::class, PersistenceTestConfig::class)
 class TravelRuleRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -55,35 +55,40 @@ class TravelRuleRepositoryAdapterTest {
     private val tenantA = TenantId.generate()
     private val tenantB = TenantId.generate()
 
-    private val naturalParty = VaspTransferParty(
-        naturalPerson = NaturalPerson(
-            firstName = "Jane",
-            lastName = "Doe",
-            dateOfBirth = LocalDate.of(1990, 6, 15),
-            nationalId = "CPF-123",
-            country = "BR",
-        ),
-        accountNumber = "0xAbCd1234",
-        vaspDid = "did:example:originator",
-    )
+    private val naturalParty =
+        VaspTransferParty(
+            naturalPerson =
+                NaturalPerson(
+                    firstName = "Jane",
+                    lastName = "Doe",
+                    dateOfBirth = LocalDate.of(1990, 6, 15),
+                    nationalId = "CPF-123",
+                    country = "BR",
+                ),
+            accountNumber = "0xAbCd1234",
+            vaspDid = "did:example:originator",
+        )
 
-    private val legalParty = VaspTransferParty(
-        legalPerson = LegalPerson(
-            name = "Acme Corp",
-            registrationNumber = "12.345.678/0001-90",
-            country = "US",
-        ),
-        accountNumber = "GB29NWBK60161331926819",
-        vaspDid = "did:example:beneficiary",
-    )
+    private val legalParty =
+        VaspTransferParty(
+            legalPerson =
+                LegalPerson(
+                    name = "Acme Corp",
+                    registrationNumber = "12.345.678/0001-90",
+                    country = "US",
+                ),
+            accountNumber = "GB29NWBK60161331926819",
+            vaspDid = "did:example:beneficiary",
+        )
 
-    private fun travelRuleData(transferId: String = "tx-001") = TravelRuleData(
-        transferId = transferId,
-        originator = naturalParty,
-        beneficiary = legalParty,
-        transferAmount = MonetaryAmount.of("1500"),
-        transferAsset = StablecoinToken.USDC,
-    )
+    private fun travelRuleData(transferId: String = "tx-001") =
+        TravelRuleData(
+            transferId = transferId,
+            originator = naturalParty,
+            beneficiary = legalParty,
+            transferAmount = MonetaryAmount.of("1500"),
+            transferAsset = StablecoinToken.USDC,
+        )
 
     @Test
     fun `save and findByTransferId round-trip preserves all fields including JSONB subtrees`() {

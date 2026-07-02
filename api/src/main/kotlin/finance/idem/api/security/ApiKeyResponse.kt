@@ -12,13 +12,14 @@ data class ApiKeyResponse(
     val revokedAt: Instant?,
 ) {
     companion object {
-        fun from(key: ApiKey) = ApiKeyResponse(
-            id = key.id.value,
-            prefix = key.prefix,
-            scopes = key.scopes.map { it.name },
-            createdAt = key.createdAt,
-            revokedAt = key.revokedAt,
-        )
+        fun from(key: ApiKey) =
+            ApiKeyResponse(
+                id = key.id.value,
+                prefix = key.prefix,
+                scopes = key.scopes.map { it.name },
+                createdAt = key.createdAt,
+                revokedAt = key.revokedAt,
+            )
     }
 }
 

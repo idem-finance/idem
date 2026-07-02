@@ -12,10 +12,11 @@ data class FiatEntryDto(
     val rail: PaymentRail,
     val bankReference: String? = null,
 ) : MonetaryEntryRequestDto() {
-    override fun toDomain() = FiatEntry(
-        amount = MonetaryAmount.of(amount),
-        currency = currency,
-        rail = rail,
-        bankReference = bankReference,
-    )
+    override fun toDomain() =
+        FiatEntry(
+            amount = MonetaryAmount.of(amount),
+            currency = currency,
+            rail = rail,
+            bankReference = bankReference,
+        )
 }

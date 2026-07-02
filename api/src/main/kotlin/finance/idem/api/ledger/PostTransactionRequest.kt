@@ -13,7 +13,10 @@ data class PostTransactionRequest(
     @Schema(description = "Arbitrary key-value metadata attached to the transaction")
     val metadata: Map<String, String> = emptyMap(),
 ) {
-    fun toCommand(tenantId: TenantId, idempotencyKey: String): PostTransactionCommand =
+    fun toCommand(
+        tenantId: TenantId,
+        idempotencyKey: String,
+    ): PostTransactionCommand =
         PostTransactionCommand(
             tenantId = tenantId,
             idempotencyKey = idempotencyKey,

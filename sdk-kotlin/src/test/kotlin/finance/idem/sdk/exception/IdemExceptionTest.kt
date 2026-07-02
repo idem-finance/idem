@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class IdemExceptionTest {
-
     @Test
     fun `ApiException traceId defaults to null when not provided`() {
         val exception = ApiException(statusCode = 404, errorCode = "NOT_FOUND", message = "Resource not found")

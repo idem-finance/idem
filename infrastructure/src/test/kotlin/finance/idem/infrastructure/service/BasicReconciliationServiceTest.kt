@@ -41,8 +41,8 @@ import java.util.UUID
 
 @ExtendWith(MockitoExtension::class)
 class BasicReconciliationServiceTest {
-
     @Mock lateinit var settlementRepository: SettlementRepository
+
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
 
     private val tenantId = TenantId.generate()
@@ -53,10 +53,15 @@ class BasicReconciliationServiceTest {
     private val watchedWallet = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS"
     private val txHash = "5j7s6XxnkqxAbcDE1234567890abcdefghijklmnopqrstuvwxyz1234567"
 
-    private fun service(enabled: Boolean = true, matchingWindowHours: Long = 24): BasicReconciliationService =
-        BasicReconciliationService(settlementRepository, webhookOutboxRepository, enabled, matchingWindowHours)
+    private fun service(
+        enabled: Boolean = true,
+        matchingWindowHours: Long = 24,
+    ): BasicReconciliationService = BasicReconciliationService(settlementRepository, webhookOutboxRepository, enabled, matchingWindowHours)
 
-    private fun onChainEntry(amount: MonetaryAmount = MonetaryAmount.of("100.000000"), fromAddress: String? = null) = OnChainEntry(
+    private fun onChainEntry(
+        amount: MonetaryAmount = MonetaryAmount.of("100.000000"),
+        fromAddress: String? = null,
+    ) = OnChainEntry(
         amount = amount,
         token = StablecoinToken.USDC,
         chainId = ChainId.SOLANA,
@@ -70,13 +75,19 @@ class BasicReconciliationServiceTest {
     private fun onChainTransaction(entry: OnChainEntry = onChainEntry()): Transaction {
         val txId = TransactionId.generate()
         val now = Instant.now()
-        val lines = listOf(
-            JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
-            JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantId, EntryType.CREDIT, entry, null, now, "system"),
-        )
+        val lines =
+            listOf(
+                JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
+                JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantId, EntryType.CREDIT, entry, null, now, "system"),
+            )
         return Transaction.create(
-            id = txId, tenantId = tenantId, idempotencyKey = "SOLANA:$txHash:2",
-            lines = lines, occurredAt = now, createdAt = now, createdBy = "system",
+            id = txId,
+            tenantId = tenantId,
+            idempotencyKey = "SOLANA:$txHash:2",
+            lines = lines,
+            occurredAt = now,
+            createdAt = now,
+            createdBy = "system",
         )
     }
 
@@ -84,17 +95,27 @@ class BasicReconciliationServiceTest {
         val txId = TransactionId.generate()
         val now = Instant.now()
         val entry = FiatEntry(MonetaryAmount.of("1000.00"), FiatCurrency.BRL, PaymentRail.PIX)
-        val lines = listOf(
-            JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
-            JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantId, EntryType.CREDIT, entry, null, now, "system"),
-        )
+        val lines =
+            listOf(
+                JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
+                JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantId, EntryType.CREDIT, entry, null, now, "system"),
+            )
         return Transaction.create(
-            id = txId, tenantId = tenantId, idempotencyKey = "fiat-001",
-            lines = lines, occurredAt = now, createdAt = now, createdBy = "system",
+            id = txId,
+            tenantId = tenantId,
+            idempotencyKey = "fiat-001",
+            lines = lines,
+            occurredAt = now,
+            createdAt = now,
+            createdBy = "system",
         )
     }
 
-    private fun pendingSettlement(amount: MonetaryAmount, createdAt: Instant, expectedFromAddress: String? = null) = Settlement(
+    private fun pendingSettlement(
+        amount: MonetaryAmount,
+        createdAt: Instant,
+        expectedFromAddress: String? = null,
+    ) = Settlement(
         id = UUID.randomUUID(),
         tenantId = tenantId,
         accountId = creditAccountId,
@@ -252,15 +273,22 @@ class BasicReconciliationServiceTest {
         // pair per transaction" convention. Transaction.validate() would reject this
         // (unbalanced currencyKey), so build via reconstitute() to exercise
         // BasicReconciliationService's own defensive guard in isolation.
-        val lines = listOf(
-            JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
-            JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
-        )
-        val tx = Transaction.reconstitute(
-            id = txId, tenantId = tenantId, idempotencyKey = "SOLANA:$txHash:2",
-            lines = lines, status = TransactionStatus.PENDING,
-            occurredAt = now, createdAt = now, createdBy = "system",
-        )
+        val lines =
+            listOf(
+                JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
+                JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
+            )
+        val tx =
+            Transaction.reconstitute(
+                id = txId,
+                tenantId = tenantId,
+                idempotencyKey = "SOLANA:$txHash:2",
+                lines = lines,
+                status = TransactionStatus.PENDING,
+                occurredAt = now,
+                createdAt = now,
+                createdBy = "system",
+            )
         whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
             .thenReturn(emptyList())
 
@@ -313,7 +341,8 @@ class BasicReconciliationServiceTest {
     fun `sender-confirmed match takes precedence over an older FIFO-eligible candidate`() {
         val tx = onChainTransaction(onChainEntry(fromAddress = "0xsender"))
         val fifoEligible = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(7200))
-        val senderConfirmed = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60), expectedFromAddress = "0xsender")
+        val senderConfirmed =
+            pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60), expectedFromAddress = "0xsender")
         whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
             .thenReturn(listOf(fifoEligible, senderConfirmed))
 
@@ -329,11 +358,12 @@ class BasicReconciliationServiceTest {
         // "tjcnkspa..."), but an operator registers expectedFromAddress in the
         // standard mixed-case Base58 form they were given. Tier 1 must still match.
         val tx = onChainTransaction(onChainEntry(fromAddress = "tjcnkspa7y5okkxvqaidzbzqx3qyq6sxmw"))
-        val candidate = pendingSettlement(
-            MonetaryAmount.of("100.000000"),
-            Instant.now().minusSeconds(60),
-            expectedFromAddress = "TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW",
-        )
+        val candidate =
+            pendingSettlement(
+                MonetaryAmount.of("100.000000"),
+                Instant.now().minusSeconds(60),
+                expectedFromAddress = "TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW",
+            )
         whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
             .thenReturn(listOf(candidate))
 
@@ -359,7 +389,8 @@ class BasicReconciliationServiceTest {
     fun `oldest tier-2-eligible candidate wins over a newer sender-mismatched candidate`() {
         val tx = onChainTransaction(onChainEntry(fromAddress = "0xbob"))
         val fifoEligible = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(7200))
-        val senderMismatched = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60), expectedFromAddress = "0xalice")
+        val senderMismatched =
+            pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60), expectedFromAddress = "0xalice")
         whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
             .thenReturn(listOf(fifoEligible, senderMismatched))
 

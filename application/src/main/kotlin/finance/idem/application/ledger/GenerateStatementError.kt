@@ -1,3 +1,5 @@
 package finance.idem.application.ledger
 
-sealed class GenerateStatementError(message: String) : Exception(message)
+sealed class GenerateStatementError(
+    message: String,
+) : Exception(message)

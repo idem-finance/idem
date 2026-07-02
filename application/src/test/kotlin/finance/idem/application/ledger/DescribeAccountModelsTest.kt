@@ -11,7 +11,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class DescribeAccountModelsTest {
-
     private val accountId = AccountId.generate()
     private val tenantId = TenantId.generate()
     private val now = Instant.now()
@@ -33,15 +32,16 @@ class DescribeAccountModelsTest {
     @Test
     fun `AccountDescription holds all fields`() {
         val balance = Balance(accountId, FiatCurrency.USD, MonetaryAmount.of("100"), EntryType.DEBIT, now)
-        val desc = AccountDescription(
-            accountId = accountId,
-            name = "Ops",
-            description = "Operating account",
-            currency = FiatCurrency.USD,
-            entryCount = 5L,
-            lastActivityAt = now,
-            balance = balance,
-        )
+        val desc =
+            AccountDescription(
+                accountId = accountId,
+                name = "Ops",
+                description = "Operating account",
+                currency = FiatCurrency.USD,
+                entryCount = 5L,
+                lastActivityAt = now,
+                balance = balance,
+            )
         assertEquals(accountId, desc.accountId)
         assertEquals("Ops", desc.name)
         assertEquals("Operating account", desc.description)
@@ -55,15 +55,16 @@ class DescribeAccountModelsTest {
     @Test
     fun `AccountDescription description and lastActivityAt can be null`() {
         val balance = Balance(accountId, FiatCurrency.BRL, MonetaryAmount.ZERO, EntryType.DEBIT, now)
-        val desc = AccountDescription(
-            accountId = accountId,
-            name = "Empty",
-            description = null,
-            currency = FiatCurrency.BRL,
-            entryCount = 0L,
-            lastActivityAt = null,
-            balance = balance,
-        )
+        val desc =
+            AccountDescription(
+                accountId = accountId,
+                name = "Empty",
+                description = null,
+                currency = FiatCurrency.BRL,
+                entryCount = 0L,
+                lastActivityAt = null,
+                balance = balance,
+            )
         assertNull(desc.description)
         assertNull(desc.lastActivityAt)
     }

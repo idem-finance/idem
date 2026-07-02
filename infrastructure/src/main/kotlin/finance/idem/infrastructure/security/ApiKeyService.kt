@@ -28,16 +28,20 @@ class ApiKeyService(
     private val log = LoggerFactory.getLogger(ApiKeyService::class.java)
 
     @Transactional
-    fun generate(tenantId: TenantId, scopes: Set<ApiScope>): Pair<String, ApiKey> {
+    fun generate(
+        tenantId: TenantId,
+        scopes: Set<ApiScope>,
+    ): Pair<String, ApiKey> {
         val rawKey = "sk_live_${UUID.randomUUID().toString().replace("-", "")}"
         val prefix = rawKey.take(12)
         val keyHash = passwordEncoder.encode(rawKey)
-        val apiKey = ApiKey.create(
-            tenantId = tenantId,
-            keyHash = keyHash,
-            prefix = prefix,
-            scopes = scopes,
-        )
+        val apiKey =
+            ApiKey.create(
+                tenantId = tenantId,
+                keyHash = keyHash,
+                prefix = prefix,
+                scopes = scopes,
+            )
         apiKeyRepository.save(apiKey)
         return rawKey to apiKey
     }
@@ -63,7 +67,10 @@ class ApiKeyService(
     }
 
     @Transactional
-    fun revoke(keyId: ApiKeyId, tenantId: TenantId): Boolean {
+    fun revoke(
+        keyId: ApiKeyId,
+        tenantId: TenantId,
+    ): Boolean {
         val apiKey = apiKeyRepository.findById(keyId, tenantId) ?: return false
         apiKeyRepository.save(apiKey.copy(revokedAt = Instant.now()))
         redisTemplate.delete(cacheKey(apiKey.prefix))
@@ -77,14 +84,15 @@ class ApiKeyService(
             CachedEntry(
                 tenantId = validated.tenantId.value.toString(),
                 scopes = validated.scopes.map { it.name },
-            )
+            ),
         )
 
     private fun deserializeFromCache(json: String): ValidatedApiKey? {
         val cached: CachedEntry = objectMapper.readValue(json)
-        val scopes = cached.scopes.mapNotNullTo(mutableSetOf()) { name ->
-            runCatching { ApiScope.valueOf(name) }.getOrNull()
-        }
+        val scopes =
+            cached.scopes.mapNotNullTo(mutableSetOf()) { name ->
+                runCatching { ApiScope.valueOf(name) }.getOrNull()
+            }
         // Unknown scope name means cache entry is stale (e.g. post-migration rename) — force DB re-validation.
         if (scopes.size != cached.scopes.size) return null
         return ValidatedApiKey(
@@ -93,5 +101,8 @@ class ApiKeyService(
         )
     }
 
-    private data class CachedEntry(val tenantId: String, val scopes: List<String>)
+    private data class CachedEntry(
+        val tenantId: String,
+        val scopes: List<String>,
+    )
 }

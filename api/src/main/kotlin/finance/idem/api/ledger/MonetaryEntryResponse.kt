@@ -13,9 +13,10 @@ import finance.idem.core.monetary.OnChainEntry
 )
 sealed class MonetaryEntryResponse {
     companion object {
-        fun from(entry: MonetaryEntry): MonetaryEntryResponse = when (entry) {
-            is FiatEntry -> FiatEntryResponse.from(entry)
-            is OnChainEntry -> OnChainEntryResponse.from(entry)
-        }
+        fun from(entry: MonetaryEntry): MonetaryEntryResponse =
+            when (entry) {
+                is FiatEntry -> FiatEntryResponse.from(entry)
+                is OnChainEntry -> OnChainEntryResponse.from(entry)
+            }
     }
 }

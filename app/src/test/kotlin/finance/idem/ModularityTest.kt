@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test
 import org.springframework.modulith.core.ApplicationModules
 
 class ModularityTest {
-
     private val modules = ApplicationModules.of(IdemApplication::class.java)
 
     @Test
@@ -19,13 +18,15 @@ class ModularityTest {
         val classes = ClassFileImporter().importPackages("finance.idem.core")
 
         noClasses()
-            .that().resideInAPackage("finance.idem.core..")
-            .should().dependOnClassesThat().resideInAnyPackage(
+            .that()
+            .resideInAPackage("finance.idem.core..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
                 "org.springframework..",
                 "jakarta.persistence..",
                 "org.apache.kafka..",
-            )
-            .check(classes)
+            ).check(classes)
     }
 
     @Test
@@ -33,14 +34,16 @@ class ModularityTest {
         val classes = ClassFileImporter().importPackages("finance.idem.application")
 
         noClasses()
-            .that().resideInAPackage("finance.idem.application..")
-            .should().dependOnClassesThat().resideInAnyPackage(
+            .that()
+            .resideInAPackage("finance.idem.application..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
                 "org.springframework.data..",
                 "jakarta.persistence..",
                 "org.springframework.web..",
                 "org.springframework.http..",
-            )
-            .check(classes)
+            ).check(classes)
     }
 
     @Test
@@ -48,14 +51,16 @@ class ModularityTest {
         val classes = ClassFileImporter().importPackages("finance.idem.core")
 
         noClasses()
-            .that().resideInAPackage("finance.idem.core..")
-            .should().dependOnClassesThat().resideInAnyPackage(
+            .that()
+            .resideInAPackage("finance.idem.core..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
                 "finance.idem.application..",
                 "finance.idem.infrastructure..",
                 "finance.idem.api..",
                 "finance.idem.mcp..",
-            )
-            .check(classes)
+            ).check(classes)
     }
 
     @Test
@@ -63,11 +68,13 @@ class ModularityTest {
         val classes = ClassFileImporter().importPackages("finance.idem.application")
 
         noClasses()
-            .that().resideInAPackage("finance.idem.application..")
-            .should().dependOnClassesThat().resideInAnyPackage(
+            .that()
+            .resideInAPackage("finance.idem.application..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
                 "finance.idem.infrastructure..",
                 "finance.idem.api..",
-            )
-            .check(classes)
+            ).check(classes)
     }
 }

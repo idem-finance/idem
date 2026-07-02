@@ -17,15 +17,14 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 class WebSecurityConfig {
-
     @Bean
     fun securityFilterChain(
         http: HttpSecurity,
         apiKeyAuthFilter: ApiKeyAuthFilter,
         mcpSseAuthBridgeFilter: McpSseAuthBridgeFilter,
         traceIdFilter: TraceIdFilter,
-    ): SecurityFilterChain {
-        return http
+    ): SecurityFilterChain =
+        http
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
@@ -37,8 +36,7 @@ class WebSecurityConfig {
                 auth.requestMatchers("/swagger-ui/**").permitAll()
                 auth.requestMatchers("/v3/api-docs/**").permitAll()
                 auth.anyRequest().authenticated()
-            }
-            .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
+            }.addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
             // MCP bridge runs after API key filter: picks up session auth for POST /mcp/messages
             // that arrive without an X-API-Key header (mcp-remote only sends it on GET /sse).
             .addFilterAfter(mcpSseAuthBridgeFilter, ApiKeyAuthFilter::class.java)
@@ -49,7 +47,5 @@ class WebSecurityConfig {
                     response.status = 401
                     response.writer.write("""{"code":"unauthorized","message":"Missing or invalid API key"}""")
                 }
-            }
-            .build()
-    }
+            }.build()
 }

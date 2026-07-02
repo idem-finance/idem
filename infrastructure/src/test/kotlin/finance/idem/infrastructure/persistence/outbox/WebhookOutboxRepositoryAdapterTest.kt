@@ -28,13 +28,13 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(WebhookOutboxRepositoryAdapter::class, PersistenceTestConfig::class)
 class WebhookOutboxRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -54,13 +54,14 @@ class WebhookOutboxRepositoryAdapterTest {
     private val tenantA = TenantId.generate()
     private val tenantB = TenantId.generate()
 
-    private fun outboxEntry(tenantId: TenantId = tenantA) = WebhookOutboxEntry(
-        id = UUID.randomUUID(),
-        tenantId = tenantId,
-        eventType = "transaction.committed",
-        transactionId = TransactionId.generate(),
-        occurredAt = Instant.now(),
-    )
+    private fun outboxEntry(tenantId: TenantId = tenantA) =
+        WebhookOutboxEntry(
+            id = UUID.randomUUID(),
+            tenantId = tenantId,
+            eventType = "transaction.committed",
+            transactionId = TransactionId.generate(),
+            occurredAt = Instant.now(),
+        )
 
     /** Inserts a row directly, bypassing the adapter, to control status/next_retry_at/created_at for findDispatchable tests. */
     private fun insertRawOutboxRow(
@@ -72,16 +73,18 @@ class WebhookOutboxRepositoryAdapterTest {
     ) {
         val session = entityManager.unwrap(org.hibernate.Session::class.java)
         session.doWork { conn ->
-            conn.prepareStatement(
-                "INSERT INTO webhook_outbox (id, tenant_id, transaction_id, event_type, payload, status, attempts, next_retry_at, created_at) " +
-                    "VALUES (?::uuid, ?::uuid, ?::uuid, 'transaction.committed', '{}', ?, 0, $nextRetryAtExpr, $createdAtExpr)"
-            ).use { stmt ->
-                stmt.setString(1, id.toString())
-                stmt.setString(2, tenantId.value.toString())
-                stmt.setString(3, UUID.randomUUID().toString())
-                stmt.setString(4, status)
-                stmt.executeUpdate()
-            }
+            conn
+                .prepareStatement(
+                    "INSERT INTO webhook_outbox " +
+                        "(id, tenant_id, transaction_id, event_type, payload, status, attempts, next_retry_at, created_at) " +
+                        "VALUES (?::uuid, ?::uuid, ?::uuid, 'transaction.committed', '{}', ?, 0, $nextRetryAtExpr, $createdAtExpr)",
+                ).use { stmt ->
+                    stmt.setString(1, id.toString())
+                    stmt.setString(2, tenantId.value.toString())
+                    stmt.setString(3, UUID.randomUUID().toString())
+                    stmt.setString(4, status)
+                    stmt.executeUpdate()
+                }
         }
     }
 
@@ -117,17 +120,19 @@ class WebhookOutboxRepositoryAdapterTest {
                 dead to ("now()" to "DEAD"),
             ).forEach { (e, tsAndStatus) ->
                 val (ts, status) = tsAndStatus
-                conn.prepareStatement(
-                    "INSERT INTO webhook_outbox (id, tenant_id, transaction_id, event_type, payload, status, attempts, next_retry_at, created_at) " +
-                        "VALUES (?::uuid, ?::uuid, ?::uuid, ?, '{}', ?, 0, now(), $ts)"
-                ).use { stmt ->
-                    stmt.setString(1, e.id.toString())
-                    stmt.setString(2, tenantA.value.toString())
-                    stmt.setString(3, e.transactionId.value.toString())
-                    stmt.setString(4, e.eventType)
-                    stmt.setString(5, status)
-                    stmt.executeUpdate()
-                }
+                conn
+                    .prepareStatement(
+                        "INSERT INTO webhook_outbox " +
+                            "(id, tenant_id, transaction_id, event_type, payload, status, attempts, next_retry_at, created_at) " +
+                            "VALUES (?::uuid, ?::uuid, ?::uuid, ?, '{}', ?, 0, now(), $ts)",
+                    ).use { stmt ->
+                        stmt.setString(1, e.id.toString())
+                        stmt.setString(2, tenantA.value.toString())
+                        stmt.setString(3, e.transactionId.value.toString())
+                        stmt.setString(4, e.eventType)
+                        stmt.setString(5, status)
+                        stmt.executeUpdate()
+                    }
             }
         }
         entityManager.clear()

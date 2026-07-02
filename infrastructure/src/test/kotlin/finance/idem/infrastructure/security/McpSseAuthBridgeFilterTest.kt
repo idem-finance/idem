@@ -25,7 +25,6 @@ import kotlin.test.assertNull
 
 @ExtendWith(MockitoExtension::class)
 class McpSseAuthBridgeFilterTest {
-
     @Mock lateinit var chain: FilterChain
 
     private val store = McpSseSessionAuthStore()
@@ -35,6 +34,7 @@ class McpSseAuthBridgeFilterTest {
     private val auth = ApiKeyAuthentication(tenantId, "sk_live_test", listOf(SimpleGrantedAuthority(ApiScope.AGENTS_EXECUTE.name)))
 
     @BeforeEach fun setUp() = SecurityContextHolder.clearContext()
+
     @AfterEach fun tearDown() = SecurityContextHolder.clearContext()
 
     @Test
@@ -93,9 +93,10 @@ class McpSseAuthBridgeFilterTest {
         val request = MockHttpServletRequest("GET", "/sse")
         val response = MockHttpServletResponse()
 
-        val writingChain = FilterChain { _, resp ->
-            resp.outputStream.write(sseData.toByteArray(Charsets.UTF_8))
-        }
+        val writingChain =
+            FilterChain { _, resp ->
+                resp.outputStream.write(sseData.toByteArray(Charsets.UTF_8))
+            }
 
         filter.doFilter(request, response, writingChain)
 
@@ -112,11 +113,12 @@ class McpSseAuthBridgeFilterTest {
         val request = MockHttpServletRequest("GET", "/sse")
         val response = MockHttpServletResponse()
 
-        val writingChain = FilterChain { _, resp ->
-            // Call getOutputStream() twice — should get the same wrapper
-            resp.outputStream.write(sseData.toByteArray(Charsets.UTF_8))
-            resp.outputStream.write("ping\n".toByteArray(Charsets.UTF_8))
-        }
+        val writingChain =
+            FilterChain { _, resp ->
+                // Call getOutputStream() twice — should get the same wrapper
+                resp.outputStream.write(sseData.toByteArray(Charsets.UTF_8))
+                resp.outputStream.write("ping\n".toByteArray(Charsets.UTF_8))
+            }
 
         filter.doFilter(request, response, writingChain)
 

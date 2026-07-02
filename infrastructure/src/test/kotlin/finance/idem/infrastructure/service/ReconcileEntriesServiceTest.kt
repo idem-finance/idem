@@ -1,5 +1,6 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.ReconcileEntriesCommand
 import finance.idem.core.AccountId
 import finance.idem.core.ChainId
@@ -16,21 +17,20 @@ import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Settlement
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.monetary.OnChainEntry
-import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.infrastructure.persistence.AccountRepositoryAdapter
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import finance.idem.infrastructure.persistence.TransactionRepositoryAdapter
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxJpaRepository
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
-import java.math.BigDecimal
-import org.springframework.transaction.PlatformTransactionManager
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
+import org.springframework.transaction.PlatformTransactionManager
+import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -47,13 +47,18 @@ import kotlin.test.assertTrue
     PersistenceTestConfig::class,
 )
 class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
-
     @Autowired lateinit var service: ReconcileEntriesService
+
     @Autowired lateinit var settlementAdapter: SettlementRepositoryAdapter
+
     @Autowired lateinit var accountAdapter: AccountRepositoryAdapter
+
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
+
     @Autowired lateinit var webhookOutboxRepository: WebhookOutboxRepository
+
     @Autowired lateinit var txManager: PlatformTransactionManager
+
     @Autowired lateinit var outboxJpaRepository: WebhookOutboxJpaRepository
 
     private val tenantA = TenantId.generate()
@@ -86,24 +91,30 @@ class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
         txHash: String = "sol-hash-${UUID.randomUUID()}",
     ): TransactionId {
         val txId = TransactionId.generate()
-        val entry = OnChainEntry(
-            amount = MonetaryAmount.of(amount),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.SOLANA,
-            txHash = txHash,
-            blockNumber = 250_000_000L,
-            walletAddress = watchedWallet,
-            tokenContract = usdcMint,
-        )
-        val tx = Transaction.create(
-            id = txId, tenantId = tenantId,
-            idempotencyKey = "SOLANA:$txHash:0",
-            lines = listOf(
-                JournalLine(UUID.randomUUID(), txId, debitAccount, tenantId, EntryType.DEBIT, entry, null, now, "test"),
-                JournalLine(UUID.randomUUID(), txId, creditAccount, tenantId, EntryType.CREDIT, entry, null, now, "test"),
-            ),
-            occurredAt = now, createdAt = now, createdBy = "test",
-        )
+        val entry =
+            OnChainEntry(
+                amount = MonetaryAmount.of(amount),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.SOLANA,
+                txHash = txHash,
+                blockNumber = 250_000_000L,
+                walletAddress = watchedWallet,
+                tokenContract = usdcMint,
+            )
+        val tx =
+            Transaction.create(
+                id = txId,
+                tenantId = tenantId,
+                idempotencyKey = "SOLANA:$txHash:0",
+                lines =
+                    listOf(
+                        JournalLine(UUID.randomUUID(), txId, debitAccount, tenantId, EntryType.DEBIT, entry, null, now, "test"),
+                        JournalLine(UUID.randomUUID(), txId, creditAccount, tenantId, EntryType.CREDIT, entry, null, now, "test"),
+                    ),
+                occurredAt = now,
+                createdAt = now,
+                createdBy = "test",
+            )
         transactionAdapter.save(tx)
         return txId
     }
@@ -162,7 +173,8 @@ class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
     ) = ReconcileEntriesCommand(tenantId = tenantId, accountId = accountId, from = from, to = to)
 
     private fun settlementStatus(id: UUID): String =
-        entityManager.createNativeQuery("SELECT status FROM settlements WHERE id = ?::uuid")
+        entityManager
+            .createNativeQuery("SELECT status FROM settlements WHERE id = ?::uuid")
             .setParameter(1, id.toString())
             .singleResult as String
 
@@ -253,10 +265,12 @@ class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
     fun `entries outside the time window are not processed`() {
         val txId = createOnChainTx(tenantA, accountA, accountA2)
         // Settlement created 2 hours ago — outside [now-1h, now+1h]
-        settlementAdapter.save(unmatchedSettlement(
-            matchedTransactionId = txId,
-            createdAt = now.minusSeconds(7200),
-        ))
+        settlementAdapter.save(
+            unmatchedSettlement(
+                matchedTransactionId = txId,
+                createdAt = now.minusSeconds(7200),
+            ),
+        )
         settlementAdapter.save(pendingSettlement())
 
         val result = service.execute(cmd(from = now.minusSeconds(3600))).getOrThrow()

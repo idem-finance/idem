@@ -18,43 +18,42 @@ import java.util.UUID
 class JournalLineDataModel(
     @Id
     val id: UUID,
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "transaction_id", nullable = false)
     val transaction: TransactionDataModel,
-
     @Column(name = "account_id", nullable = false)
     val accountId: UUID,
-
     @Column(name = "tenant_id", nullable = false)
     val tenantId: UUID,
-
     @Column(name = "entry_type", nullable = false)
     val entryType: String,
-
     @Column(nullable = false, precision = 38, scale = 18)
     val amount: BigDecimal,
-
     @Column(nullable = false)
     val currency: String,
-
     @Column(name = "monetary_entry_type", nullable = false)
     val monetaryEntryType: String,
-
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "monetary_entry_data", columnDefinition = "jsonb", nullable = false)
     val monetaryEntryData: String,
-
     val description: String?,
-
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant,
-
     @Column(name = "created_by", nullable = false)
     val createdBy: String,
 ) {
     protected constructor() : this(
-        UUID.randomUUID(), TransactionDataModel(), UUID.randomUUID(), UUID.randomUUID(),
-        "", BigDecimal.ZERO, "", "", "{}", null, Instant.now(), "",
+        UUID.randomUUID(),
+        TransactionDataModel(),
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        "",
+        BigDecimal.ZERO,
+        "",
+        "",
+        "{}",
+        null,
+        Instant.now(),
+        "",
     )
 }

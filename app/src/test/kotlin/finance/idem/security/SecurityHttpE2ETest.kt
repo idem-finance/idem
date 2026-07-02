@@ -23,7 +23,6 @@ import kotlin.test.assertTrue
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfiguration::class)
 class SecurityHttpE2ETest {
-
     @LocalServerPort
     var port: Int = 0
 
@@ -38,10 +37,11 @@ class SecurityHttpE2ETest {
 
     @Test
     fun `request without API key returns 401`() {
-        val response = restTemplate.getForEntity(
-            "http://localhost:$port/api/v1/accounts/${UUID.randomUUID()}/balance",
-            String::class.java,
-        )
+        val response =
+            restTemplate.getForEntity(
+                "http://localhost:$port/api/v1/accounts/${UUID.randomUUID()}/balance",
+                String::class.java,
+            )
         assertEquals(HttpStatus.UNAUTHORIZED, response.statusCode)
         assertNotNull(response.headers.getFirst("X-Idem-Trace-Id"))
     }
@@ -59,17 +59,18 @@ class SecurityHttpE2ETest {
         val (rawKey, _) = apiKeyService.generate(TenantId.generate(), setOf(ApiScope.ACCOUNTS_READ))
         val inboundTraceId = UUID.randomUUID().toString()
 
-        val response = restTemplate.exchange(
-            "http://localhost:$port/api/v1/accounts/${UUID.randomUUID()}/balance",
-            HttpMethod.GET,
-            HttpEntity<Void>(
-                HttpHeaders().apply {
-                    set("X-API-Key", rawKey)
-                    set("X-Idem-Trace-Id", inboundTraceId)
-                },
-            ),
-            String::class.java,
-        )
+        val response =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/accounts/${UUID.randomUUID()}/balance",
+                HttpMethod.GET,
+                HttpEntity<Void>(
+                    HttpHeaders().apply {
+                        set("X-API-Key", rawKey)
+                        set("X-Idem-Trace-Id", inboundTraceId)
+                    },
+                ),
+                String::class.java,
+            )
 
         assertEquals(inboundTraceId, response.headers.getFirst("X-Idem-Trace-Id"))
     }
@@ -129,10 +130,11 @@ class SecurityHttpE2ETest {
 
     @Test
     fun `actuator metrics returns 401 without API key`() {
-        val response = restTemplate.getForEntity(
-            "http://localhost:$port/actuator/metrics",
-            String::class.java,
-        )
+        val response =
+            restTemplate.getForEntity(
+                "http://localhost:$port/actuator/metrics",
+                String::class.java,
+            )
         assertEquals(HttpStatus.UNAUTHORIZED, response.statusCode)
     }
 
@@ -152,36 +154,44 @@ class SecurityHttpE2ETest {
 
     @Test
     fun `actuator health remains accessible without auth`() {
-        val response = restTemplate.getForEntity(
-            "http://localhost:$port/actuator/health",
-            String::class.java,
-        )
+        val response =
+            restTemplate.getForEntity(
+                "http://localhost:$port/actuator/health",
+                String::class.java,
+            )
         assertEquals(HttpStatus.OK, response.statusCode)
     }
 
-    private fun apiGet(path: String, apiKey: String) = restTemplate.exchange(
+    private fun apiGet(
+        path: String,
+        apiKey: String,
+    ) = restTemplate.exchange(
         "http://localhost:$port$path",
         HttpMethod.GET,
         HttpEntity<Void>(HttpHeaders().apply { set("X-API-Key", apiKey) }),
         String::class.java,
     )
 
-    private fun insertAccount(accountId: UUID, tenantId: TenantId) {
+    private fun insertAccount(
+        accountId: UUID,
+        tenantId: TenantId,
+    ) {
         dataSource.connection.use { conn ->
             conn.autoCommit = false
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            conn.prepareStatement(
-                """INSERT INTO accounts(id, tenant_id, name, currency, type, created_by, created_at)
-                   VALUES(?::UUID, ?::UUID, ?, ?, ?, ?, now())"""
-            ).apply {
-                setString(1, accountId.toString())
-                setString(2, tenantId.value.toString())
-                setString(3, "E2E Test Account")
-                setString(4, "BRL")
-                setString(5, "ASSET")
-                setString(6, "e2e-test")
-                executeUpdate()
-            }
+            conn
+                .prepareStatement(
+                    """INSERT INTO accounts(id, tenant_id, name, currency, type, created_by, created_at)
+                   VALUES(?::UUID, ?::UUID, ?, ?, ?, ?, now())""",
+                ).apply {
+                    setString(1, accountId.toString())
+                    setString(2, tenantId.value.toString())
+                    setString(3, "E2E Test Account")
+                    setString(4, "BRL")
+                    setString(5, "ASSET")
+                    setString(6, "e2e-test")
+                    executeUpdate()
+                }
             conn.commit()
         }
     }

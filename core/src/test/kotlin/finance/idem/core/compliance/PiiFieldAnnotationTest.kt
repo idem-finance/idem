@@ -7,10 +7,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 class PiiFieldAnnotationTest {
-
-    private fun piiField(clazz: Class<*>, fieldName: String): PiiField {
-        val field = clazz.declaredFields.firstOrNull { it.name == fieldName }
-            ?: error("Field '$fieldName' not found on ${clazz.simpleName}")
+    private fun piiField(
+        clazz: Class<*>,
+        fieldName: String,
+    ): PiiField {
+        val field =
+            clazz.declaredFields.firstOrNull { it.name == fieldName }
+                ?: error("Field '$fieldName' not found on ${clazz.simpleName}")
         return field.getAnnotation(PiiField::class.java)
             ?: error("@PiiField missing on ${clazz.simpleName}.$fieldName")
     }

@@ -12,16 +12,12 @@ import java.util.UUID
 class TenantDataModel(
     @Id
     val id: UUID,
-
     @Column(name = "webhook_url")
     val webhookUrl: String?,
-
     @Column(name = "webhook_secret")
     val webhookSecret: String?,
-
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant,
-
     @Column(name = "updated_at", nullable = false)
     val updatedAt: Instant,
 ) {

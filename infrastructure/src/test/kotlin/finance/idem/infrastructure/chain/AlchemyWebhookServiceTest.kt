@@ -19,20 +19,20 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 class AlchemyWebhookServiceTest {
-
     private val mockWatchedRepo = mock<WatchedAddressRepository>()
     private val mockCheckpointRepo = mock<ChainCheckpointRepository>()
     private val mockUseCase = mock<PostTransactionUseCase>()
     private val objectMapper = ObjectMapper().registerKotlinModule()
 
-    private val service = AlchemyWebhookService(
-        watchedAddressRepository = mockWatchedRepo,
-        chainCheckpointRepository = mockCheckpointRepo,
-        postTransactionUseCase = mockUseCase,
-        objectMapper = objectMapper,
-        config = ChainConfig(),
-        deadLetterRecorder = mock<DeadLetterRecorder>(),
-    )
+    private val service =
+        AlchemyWebhookService(
+            watchedAddressRepository = mockWatchedRepo,
+            chainCheckpointRepository = mockCheckpointRepo,
+            postTransactionUseCase = mockUseCase,
+            objectMapper = objectMapper,
+            config = ChainConfig(),
+            deadLetterRecorder = mock<DeadLetterRecorder>(),
+        )
 
     private val usdcContract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
     private val watchedWallet = "0xabcdef1234567890abcdef1234567890abcdef34"
@@ -41,15 +41,16 @@ class AlchemyWebhookServiceTest {
     private val debitAccountId = "00000000-0000-0000-0000-000000000002"
     private val creditAccountId = "00000000-0000-0000-0000-000000000003"
 
-    private val watchedAddress = WatchedAddress(
-        chainKey = "EVM_1",
-        walletAddress = watchedWallet,
-        tokenContract = usdcContract,
-        token = StablecoinToken.USDC,
-        tenantId = tenantId,
-        debitAccountId = debitAccountId,
-        creditAccountId = creditAccountId,
-    )
+    private val watchedAddress =
+        WatchedAddress(
+            chainKey = "EVM_1",
+            walletAddress = watchedWallet,
+            tokenContract = usdcContract,
+            token = StablecoinToken.USDC,
+            tenantId = tenantId,
+            debitAccountId = debitAccountId,
+            creditAccountId = creditAccountId,
+        )
 
     // -- HMAC validation --
 
@@ -119,13 +120,14 @@ class AlchemyWebhookServiceTest {
 
     @Test
     fun `decodeActivity returns DetectedTransfer for valid USDC activity`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet,
-            contract = usdcContract,
-            rawValue = "0x000f4240", // 1_000_000 = 1 USDC (6 decimals)
-            blockNum = "0x12a05f2",  // 19_531_250
-            logIndex = "0x0",
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet,
+                contract = usdcContract,
+                rawValue = "0x000f4240", // 1_000_000 = 1 USDC (6 decimals)
+                blockNum = "0x12a05f2", // 19_531_250
+                logIndex = "0x0",
+            )
 
         val result = service.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
 
@@ -144,12 +146,13 @@ class AlchemyWebhookServiceTest {
 
     @Test
     fun `decodeActivity uses log logIndex in idempotency key`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet,
-            contract = usdcContract,
-            rawValue = "0x000f4240",
-            logIndex = "0x3",
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet,
+                contract = usdcContract,
+                rawValue = "0x000f4240",
+                logIndex = "0x3",
+            )
 
         val result = service.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
 
@@ -159,104 +162,113 @@ class AlchemyWebhookServiceTest {
 
     @Test
     fun `decodeActivity returns null when category is not token`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet,
-            contract = usdcContract,
-            rawValue = "0x000f4240",
-            category = "external",
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet,
+                contract = usdcContract,
+                rawValue = "0x000f4240",
+                category = "external",
+            )
 
         assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
     fun `decodeActivity returns null for reorged log (removed = true)`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet,
-            contract = usdcContract,
-            rawValue = "0x000f4240",
-            removed = true,
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet,
+                contract = usdcContract,
+                rawValue = "0x000f4240",
+                removed = true,
+            )
 
         assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
     fun `decodeActivity returns null when toAddress is not watched`() {
-        val activity = buildActivity(
-            toAddress = "0xffffffffffffffffffffffffffffffffffffffff",
-            contract = usdcContract,
-            rawValue = "0x000f4240",
-        )
+        val activity =
+            buildActivity(
+                toAddress = "0xffffffffffffffffffffffffffffffffffffffff",
+                contract = usdcContract,
+                rawValue = "0x000f4240",
+            )
 
         assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
     fun `decodeActivity returns null when contract is not watched`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet,
-            contract = "0x0000000000000000000000000000000000000000",
-            rawValue = "0x000f4240",
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet,
+                contract = "0x0000000000000000000000000000000000000000",
+                rawValue = "0x000f4240",
+            )
 
         assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
     fun `decodeActivity returns null when rawContract is null`() {
-        val activity = AlchemyActivity(
-            hash = txHash,
-            toAddress = watchedWallet,
-            fromAddress = "0xfrom",
-            blockNum = "0x1",
-            category = "token",
-            rawContract = null,
-        )
+        val activity =
+            AlchemyActivity(
+                hash = txHash,
+                toAddress = watchedWallet,
+                fromAddress = "0xfrom",
+                blockNum = "0x1",
+                category = "token",
+                rawContract = null,
+            )
 
         assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
     fun `decodeActivity returns null when rawValue is blank`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet,
-            contract = usdcContract,
-            rawValue = "0x",
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet,
+                contract = usdcContract,
+                rawValue = "0x",
+            )
 
         assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
     fun `decodeActivity returns null when rawValue is unparseable`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet,
-            contract = usdcContract,
-            rawValue = "not-hex",
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet,
+                contract = usdcContract,
+                rawValue = "not-hex",
+            )
 
         assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
     fun `decodeActivity returns null when amount is zero`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet,
-            contract = usdcContract,
-            rawValue = "0x0",
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet,
+                contract = usdcContract,
+                rawValue = "0x0",
+            )
 
         assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     @Test
     fun `decodeActivity address matching is case-insensitive`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet.uppercase(),
-            contract = usdcContract.uppercase(),
-            rawValue = "0x000f4240",
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet.uppercase(),
+                contract = usdcContract.uppercase(),
+                rawValue = "0x000f4240",
+            )
 
         val result = service.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
 
@@ -267,12 +279,13 @@ class AlchemyWebhookServiceTest {
 
     @Test
     fun `decodeActivity logIndex defaults to 0 when log is absent`() {
-        val activity = buildActivity(
-            toAddress = watchedWallet,
-            contract = usdcContract,
-            rawValue = "0x000f4240",
-            logIndex = null,
-        )
+        val activity =
+            buildActivity(
+                toAddress = watchedWallet,
+                contract = usdcContract,
+                rawValue = "0x000f4240",
+                logIndex = null,
+            )
 
         val result = service.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
 
@@ -290,19 +303,24 @@ class AlchemyWebhookServiceTest {
         logIndex: String? = "0x0",
         category: String = "token",
         removed: Boolean = false,
-    ): AlchemyActivity = AlchemyActivity(
-        hash = txHash,
-        fromAddress = "0xfrom",
-        toAddress = toAddress,
-        blockNum = blockNum,
-        category = category,
-        rawContract = AlchemyRawContract(rawValue = rawValue, address = contract, decimals = 6),
-        log = AlchemyLog(logIndex = logIndex ?: "0x0", removed = removed).let {
-            if (logIndex == null) null else it
-        },
-    )
+    ): AlchemyActivity =
+        AlchemyActivity(
+            hash = txHash,
+            fromAddress = "0xfrom",
+            toAddress = toAddress,
+            blockNum = blockNum,
+            category = category,
+            rawContract = AlchemyRawContract(rawValue = rawValue, address = contract, decimals = 6),
+            log =
+                AlchemyLog(logIndex = logIndex ?: "0x0", removed = removed).let {
+                    if (logIndex == null) null else it
+                },
+        )
 
-    private fun computeHmac(key: String, body: String): String {
+    private fun computeHmac(
+        key: String,
+        body: String,
+    ): String {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
         return mac.doFinal(body.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }

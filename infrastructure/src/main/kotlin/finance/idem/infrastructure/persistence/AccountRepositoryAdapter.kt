@@ -16,11 +16,15 @@ class AccountRepositoryAdapter(
     private val jpaRepository: AccountJpaRepository,
     private val entityManager: EntityManager,
 ) : AccountRepository {
-
     @Transactional(readOnly = true)
-    override fun findById(id: AccountId, tenantId: TenantId): Account? {
+    override fun findById(
+        id: AccountId,
+        tenantId: TenantId,
+    ): Account? {
         entityManager.setRlsTenantId(tenantId)
-        return jpaRepository.findById(id.value).orElse(null)
+        return jpaRepository
+            .findById(id.value)
+            .orElse(null)
             ?.takeIf { it.tenantId == tenantId.value }
             ?.toDomain()
     }
@@ -39,43 +43,52 @@ class AccountRepositoryAdapter(
     }
 
     @Transactional(readOnly = true)
-    override fun existsById(id: AccountId, tenantId: TenantId): Boolean {
+    override fun existsById(
+        id: AccountId,
+        tenantId: TenantId,
+    ): Boolean {
         entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findById(id.value).map { it.tenantId == tenantId.value }.orElse(false)
     }
 
     @Transactional(readOnly = true)
-    override fun findExistingIds(ids: Set<AccountId>, tenantId: TenantId): Set<AccountId> {
+    override fun findExistingIds(
+        ids: Set<AccountId>,
+        tenantId: TenantId,
+    ): Set<AccountId> {
         if (ids.isEmpty()) return emptySet()
         entityManager.setRlsTenantId(tenantId)
-        return jpaRepository.findExistingIds(ids.map { it.value }, tenantId.value)
+        return jpaRepository
+            .findExistingIds(ids.map { it.value }, tenantId.value)
             .map { AccountId(it) }
             .toSet()
     }
 }
 
-private fun AccountDataModel.toDomain(): Account = Account.reconstitute(
-    id = AccountId(id),
-    tenantId = TenantId(tenantId),
-    name = name,
-    description = description,
-    currency = FiatCurrency.valueOf(currency),
-    type = AccountType.valueOf(type),
-    createdAt = createdAt,
-    createdBy = createdBy,
-    updatedAt = updatedAt,
-    updatedBy = updatedBy,
-)
+private fun AccountDataModel.toDomain(): Account =
+    Account.reconstitute(
+        id = AccountId(id),
+        tenantId = TenantId(tenantId),
+        name = name,
+        description = description,
+        currency = FiatCurrency.valueOf(currency),
+        type = AccountType.valueOf(type),
+        createdAt = createdAt,
+        createdBy = createdBy,
+        updatedAt = updatedAt,
+        updatedBy = updatedBy,
+    )
 
-private fun Account.toEntity(): AccountDataModel = AccountDataModel(
-    id = id.value,
-    tenantId = tenantId.value,
-    name = name,
-    description = description,
-    currency = currency.name,
-    type = type.name,
-    createdAt = createdAt,
-    createdBy = createdBy,
-    updatedAt = updatedAt,
-    updatedBy = updatedBy,
-)
+private fun Account.toEntity(): AccountDataModel =
+    AccountDataModel(
+        id = id.value,
+        tenantId = tenantId.value,
+        name = name,
+        description = description,
+        currency = currency.name,
+        type = type.name,
+        createdAt = createdAt,
+        createdBy = createdBy,
+        updatedAt = updatedAt,
+        updatedBy = updatedBy,
+    )

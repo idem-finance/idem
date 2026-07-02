@@ -19,17 +19,18 @@ class GetBalanceService(
     private val transactionRepository: TransactionRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) : GetBalanceUseCase {
-
     override fun execute(query: GetBalanceQuery): Result<Balance> {
-        val account = accountRepository.findById(query.accountId, query.tenantId)
-            ?: return Result.failure(BalanceAccountNotFound(query.accountId))
+        val account =
+            accountRepository.findById(query.accountId, query.tenantId)
+                ?: return Result.failure(BalanceAccountNotFound(query.accountId))
 
-        val transactions = transactionRepository
-            .findByAccountId(query.accountId, query.tenantId)
-            .let { txs ->
-                val cutoff = query.asOf
-                if (cutoff != null) txs.filter { it.occurredAt <= cutoff } else txs
-            }
+        val transactions =
+            transactionRepository
+                .findByAccountId(query.accountId, query.tenantId)
+                .let { txs ->
+                    val cutoff = query.asOf
+                    if (cutoff != null) txs.filter { it.occurredAt <= cutoff } else txs
+                }
 
         val net = BalanceCalculator.compute(account, transactions)
 
@@ -40,7 +41,7 @@ class GetBalanceService(
                 amount = net,
                 normalBalance = account.normalBalance,
                 computedAt = Instant.now(clock),
-            )
+            ),
         )
     }
 }

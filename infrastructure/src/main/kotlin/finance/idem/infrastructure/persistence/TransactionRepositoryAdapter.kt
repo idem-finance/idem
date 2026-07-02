@@ -6,12 +6,12 @@ import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
+import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentContext
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.ledger.TransactionStatus
-import finance.idem.core.WorkflowPlanId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -23,9 +23,11 @@ class TransactionRepositoryAdapter(
     private val entityManager: EntityManager,
     private val objectMapper: ObjectMapper,
 ) : TransactionRepository {
-
     @Transactional(readOnly = true)
-    override fun findById(id: TransactionId, tenantId: TenantId): Transaction? {
+    override fun findById(
+        id: TransactionId,
+        tenantId: TenantId,
+    ): Transaction? {
         entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByIdAndTenantId(id.value, tenantId.value)?.toDomain(objectMapper)
     }
@@ -39,15 +41,22 @@ class TransactionRepositoryAdapter(
     }
 
     @Transactional(readOnly = true)
-    override fun findByIdempotencyKey(key: String, tenantId: TenantId): Transaction? {
+    override fun findByIdempotencyKey(
+        key: String,
+        tenantId: TenantId,
+    ): Transaction? {
         entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByIdempotencyKeyAndTenantId(key, tenantId.value)?.toDomain(objectMapper)
     }
 
     @Transactional(readOnly = true)
-    override fun findByAccountId(accountId: AccountId, tenantId: TenantId): List<Transaction> {
+    override fun findByAccountId(
+        accountId: AccountId,
+        tenantId: TenantId,
+    ): List<Transaction> {
         entityManager.setRlsTenantId(tenantId)
-        return jpaRepository.findByAccountIdAndTenantId(accountId.value, tenantId.value)
+        return jpaRepository
+            .findByAccountIdAndTenantId(accountId.value, tenantId.value)
             .map { it.toDomain(objectMapper) }
     }
 }
@@ -76,12 +85,13 @@ private fun JournalLineDataModel.toDomain(
     tenantId: TenantId,
     mapper: ObjectMapper,
 ): JournalLine {
-    val cols = MonetaryEntryColumns(
-        amount = amount,
-        currency = currency,
-        monetaryEntryType = monetaryEntryType,
-        monetaryEntryData = monetaryEntryData,
-    )
+    val cols =
+        MonetaryEntryColumns(
+            amount = amount,
+            currency = currency,
+            monetaryEntryType = monetaryEntryType,
+            monetaryEntryData = monetaryEntryData,
+        )
     return JournalLine(
         id = id,
         transactionId = txId,
@@ -108,29 +118,36 @@ private fun ObjectMapper.readAgentContext(json: String): AgentContext {
 // ── Domain → Entity ────────────────────────────────────────────────────────────
 
 private fun Transaction.toEntity(mapper: ObjectMapper): TransactionDataModel {
-    val entity = TransactionDataModel(
-        id = id.value,
-        tenantId = tenantId.value,
-        idempotencyKey = idempotencyKey,
-        status = status.name,
-        agentContext = agentContext?.let {
-            mapper.writeValueAsString(mapOf(
-                "agentId" to it.agentId,
-                "sessionId" to it.sessionId,
-                "workflowPlanId" to it.workflowPlanId?.value?.toString(),
-                "intent" to it.intent,
-            ))
-        },
-        metadata = mapper.writeValueAsString(metadata),
-        occurredAt = occurredAt,
-        createdAt = createdAt,
-        createdBy = createdBy,
-    )
+    val entity =
+        TransactionDataModel(
+            id = id.value,
+            tenantId = tenantId.value,
+            idempotencyKey = idempotencyKey,
+            status = status.name,
+            agentContext =
+                agentContext?.let {
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "agentId" to it.agentId,
+                            "sessionId" to it.sessionId,
+                            "workflowPlanId" to it.workflowPlanId?.value?.toString(),
+                            "intent" to it.intent,
+                        ),
+                    )
+                },
+            metadata = mapper.writeValueAsString(metadata),
+            occurredAt = occurredAt,
+            createdAt = createdAt,
+            createdBy = createdBy,
+        )
     lines.map { it.toEntity(entity, mapper) }.forEach { entity.lines.add(it) }
     return entity
 }
 
-private fun JournalLine.toEntity(transaction: TransactionDataModel, mapper: ObjectMapper): JournalLineDataModel {
+private fun JournalLine.toEntity(
+    transaction: TransactionDataModel,
+    mapper: ObjectMapper,
+): JournalLineDataModel {
     val cols = monetaryEntry.toColumns(mapper)
     return JournalLineDataModel(
         id = id,

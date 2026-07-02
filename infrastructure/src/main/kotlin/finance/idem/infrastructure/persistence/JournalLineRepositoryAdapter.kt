@@ -19,15 +19,20 @@ class JournalLineRepositoryAdapter(
     private val entityManager: EntityManager,
     private val objectMapper: ObjectMapper,
 ) : JournalLineRepository {
-
     @Transactional(readOnly = true)
-    override fun countByAccountId(accountId: AccountId, tenantId: TenantId): Long {
+    override fun countByAccountId(
+        accountId: AccountId,
+        tenantId: TenantId,
+    ): Long {
         entityManager.setRlsTenantId(tenantId)
         return jpaRepository.countByAccountAndTenant(accountId.value, tenantId.value)
     }
 
     @Transactional(readOnly = true)
-    override fun findMostRecentEntry(accountId: AccountId, tenantId: TenantId): JournalLine? {
+    override fun findMostRecentEntry(
+        accountId: AccountId,
+        tenantId: TenantId,
+    ): JournalLine? {
         entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findLatest(accountId.value, tenantId.value)?.toDomain(tenantId, objectMapper)
     }
@@ -43,25 +48,30 @@ class JournalLineRepositoryAdapter(
         limit: Int,
     ): List<JournalLine> {
         entityManager.setRlsTenantId(tenantId)
-        return jpaRepository.findPage(
-            accountId = accountId.value,
-            tenantId = tenantId.value,
-            from = from,
-            to = to,
-            afterCreatedAt = afterCreatedAt,
-            afterId = afterId,
-            limit = limit,
-        ).map { it.toDomain(tenantId, objectMapper) }
+        return jpaRepository
+            .findPage(
+                accountId = accountId.value,
+                tenantId = tenantId.value,
+                from = from,
+                to = to,
+                afterCreatedAt = afterCreatedAt,
+                afterId = afterId,
+                limit = limit,
+            ).map { it.toDomain(tenantId, objectMapper) }
     }
 }
 
-private fun JournalLineDataModel.toDomain(tenantId: TenantId, mapper: ObjectMapper): JournalLine {
-    val cols = MonetaryEntryColumns(
-        amount = amount,
-        currency = currency,
-        monetaryEntryType = monetaryEntryType,
-        monetaryEntryData = monetaryEntryData,
-    )
+private fun JournalLineDataModel.toDomain(
+    tenantId: TenantId,
+    mapper: ObjectMapper,
+): JournalLine {
+    val cols =
+        MonetaryEntryColumns(
+            amount = amount,
+            currency = currency,
+            monetaryEntryType = monetaryEntryType,
+            monetaryEntryData = monetaryEntryData,
+        )
     return JournalLine(
         id = id,
         transactionId = TransactionId(transaction.id),

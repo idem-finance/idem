@@ -17,7 +17,11 @@ data class AuditEntry(
     val occurredAt: Instant,
 ) {
     companion object {
-        fun from(tx: Transaction, agentContext: AgentContext?, createdBy: String): AuditEntry =
+        fun from(
+            tx: Transaction,
+            agentContext: AgentContext?,
+            createdBy: String,
+        ): AuditEntry =
             AuditEntry(
                 id = UUID.randomUUID(),
                 transactionId = tx.id,

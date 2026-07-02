@@ -11,7 +11,6 @@ import java.util.UUID
 import kotlin.test.assertEquals
 
 class ExportAuditLogServiceTest {
-
     private val tenantId = TenantId.generate()
     private val from = Instant.parse("2026-01-01T00:00:00Z")
     private val to = Instant.parse("2026-06-30T23:59:59Z")
@@ -19,25 +18,27 @@ class ExportAuditLogServiceTest {
     private var capturedQuery: ExportAuditLogQuery? = null
     private var stubbedResult: List<AuditExportRecord> = emptyList()
 
-    private val repo: AuditExportRepository = object : AuditExportRepository {
-        override fun findForExport(query: ExportAuditLogQuery): List<AuditExportRecord> {
-            capturedQuery = query
-            return stubbedResult
+    private val repo: AuditExportRepository =
+        object : AuditExportRepository {
+            override fun findForExport(query: ExportAuditLogQuery): List<AuditExportRecord> {
+                capturedQuery = query
+                return stubbedResult
+            }
         }
-    }
 
     private val service = ExportAuditLogService(repo)
 
-    private fun record(action: String) = AuditExportRecord(
-        timestamp = Instant.now(),
-        actor = "sk_live_test",
-        action = action,
-        entityType = "TRANSACTION",
-        entityId = UUID.randomUUID(),
-        intentDescription = null,
-        hmacSignature = "abc123",
-        outcome = null,
-    )
+    private fun record(action: String) =
+        AuditExportRecord(
+            timestamp = Instant.now(),
+            actor = "sk_live_test",
+            action = action,
+            entityType = "TRANSACTION",
+            entityId = UUID.randomUUID(),
+            intentDescription = null,
+            hmacSignature = "abc123",
+            outcome = null,
+        )
 
     @Test
     fun `delegates query to repository and returns result`() {

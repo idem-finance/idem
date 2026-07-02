@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class OutboxStatusTest {
-
     @Test
     fun `OutboxStatus contains the expected retry state machine values`() {
         val values = OutboxStatus.entries

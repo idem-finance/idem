@@ -23,9 +23,11 @@ class TravelRuleRepositoryAdapter(
     private val entityManager: EntityManager,
     private val objectMapper: ObjectMapper,
 ) : TravelRuleRepository {
-
     @Transactional
-    override fun save(data: TravelRuleData, tenantId: TenantId): TravelRuleData {
+    override fun save(
+        data: TravelRuleData,
+        tenantId: TenantId,
+    ): TravelRuleData {
         entityManager.setRlsTenantId(tenantId)
         val existing = jpaRepository.findByTransferIdAndTenantId(data.transferId, tenantId.value)
         if (existing != null) return existing.toDomain()
@@ -40,13 +42,16 @@ class TravelRuleRepositoryAdapter(
                 transferAsset = data.transferAsset.name,
                 threshold = data.threshold.value,
                 createdAt = Instant.now(),
-            )
+            ),
         )
         return data
     }
 
     @Transactional
-    override fun findByTransferId(transferId: String, tenantId: TenantId): TravelRuleData? {
+    override fun findByTransferId(
+        transferId: String,
+        tenantId: TenantId,
+    ): TravelRuleData? {
         entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByTransferIdAndTenantId(transferId, tenantId.value)?.toDomain()
     }
@@ -61,47 +66,53 @@ class TravelRuleRepositoryAdapter(
             threshold = MonetaryAmount.of(threshold),
         )
 
-    private fun VaspTransferParty.toJson() = PartyJson(
-        naturalPerson = naturalPerson?.let { p ->
-            NaturalPersonJson(
-                firstName = p.firstName,
-                lastName = p.lastName,
-                dateOfBirth = p.dateOfBirth.toString(),
-                nationalId = p.nationalId,
-                country = p.country,
-            )
-        },
-        legalPerson = legalPerson?.let { p ->
-            LegalPersonJson(
-                name = p.name,
-                registrationNumber = p.registrationNumber,
-                country = p.country,
-            )
-        },
-        accountNumber = accountNumber,
-        vaspDid = vaspDid,
-    )
+    private fun VaspTransferParty.toJson() =
+        PartyJson(
+            naturalPerson =
+                naturalPerson?.let { p ->
+                    NaturalPersonJson(
+                        firstName = p.firstName,
+                        lastName = p.lastName,
+                        dateOfBirth = p.dateOfBirth.toString(),
+                        nationalId = p.nationalId,
+                        country = p.country,
+                    )
+                },
+            legalPerson =
+                legalPerson?.let { p ->
+                    LegalPersonJson(
+                        name = p.name,
+                        registrationNumber = p.registrationNumber,
+                        country = p.country,
+                    )
+                },
+            accountNumber = accountNumber,
+            vaspDid = vaspDid,
+        )
 
-    private fun PartyJson.toDomain() = VaspTransferParty(
-        naturalPerson = naturalPerson?.let { p ->
-            NaturalPerson(
-                firstName = p.firstName,
-                lastName = p.lastName,
-                dateOfBirth = LocalDate.parse(p.dateOfBirth),
-                nationalId = p.nationalId,
-                country = p.country,
-            )
-        },
-        legalPerson = legalPerson?.let { p ->
-            LegalPerson(
-                name = p.name,
-                registrationNumber = p.registrationNumber,
-                country = p.country,
-            )
-        },
-        accountNumber = accountNumber,
-        vaspDid = vaspDid,
-    )
+    private fun PartyJson.toDomain() =
+        VaspTransferParty(
+            naturalPerson =
+                naturalPerson?.let { p ->
+                    NaturalPerson(
+                        firstName = p.firstName,
+                        lastName = p.lastName,
+                        dateOfBirth = LocalDate.parse(p.dateOfBirth),
+                        nationalId = p.nationalId,
+                        country = p.country,
+                    )
+                },
+            legalPerson =
+                legalPerson?.let { p ->
+                    LegalPerson(
+                        name = p.name,
+                        registrationNumber = p.registrationNumber,
+                        country = p.country,
+                    )
+                },
+            accountNumber = accountNumber,
+            vaspDid = vaspDid,
+        )
 
     private data class PartyJson(
         val naturalPerson: NaturalPersonJson? = null,

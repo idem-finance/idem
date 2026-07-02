@@ -5,7 +5,6 @@ import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
 
 class LegalPersonTest {
-
     @Test
     fun `blank name throws IllegalArgumentException`() {
         assertThrows<IllegalArgumentException> {
@@ -29,11 +28,12 @@ class LegalPersonTest {
 
     @Test
     fun `happy path round-trips all fields correctly`() {
-        val entity = LegalPerson(
-            name = "Acme Corp",
-            registrationNumber = "12.345.678/0001-90",
-            country = "BR",
-        )
+        val entity =
+            LegalPerson(
+                name = "Acme Corp",
+                registrationNumber = "12.345.678/0001-90",
+                country = "BR",
+            )
         assertEquals("Acme Corp", entity.name)
         assertEquals("12.345.678/0001-90", entity.registrationNumber)
         assertEquals("BR", entity.country)

@@ -18,19 +18,21 @@ class AgentAuditRepositoryAdapter(
     private val objectMapper: ObjectMapper,
     private val auditProperties: AuditProperties,
 ) : AgentAuditRepository {
-
     @Transactional
     override fun save(event: AgentAuditEvent) {
         entityManager.setRlsTenantId(event.tenantId)
-        val payload = objectMapper.writeValueAsString(mapOf(
-            "tenantId" to event.tenantId.value.toString(),
-            "workflowPlanId" to event.workflowPlanId.value.toString(),
-            "agentId" to event.agentContext.agentId,
-            "sessionId" to event.agentContext.sessionId,
-            "intent" to event.intent,
-            "status" to event.status.name,
-            "outcome" to event.outcome,
-        ))
+        val payload =
+            objectMapper.writeValueAsString(
+                mapOf(
+                    "tenantId" to event.tenantId.value.toString(),
+                    "workflowPlanId" to event.workflowPlanId.value.toString(),
+                    "agentId" to event.agentContext.agentId,
+                    "sessionId" to event.agentContext.sessionId,
+                    "intent" to event.intent,
+                    "status" to event.status.name,
+                    "outcome" to event.outcome,
+                ),
+            )
         jpaRepository.save(
             AgentAuditEventDataModel(
                 id = event.id,
@@ -44,7 +46,7 @@ class AgentAuditRepositoryAdapter(
                 payload = payload,
                 hmac = event.computeHmac(auditProperties.hmacSecret),
                 occurredAt = event.occurredAt,
-            )
+            ),
         )
     }
 
@@ -78,12 +80,13 @@ class AgentAuditRepositoryAdapter(
     }
 
     private fun AgentAuditEventDataModel.toView(): AgentAuditView {
-        val eventType = when (status) {
-            "PENDING" -> "AGENT_ACTION_STARTED"
-            "COMPLETED" -> "AGENT_ACTION_COMPLETED"
-            "FAILED" -> "AGENT_ACTION_FAILED"
-            else -> status
-        }
+        val eventType =
+            when (status) {
+                "PENDING" -> "AGENT_ACTION_STARTED"
+                "COMPLETED" -> "AGENT_ACTION_COMPLETED"
+                "FAILED" -> "AGENT_ACTION_FAILED"
+                else -> status
+            }
         val completedAt = if (status == "COMPLETED" || status == "FAILED") occurredAt else null
         return AgentAuditView(
             id = id,
@@ -98,5 +101,4 @@ class AgentAuditRepositoryAdapter(
             hmacSignature = hmac,
         )
     }
-
 }

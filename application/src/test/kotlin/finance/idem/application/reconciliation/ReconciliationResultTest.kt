@@ -14,21 +14,21 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class ReconciliationResultTest {
-
     private val watchedWallet = "5FHwkrdxkTEBqVTBmRjfBknDiCMWB6cYPQCGt1tnk9HS"
 
-    private fun pendingSettlement() = Settlement(
-        id = UUID.randomUUID(),
-        tenantId = TenantId.generate(),
-        accountId = AccountId.generate(),
-        amount = MonetaryAmount.of("100.000000"),
-        token = StablecoinToken.USDC,
-        chainId = ChainId.SOLANA,
-        walletAddress = watchedWallet,
-        status = EntryStatus.PENDING,
-        createdAt = Instant.now(),
-        createdBy = "api-user",
-    )
+    private fun pendingSettlement() =
+        Settlement(
+            id = UUID.randomUUID(),
+            tenantId = TenantId.generate(),
+            accountId = AccountId.generate(),
+            amount = MonetaryAmount.of("100.000000"),
+            token = StablecoinToken.USDC,
+            chainId = ChainId.SOLANA,
+            walletAddress = watchedWallet,
+            status = EntryStatus.PENDING,
+            createdAt = Instant.now(),
+            createdBy = "api-user",
+        )
 
     @Test
     fun `NotApplicable is a singleton value`() {

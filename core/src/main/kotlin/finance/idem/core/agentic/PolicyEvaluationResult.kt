@@ -7,10 +7,11 @@ package finance.idem.core.agentic
  * [Denied]   — one or more rules failed; [violations] is never empty.
  */
 sealed class PolicyEvaluationResult {
-
     data object Approved : PolicyEvaluationResult()
 
-    data class Denied(val violations: List<PolicyViolation>) : PolicyEvaluationResult() {
+    data class Denied(
+        val violations: List<PolicyViolation>,
+    ) : PolicyEvaluationResult() {
         init {
             require(violations.isNotEmpty()) { "Denied must carry at least one violation" }
         }

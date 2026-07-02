@@ -5,7 +5,10 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.monetary.FiatEntry
 
 object BalanceCalculator {
-    fun compute(account: Account, transactions: List<Transaction>): MonetaryAmount {
+    fun compute(
+        account: Account,
+        transactions: List<Transaction>,
+    ): MonetaryAmount {
         var debits = MonetaryAmount.ZERO
         var credits = MonetaryAmount.ZERO
 

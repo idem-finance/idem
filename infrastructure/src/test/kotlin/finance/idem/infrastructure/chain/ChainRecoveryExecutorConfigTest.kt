@@ -6,7 +6,6 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 class ChainRecoveryExecutorConfigTest {
-
     @Test
     fun `chainRecoveryExecutor runs tasks on named virtual threads`() {
         val executor = ChainRecoveryExecutorConfig().chainRecoveryExecutor()

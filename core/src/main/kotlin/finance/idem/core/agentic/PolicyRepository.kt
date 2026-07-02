@@ -11,10 +11,23 @@ import finance.idem.core.TenantId
  * (agent_key_prefix IS NULL) with rules targeted at a specific agent key prefix.
  */
 interface PolicyRepository {
-    fun findEffective(tenantId: TenantId, agentKeyPrefix: String?): List<PolicyRule>
+    fun findEffective(
+        tenantId: TenantId,
+        agentKeyPrefix: String?,
+    ): List<PolicyRule>
+
     fun findAll(tenantId: TenantId): List<PolicyRuleRecord>
-    fun save(tenantId: TenantId, agentKeyPrefix: String?, rule: PolicyRule): PolicyRuleRecord
-    fun delete(tenantId: TenantId, ruleId: PolicyRuleId): Boolean
+
+    fun save(
+        tenantId: TenantId,
+        agentKeyPrefix: String?,
+        rule: PolicyRule,
+    ): PolicyRuleRecord
+
+    fun delete(
+        tenantId: TenantId,
+        ruleId: PolicyRuleId,
+    ): Boolean
 }
 
 data class PolicyRuleRecord(

@@ -13,7 +13,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 class GenerateStatementModelsTest {
-
     private val accountId = AccountId.generate()
     private val tenantId = TenantId.generate()
     private val now = Instant.now()
@@ -31,13 +30,14 @@ class GenerateStatementModelsTest {
     @Test
     fun `StatementMovement holds all fields`() {
         val txId = TransactionId.generate()
-        val movement = StatementMovement(
-            transactionId = txId,
-            type = EntryType.DEBIT,
-            amount = MonetaryAmount.of("500"),
-            description = "Pix received",
-            occurredAt = now,
-        )
+        val movement =
+            StatementMovement(
+                transactionId = txId,
+                type = EntryType.DEBIT,
+                amount = MonetaryAmount.of("500"),
+                description = "Pix received",
+                occurredAt = now,
+            )
         assertEquals(txId, movement.transactionId)
         assertEquals(EntryType.DEBIT, movement.type)
         assertEquals(MonetaryAmount.of("500"), movement.amount)
@@ -48,34 +48,37 @@ class GenerateStatementModelsTest {
 
     @Test
     fun `StatementMovement description may be null`() {
-        val movement = StatementMovement(
-            transactionId = TransactionId.generate(),
-            type = EntryType.CREDIT,
-            amount = MonetaryAmount.of("100"),
-            description = null,
-            occurredAt = now,
-        )
+        val movement =
+            StatementMovement(
+                transactionId = TransactionId.generate(),
+                type = EntryType.CREDIT,
+                amount = MonetaryAmount.of("100"),
+                description = null,
+                occurredAt = now,
+            )
         assertNull(movement.description)
     }
 
     @Test
     fun `AccountStatement holds all fields`() {
-        val movement = StatementMovement(
-            transactionId = TransactionId.generate(),
-            type = EntryType.DEBIT,
-            amount = MonetaryAmount.of("500"),
-            description = null,
-            occurredAt = now,
-        )
-        val statement = AccountStatement(
-            accountId = accountId,
-            currency = FiatCurrency.BRL,
-            from = now,
-            to = now,
-            openingBalance = MonetaryAmount.of("1000"),
-            closingBalance = MonetaryAmount.of("1500"),
-            movements = listOf(movement),
-        )
+        val movement =
+            StatementMovement(
+                transactionId = TransactionId.generate(),
+                type = EntryType.DEBIT,
+                amount = MonetaryAmount.of("500"),
+                description = null,
+                occurredAt = now,
+            )
+        val statement =
+            AccountStatement(
+                accountId = accountId,
+                currency = FiatCurrency.BRL,
+                from = now,
+                to = now,
+                openingBalance = MonetaryAmount.of("1000"),
+                closingBalance = MonetaryAmount.of("1500"),
+                movements = listOf(movement),
+            )
         assertEquals(accountId, statement.accountId)
         assertEquals(FiatCurrency.BRL, statement.currency)
         assertEquals(now, statement.from)

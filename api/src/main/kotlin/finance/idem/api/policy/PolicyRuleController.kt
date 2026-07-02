@@ -27,7 +27,6 @@ import java.util.UUID
 class PolicyRuleController(
     private val managePolicyRulesUseCase: ManagePolicyRulesUseCase,
 ) {
-
     @PostMapping
     @PreAuthorize("hasAuthority('ADMIN')")
     @Operation(summary = "Create a policy rule for this tenant")
@@ -37,7 +36,9 @@ class PolicyRuleController(
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "403", description = "Requires ADMIN scope"),
     )
-    fun create(@RequestBody request: CreatePolicyRuleRequest): ResponseEntity<Any> {
+    fun create(
+        @RequestBody request: CreatePolicyRuleRequest,
+    ): ResponseEntity<Any> {
         val tenantId = tenantId()
         return try {
             val rule = request.toRule()
@@ -68,16 +69,18 @@ class PolicyRuleController(
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "403", description = "Requires ADMIN scope"),
     )
-    fun delete(@PathVariable ruleId: UUID): ResponseEntity<Any> {
+    fun delete(
+        @PathVariable ruleId: UUID,
+    ): ResponseEntity<Any> {
         val deleted = managePolicyRulesUseCase.delete(tenantId(), PolicyRuleId(ruleId))
         return if (deleted) {
             ResponseEntity.noContent().build()
         } else {
-            ResponseEntity.status(HttpStatus.NOT_FOUND)
+            ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse("POLICY_RULE_NOT_FOUND", "Rule not found for this tenant"))
         }
     }
 
-    private fun tenantId(): TenantId =
-        SecurityContextHolder.getContext().authentication.principal as TenantId
+    private fun tenantId(): TenantId = SecurityContextHolder.getContext().authentication.principal as TenantId
 }

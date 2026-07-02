@@ -9,24 +9,25 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class AgentAuditEventTest {
-
     private val workflowPlanId = WorkflowPlanId.generate()
     private val tenantId = TenantId.generate()
-    private val agentContext = AgentContext(
-        agentId = "agent-1",
-        sessionId = "sess-abc",
-        workflowPlanId = workflowPlanId,
-        intent = "offramp",
-    )
+    private val agentContext =
+        AgentContext(
+            agentId = "agent-1",
+            sessionId = "sess-abc",
+            workflowPlanId = workflowPlanId,
+            intent = "offramp",
+        )
 
     @Test
     fun `pending creates event with PENDING status and no outcome`() {
-        val event = AgentAuditEvent.pending(
-            workflowPlanId = workflowPlanId,
-            tenantId = tenantId,
-            agentContext = agentContext,
-            intent = "offramp",
-        )
+        val event =
+            AgentAuditEvent.pending(
+                workflowPlanId = workflowPlanId,
+                tenantId = tenantId,
+                agentContext = agentContext,
+                intent = "offramp",
+            )
 
         assertEquals(AgentAuditStatus.PENDING, event.status)
         assertEquals(workflowPlanId, event.workflowPlanId)
@@ -39,23 +40,25 @@ class AgentAuditEventTest {
 
     @Test
     fun `pending with null intent stores null`() {
-        val event = AgentAuditEvent.pending(
-            workflowPlanId = workflowPlanId,
-            tenantId = tenantId,
-            agentContext = agentContext,
-            intent = null,
-        )
+        val event =
+            AgentAuditEvent.pending(
+                workflowPlanId = workflowPlanId,
+                tenantId = tenantId,
+                agentContext = agentContext,
+                intent = null,
+            )
         assertNull(event.intent)
     }
 
     @Test
     fun `completed creates event with COMPLETED status and outcome`() {
-        val event = AgentAuditEvent.completed(
-            workflowPlanId = workflowPlanId,
-            tenantId = tenantId,
-            agentContext = agentContext,
-            outcome = "Workflow committed with 2 step(s)",
-        )
+        val event =
+            AgentAuditEvent.completed(
+                workflowPlanId = workflowPlanId,
+                tenantId = tenantId,
+                agentContext = agentContext,
+                outcome = "Workflow committed with 2 step(s)",
+            )
 
         assertEquals(AgentAuditStatus.COMPLETED, event.status)
         assertEquals("Workflow committed with 2 step(s)", event.outcome)
@@ -64,12 +67,13 @@ class AgentAuditEventTest {
 
     @Test
     fun `failed creates event with FAILED status and outcome`() {
-        val event = AgentAuditEvent.failed(
-            workflowPlanId = workflowPlanId,
-            tenantId = tenantId,
-            agentContext = agentContext,
-            outcome = "Step 1 failed: account not found",
-        )
+        val event =
+            AgentAuditEvent.failed(
+                workflowPlanId = workflowPlanId,
+                tenantId = tenantId,
+                agentContext = agentContext,
+                outcome = "Step 1 failed: account not found",
+            )
 
         assertEquals(AgentAuditStatus.FAILED, event.status)
         assertEquals("Step 1 failed: account not found", event.outcome)

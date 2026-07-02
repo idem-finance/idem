@@ -29,7 +29,6 @@ class DevDataSeeder(
     private val apiKeyService: ApiKeyService,
     private val context: ApplicationContext,
 ) : ApplicationRunner {
-
     private val log = LoggerFactory.getLogger(javaClass)
     private val devTenantId = UUID.fromString("00000000-0000-0000-0000-000000000001")
 

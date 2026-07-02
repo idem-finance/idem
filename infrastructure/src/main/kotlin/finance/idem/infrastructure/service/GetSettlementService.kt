@@ -12,11 +12,11 @@ import org.springframework.transaction.annotation.Transactional
 class GetSettlementService(
     private val settlementRepository: SettlementRepository,
 ) : GetSettlementUseCase {
-
     @Transactional(readOnly = true)
     override fun execute(query: GetSettlementQuery): Result<Settlement> {
-        val settlement = settlementRepository.findById(query.id, query.tenantId)
-            ?: return Result.failure(SettlementNotFound(query.id))
+        val settlement =
+            settlementRepository.findById(query.id, query.tenantId)
+                ?: return Result.failure(SettlementNotFound(query.id))
         return Result.success(settlement)
     }
 }

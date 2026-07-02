@@ -10,7 +10,5 @@ import org.springframework.stereotype.Service
 class GetWebhookConfigService(
     private val tenantRepository: TenantRepository,
 ) : GetWebhookConfigUseCase {
-
-    override fun execute(tenantId: TenantId): TenantWebhookConfig? =
-        tenantRepository.findWebhookConfig(tenantId)
+    override fun execute(tenantId: TenantId): TenantWebhookConfig? = tenantRepository.findWebhookConfig(tenantId)
 }

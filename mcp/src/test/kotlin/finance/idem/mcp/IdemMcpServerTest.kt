@@ -3,6 +3,8 @@ package finance.idem.mcp
 import finance.idem.application.agentic.CompensatedStepSummary
 import finance.idem.application.agentic.ExecuteWorkflowCommand
 import finance.idem.application.agentic.ExecuteWorkflowUseCase
+import finance.idem.application.agentic.GetAgentAuditLogQuery
+import finance.idem.application.agentic.GetAgentAuditLogUseCase
 import finance.idem.application.agentic.RollbackWorkflowCommand
 import finance.idem.application.agentic.RollbackWorkflowSummary
 import finance.idem.application.agentic.RollbackWorkflowUseCase
@@ -15,8 +17,6 @@ import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.application.ledger.GetBalanceUseCase
 import finance.idem.application.ledger.GetEntriesQuery
 import finance.idem.application.ledger.GetEntriesUseCase
-import finance.idem.application.agentic.GetAgentAuditLogQuery
-import finance.idem.application.agentic.GetAgentAuditLogUseCase
 import finance.idem.application.port.AgentAuditView
 import finance.idem.application.reconciliation.ReconcileEntriesCommand
 import finance.idem.application.reconciliation.ReconcileEntriesResult
@@ -33,7 +33,6 @@ import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.PolicyViolationException
-import java.math.BigDecimal
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
@@ -49,6 +48,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.springframework.security.authentication.TestingAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
+import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -58,13 +58,18 @@ import kotlin.test.assertNull
 
 @ExtendWith(MockitoExtension::class)
 class IdemMcpServerTest {
-
     @Mock lateinit var executeWorkflowUseCase: ExecuteWorkflowUseCase
+
     @Mock lateinit var getBalanceUseCase: GetBalanceUseCase
+
     @Mock lateinit var getEntriesUseCase: GetEntriesUseCase
+
     @Mock lateinit var describeAccountUseCase: DescribeAccountUseCase
+
     @Mock lateinit var rollbackWorkflowUseCase: RollbackWorkflowUseCase
+
     @Mock lateinit var reconcileEntriesUseCase: ReconcileEntriesUseCase
+
     @Mock lateinit var getAgentAuditLogUseCase: GetAgentAuditLogUseCase
 
     private lateinit var server: IdemMcpServer
@@ -74,10 +79,16 @@ class IdemMcpServerTest {
 
     @BeforeEach
     fun setUp() {
-        server = IdemMcpServer(
-            executeWorkflowUseCase, getBalanceUseCase, getEntriesUseCase, describeAccountUseCase,
-            rollbackWorkflowUseCase, reconcileEntriesUseCase, getAgentAuditLogUseCase,
-        )
+        server =
+            IdemMcpServer(
+                executeWorkflowUseCase,
+                getBalanceUseCase,
+                getEntriesUseCase,
+                describeAccountUseCase,
+                rollbackWorkflowUseCase,
+                reconcileEntriesUseCase,
+                getAgentAuditLogUseCase,
+            )
         val auth = TestingAuthenticationToken(tenantId, null, "AGENTS_EXECUTE", "AGENTS_ROLLBACK", "AGENTS_AUDIT_READ")
         SecurityContextHolder.getContext().authentication = auth
     }
@@ -94,21 +105,23 @@ class IdemMcpServerTest {
         val planId = WorkflowPlanId.generate()
         whenever(executeWorkflowUseCase.execute(any())).thenReturn(Result.success(planId))
 
-        val entry = McpJournalLineInput(
-            accountId = accountId.value.toString(),
-            entryType = "DEBIT",
-            monetaryEntryType = "FIAT",
-            amount = "100.00",
-            currency = "USD",
-            rail = "WIRE",
-        )
-        val result = server.postTransaction(
-            entries = listOf(entry),
-            idempotencyKey = "idem-key-1",
-            intentDescription = "Test transfer",
-            agentId = "agent-1",
-            sessionId = "session-1",
-        )
+        val entry =
+            McpJournalLineInput(
+                accountId = accountId.value.toString(),
+                entryType = "DEBIT",
+                monetaryEntryType = "FIAT",
+                amount = "100.00",
+                currency = "USD",
+                rail = "WIRE",
+            )
+        val result =
+            server.postTransaction(
+                entries = listOf(entry),
+                idempotencyKey = "idem-key-1",
+                intentDescription = "Test transfer",
+                agentId = "agent-1",
+                sessionId = "session-1",
+            )
 
         assertEquals(planId.value.toString(), result.workflowPlanId)
         assertEquals("COMMITTED", result.status)
@@ -131,14 +144,15 @@ class IdemMcpServerTest {
         val planId = WorkflowPlanId.generate()
         whenever(executeWorkflowUseCase.execute(any())).thenReturn(Result.success(planId))
 
-        val entry = McpJournalLineInput(
-            accountId = accountId.value.toString(),
-            entryType = "DEBIT",
-            monetaryEntryType = "FIAT",
-            amount = "50.00",
-            currency = "USD",
-            rail = "WIRE",
-        )
+        val entry =
+            McpJournalLineInput(
+                accountId = accountId.value.toString(),
+                entryType = "DEBIT",
+                monetaryEntryType = "FIAT",
+                amount = "50.00",
+                currency = "USD",
+                rail = "WIRE",
+            )
         server.postTransaction(listOf(entry), "key", null, "agent", "session")
 
         val captor = argumentCaptor<ExecuteWorkflowCommand>()
@@ -153,14 +167,15 @@ class IdemMcpServerTest {
         whenever(executeWorkflowUseCase.execute(any())).thenReturn(
             Result.failure(PolicyViolationException(emptyList())),
         )
-        val entry = McpJournalLineInput(
-            accountId = accountId.value.toString(),
-            entryType = "DEBIT",
-            monetaryEntryType = "FIAT",
-            amount = "100.00",
-            currency = "USD",
-            rail = "WIRE",
-        )
+        val entry =
+            McpJournalLineInput(
+                accountId = accountId.value.toString(),
+                entryType = "DEBIT",
+                monetaryEntryType = "FIAT",
+                amount = "100.00",
+                currency = "USD",
+                rail = "WIRE",
+            )
         assertFailsWith<PolicyViolationException> {
             server.postTransaction(listOf(entry), "key", null, "agent", "session")
         }
@@ -171,13 +186,14 @@ class IdemMcpServerTest {
     @Test
     fun `getBalance passes correct query and returns balance fields`() {
         val now = Instant.now()
-        val balance = Balance(
-            accountId = accountId,
-            currency = FiatCurrency.USD,
-            amount = MonetaryAmount.of("500.00"),
-            normalBalance = EntryType.DEBIT,
-            computedAt = now,
-        )
+        val balance =
+            Balance(
+                accountId = accountId,
+                currency = FiatCurrency.USD,
+                amount = MonetaryAmount.of("500.00"),
+                normalBalance = EntryType.DEBIT,
+                computedAt = now,
+            )
         whenever(getBalanceUseCase.execute(any())).thenReturn(Result.success(balance))
 
         val result = server.getBalance(accountId = accountId.value.toString(), asOf = null)
@@ -219,13 +235,14 @@ class IdemMcpServerTest {
         val page = EntryPage(accountId = accountId, entries = emptyList(), nextCursor = null)
         whenever(getEntriesUseCase.execute(any())).thenReturn(Result.success(page))
 
-        val result = server.listEntries(
-            accountId = accountId.value.toString(),
-            from = null,
-            to = null,
-            limit = 25,
-            cursor = null,
-        )
+        val result =
+            server.listEntries(
+                accountId = accountId.value.toString(),
+                from = null,
+                to = null,
+                limit = 25,
+                cursor = null,
+            )
 
         assertEquals(accountId.value.toString(), result.accountId)
         assertEquals(0, result.entries.size)
@@ -268,17 +285,18 @@ class IdemMcpServerTest {
         val txId = TransactionId(UUID.randomUUID())
         val lineId = UUID.randomUUID()
         val now = Instant.now()
-        val line = JournalLine(
-            id = lineId,
-            transactionId = txId,
-            accountId = accountId,
-            tenantId = tenantId,
-            entryType = EntryType.CREDIT,
-            monetaryEntry = FiatEntry(MonetaryAmount.of("250"), FiatCurrency.BRL, PaymentRail.PIX),
-            description = "Test payment",
-            createdAt = now,
-            createdBy = "agent-1",
-        )
+        val line =
+            JournalLine(
+                id = lineId,
+                transactionId = txId,
+                accountId = accountId,
+                tenantId = tenantId,
+                entryType = EntryType.CREDIT,
+                monetaryEntry = FiatEntry(MonetaryAmount.of("250"), FiatCurrency.BRL, PaymentRail.PIX),
+                description = "Test payment",
+                createdAt = now,
+                createdBy = "agent-1",
+            )
         val page = EntryPage(accountId = accountId, entries = listOf(line), nextCursor = "cursor-abc")
         whenever(getEntriesUseCase.execute(any())).thenReturn(Result.success(page))
 
@@ -298,18 +316,19 @@ class IdemMcpServerTest {
 
     @Test
     fun `McpJournalLineInput converts ON_CHAIN entry correctly`() {
-        val input = McpJournalLineInput(
-            accountId = accountId.value.toString(),
-            entryType = "CREDIT",
-            monetaryEntryType = "ON_CHAIN",
-            amount = "1000",
-            token = "USDC",
-            chainId = "EVM",
-            txHash = "0xabc123",
-            blockNumber = 19_000_000L,
-            walletAddress = "0xwallet",
-            tokenContract = "0xcontract",
-        )
+        val input =
+            McpJournalLineInput(
+                accountId = accountId.value.toString(),
+                entryType = "CREDIT",
+                monetaryEntryType = "ON_CHAIN",
+                amount = "1000",
+                token = "USDC",
+                chainId = "EVM",
+                txHash = "0xabc123",
+                blockNumber = 19_000_000L,
+                walletAddress = "0xwallet",
+                tokenContract = "0xcontract",
+            )
         val request = input.toJournalLineRequest()
 
         assertEquals(EntryType.CREDIT, request.entryType)
@@ -321,12 +340,13 @@ class IdemMcpServerTest {
 
     @Test
     fun `McpJournalLineInput throws on unknown monetaryEntryType`() {
-        val input = McpJournalLineInput(
-            accountId = accountId.value.toString(),
-            entryType = "DEBIT",
-            monetaryEntryType = "CRYPTO",
-            amount = "50",
-        )
+        val input =
+            McpJournalLineInput(
+                accountId = accountId.value.toString(),
+                entryType = "DEBIT",
+                monetaryEntryType = "CRYPTO",
+                amount = "50",
+            )
         assertFailsWith<IllegalArgumentException> {
             input.toJournalLineRequest()
         }
@@ -334,13 +354,14 @@ class IdemMcpServerTest {
 
     @Test
     fun `McpJournalLineInput throws when FIAT entry is missing currency`() {
-        val input = McpJournalLineInput(
-            accountId = accountId.value.toString(),
-            entryType = "DEBIT",
-            monetaryEntryType = "FIAT",
-            amount = "100",
-            rail = "WIRE",
-        )
+        val input =
+            McpJournalLineInput(
+                accountId = accountId.value.toString(),
+                entryType = "DEBIT",
+                monetaryEntryType = "FIAT",
+                amount = "100",
+                rail = "WIRE",
+            )
         assertFailsWith<IllegalArgumentException> {
             input.toJournalLineRequest()
         }
@@ -348,13 +369,14 @@ class IdemMcpServerTest {
 
     @Test
     fun `McpJournalLineInput throws when FIAT entry is missing rail`() {
-        val input = McpJournalLineInput(
-            accountId = accountId.value.toString(),
-            entryType = "DEBIT",
-            monetaryEntryType = "FIAT",
-            amount = "100",
-            currency = "BRL",
-        )
+        val input =
+            McpJournalLineInput(
+                accountId = accountId.value.toString(),
+                entryType = "DEBIT",
+                monetaryEntryType = "FIAT",
+                amount = "100",
+                currency = "BRL",
+            )
         assertFailsWith<IllegalArgumentException> {
             input.toJournalLineRequest()
         }
@@ -362,17 +384,18 @@ class IdemMcpServerTest {
 
     @Test
     fun `McpJournalLineInput throws when ON_CHAIN entry is missing token`() {
-        val input = McpJournalLineInput(
-            accountId = accountId.value.toString(),
-            entryType = "CREDIT",
-            monetaryEntryType = "ON_CHAIN",
-            amount = "50",
-            chainId = "EVM",
-            txHash = "0xabc",
-            blockNumber = 1L,
-            walletAddress = "0xw",
-            tokenContract = "0xc",
-        )
+        val input =
+            McpJournalLineInput(
+                accountId = accountId.value.toString(),
+                entryType = "CREDIT",
+                monetaryEntryType = "ON_CHAIN",
+                amount = "50",
+                chainId = "EVM",
+                txHash = "0xabc",
+                blockNumber = 1L,
+                walletAddress = "0xw",
+                tokenContract = "0xc",
+            )
         assertFailsWith<IllegalArgumentException> {
             input.toJournalLineRequest()
         }
@@ -380,17 +403,18 @@ class IdemMcpServerTest {
 
     @Test
     fun `McpJournalLineInput throws when ON_CHAIN entry is missing txHash`() {
-        val input = McpJournalLineInput(
-            accountId = accountId.value.toString(),
-            entryType = "CREDIT",
-            monetaryEntryType = "ON_CHAIN",
-            amount = "50",
-            token = "USDC",
-            chainId = "EVM",
-            blockNumber = 1L,
-            walletAddress = "0xw",
-            tokenContract = "0xc",
-        )
+        val input =
+            McpJournalLineInput(
+                accountId = accountId.value.toString(),
+                entryType = "CREDIT",
+                monetaryEntryType = "ON_CHAIN",
+                amount = "50",
+                token = "USDC",
+                chainId = "EVM",
+                blockNumber = 1L,
+                walletAddress = "0xw",
+                tokenContract = "0xc",
+            )
         assertFailsWith<IllegalArgumentException> {
             input.toJournalLineRequest()
         }
@@ -402,19 +426,21 @@ class IdemMcpServerTest {
     fun `rollbackWorkflow returns rollbackId and compensated steps on success`() {
         val planId = WorkflowPlanId.generate()
         val txId = TransactionId(UUID.randomUUID())
-        val summary = RollbackWorkflowSummary(
-            workflowPlanId = planId,
-            compensatedSteps = listOf(CompensatedStepSummary(0, "Transfer funds", txId)),
-            status = "ROLLED_BACK",
-        )
+        val summary =
+            RollbackWorkflowSummary(
+                workflowPlanId = planId,
+                compensatedSteps = listOf(CompensatedStepSummary(0, "Transfer funds", txId)),
+                status = "ROLLED_BACK",
+            )
         whenever(rollbackWorkflowUseCase.execute(any())).thenReturn(Result.success(summary))
 
-        val result = server.rollbackWorkflow(
-            workflowPlanId = planId.value.toString(),
-            reason = "Test rollback",
-            agentId = "agent-1",
-            sessionId = "session-1",
-        )
+        val result =
+            server.rollbackWorkflow(
+                workflowPlanId = planId.value.toString(),
+                reason = "Test rollback",
+                agentId = "agent-1",
+                sessionId = "session-1",
+            )
 
         assertEquals(planId.value.toString(), result.rollbackId)
         assertEquals("ROLLED_BACK", result.status)
@@ -436,7 +462,7 @@ class IdemMcpServerTest {
     @Test
     fun `rollbackWorkflow propagates failure`() {
         whenever(rollbackWorkflowUseCase.execute(any())).thenReturn(
-            Result.failure(IllegalStateException("Cannot rollback PLANNED workflow"))
+            Result.failure(IllegalStateException("Cannot rollback PLANNED workflow")),
         )
         assertFailsWith<RuntimeException> {
             server.rollbackWorkflow(
@@ -452,20 +478,22 @@ class IdemMcpServerTest {
 
     @Test
     fun `reconcileBatch maps result fields correctly`() {
-        val reconcileResult = ReconcileEntriesResult(
-            matched = 3,
-            unmatched = 1,
-            exceptions = listOf(ReconciliationException(UUID.randomUUID(), "0xabc", "No match")),
-            settlementIds = listOf("id-1", "id-2", "id-3"),
-        )
+        val reconcileResult =
+            ReconcileEntriesResult(
+                matched = 3,
+                unmatched = 1,
+                exceptions = listOf(ReconciliationException(UUID.randomUUID(), "0xabc", "No match")),
+                settlementIds = listOf("id-1", "id-2", "id-3"),
+            )
         whenever(reconcileEntriesUseCase.execute(any())).thenReturn(Result.success(reconcileResult))
 
-        val result = server.reconcileBatch(
-            accountId = null,
-            from = "2025-01-01T00:00:00Z",
-            to = "2025-01-31T23:59:59Z",
-            tolerancePercent = null,
-        )
+        val result =
+            server.reconcileBatch(
+                accountId = null,
+                from = "2025-01-01T00:00:00Z",
+                to = "2025-01-31T23:59:59Z",
+                tolerancePercent = null,
+            )
 
         assertEquals(3, result.matched)
         assertEquals(1, result.unmatched)
@@ -477,7 +505,7 @@ class IdemMcpServerTest {
     @Test
     fun `reconcileBatch forwards tolerancePercent in command`() {
         whenever(reconcileEntriesUseCase.execute(any())).thenReturn(
-            Result.success(ReconcileEntriesResult(0, 0, emptyList(), emptyList()))
+            Result.success(ReconcileEntriesResult(0, 0, emptyList(), emptyList())),
         )
 
         server.reconcileBatch(
@@ -500,20 +528,22 @@ class IdemMcpServerTest {
         val eventId = UUID.randomUUID()
         val planId = UUID.randomUUID()
         val now = Instant.now()
-        whenever(getAgentAuditLogUseCase.execute(any())).thenReturn(listOf(
-            AgentAuditView(
-                id = eventId,
-                workflowPlanId = planId,
-                agentId = "agent-99",
-                sessionId = "sess-abc",
-                eventType = "AGENT_ACTION_COMPLETED",
-                intentPayload = "transfer funds",
-                status = "COMPLETED",
-                occurredAt = now,
-                completedAt = now,
-                hmacSignature = "hmac-base64-value",
-            )
-        ))
+        whenever(getAgentAuditLogUseCase.execute(any())).thenReturn(
+            listOf(
+                AgentAuditView(
+                    id = eventId,
+                    workflowPlanId = planId,
+                    agentId = "agent-99",
+                    sessionId = "sess-abc",
+                    eventType = "AGENT_ACTION_COMPLETED",
+                    intentPayload = "transfer funds",
+                    status = "COMPLETED",
+                    occurredAt = now,
+                    completedAt = now,
+                    hmacSignature = "hmac-base64-value",
+                ),
+            ),
+        )
 
         val result = server.getAgentAuditLog(sessionId = "sess-abc", from = null, to = null, limit = null)
 
@@ -567,15 +597,16 @@ class IdemMcpServerTest {
     @Test
     fun `describeAccount delegates to DescribeAccountUseCase and maps result`() {
         val balance = Balance(accountId, FiatCurrency.USD, MonetaryAmount.of("1000"), EntryType.DEBIT, Instant.now())
-        val desc = AccountDescription(
-            accountId = accountId,
-            name = "Ops Account",
-            description = null,
-            currency = FiatCurrency.USD,
-            entryCount = 42L,
-            lastActivityAt = Instant.parse("2025-06-01T00:00:00Z"),
-            balance = balance,
-        )
+        val desc =
+            AccountDescription(
+                accountId = accountId,
+                name = "Ops Account",
+                description = null,
+                currency = FiatCurrency.USD,
+                entryCount = 42L,
+                lastActivityAt = Instant.parse("2025-06-01T00:00:00Z"),
+                balance = balance,
+            )
         whenever(describeAccountUseCase.execute(any())).thenReturn(Result.success(desc))
 
         val result = server.describeAccount(accountId = accountId.value.toString())

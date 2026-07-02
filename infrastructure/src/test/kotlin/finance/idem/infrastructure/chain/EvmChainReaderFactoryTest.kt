@@ -6,16 +6,16 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 
 class EvmChainReaderFactoryTest {
-
     private val mockRepo = mock<WatchedAddressRepository>()
 
     @Test
     fun `creates one reader per non-blank evm rpc url`() {
-        val config = ChainConfig(
-            evm = EvmNetworkConfig("http://eth-rpc"),
-            evmBase = EvmNetworkConfig("http://base-rpc"),
-            evmPolygon = EvmNetworkConfig(""),
-        )
+        val config =
+            ChainConfig(
+                evm = EvmNetworkConfig("http://eth-rpc"),
+                evmBase = EvmNetworkConfig("http://base-rpc"),
+                evmPolygon = EvmNetworkConfig(""),
+            )
 
         val readers = EvmChainReaderFactory(config, mockRepo).chainReaders()
 
@@ -33,11 +33,12 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `creates three evm readers when all evm rpc urls are non-blank`() {
-        val config = ChainConfig(
-            evm = EvmNetworkConfig("http://eth-rpc"),
-            evmBase = EvmNetworkConfig("http://base-rpc"),
-            evmPolygon = EvmNetworkConfig("http://polygon-rpc"),
-        )
+        val config =
+            ChainConfig(
+                evm = EvmNetworkConfig("http://eth-rpc"),
+                evmBase = EvmNetworkConfig("http://base-rpc"),
+                evmPolygon = EvmNetworkConfig("http://polygon-rpc"),
+            )
 
         val readers = EvmChainReaderFactory(config, mockRepo).chainReaders()
 
@@ -49,9 +50,10 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `creates solana reader when solana rpc url is non-blank`() {
-        val config = ChainConfig(
-            solana = SolanaNetworkConfig("http://solana-rpc"),
-        )
+        val config =
+            ChainConfig(
+                solana = SolanaNetworkConfig("http://solana-rpc"),
+            )
 
         val readers = EvmChainReaderFactory(config, mockRepo).chainReaders()
 
@@ -61,10 +63,11 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `creates evm and solana readers together`() {
-        val config = ChainConfig(
-            evm = EvmNetworkConfig("http://eth-rpc"),
-            solana = SolanaNetworkConfig("http://solana-rpc"),
-        )
+        val config =
+            ChainConfig(
+                evm = EvmNetworkConfig("http://eth-rpc"),
+                solana = SolanaNetworkConfig("http://solana-rpc"),
+            )
 
         val readers = EvmChainReaderFactory(config, mockRepo).chainReaders()
 
@@ -75,9 +78,10 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `creates tron reader when tron api url is non-blank`() {
-        val config = ChainConfig(
-            tron = TronNetworkConfig("https://apilist.tronscan.org"),
-        )
+        val config =
+            ChainConfig(
+                tron = TronNetworkConfig("https://apilist.tronscan.org"),
+            )
 
         val readers = EvmChainReaderFactory(config, mockRepo).chainReaders()
 
@@ -87,11 +91,12 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `creates evm solana and tron readers together`() {
-        val config = ChainConfig(
-            evm = EvmNetworkConfig("http://eth-rpc"),
-            solana = SolanaNetworkConfig("http://solana-rpc"),
-            tron = TronNetworkConfig("https://apilist.tronscan.org"),
-        )
+        val config =
+            ChainConfig(
+                evm = EvmNetworkConfig("http://eth-rpc"),
+                solana = SolanaNetworkConfig("http://solana-rpc"),
+                tron = TronNetworkConfig("https://apilist.tronscan.org"),
+            )
 
         val readers = EvmChainReaderFactory(config, mockRepo).chainReaders()
 
@@ -103,10 +108,11 @@ class EvmChainReaderFactoryTest {
 
     @Test
     fun `solana and tron readers implement Closeable — shutdown closes them`() {
-        val config = ChainConfig(
-            solana = SolanaNetworkConfig("http://solana-rpc"),
-            tron = TronNetworkConfig("https://apilist.tronscan.org"),
-        )
+        val config =
+            ChainConfig(
+                solana = SolanaNetworkConfig("http://solana-rpc"),
+                tron = TronNetworkConfig("https://apilist.tronscan.org"),
+            )
         val factory = EvmChainReaderFactory(config, mockRepo)
         factory.chainReaders()
 

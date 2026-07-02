@@ -22,13 +22,13 @@ import kotlin.test.assertNull
 @Testcontainers
 @Import(TenantRepositoryAdapter::class)
 class TenantRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -48,18 +48,23 @@ class TenantRepositoryAdapterTest {
     private val tenantA = TenantId.generate()
     private val tenantB = TenantId.generate()
 
-    private fun insertTenant(tenantId: TenantId, webhookUrl: String?, webhookSecret: String?) {
+    private fun insertTenant(
+        tenantId: TenantId,
+        webhookUrl: String?,
+        webhookSecret: String?,
+    ) {
         val session = entityManager.unwrap(Session::class.java)
         session.doWork { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            conn.prepareStatement(
-                "INSERT INTO tenants (id, webhook_url, webhook_secret) VALUES (?::uuid, ?, ?)"
-            ).use { stmt ->
-                stmt.setString(1, tenantId.value.toString())
-                stmt.setString(2, webhookUrl)
-                stmt.setString(3, webhookSecret)
-                stmt.executeUpdate()
-            }
+            conn
+                .prepareStatement(
+                    "INSERT INTO tenants (id, webhook_url, webhook_secret) VALUES (?::uuid, ?, ?)",
+                ).use { stmt ->
+                    stmt.setString(1, tenantId.value.toString())
+                    stmt.setString(2, webhookUrl)
+                    stmt.setString(3, webhookSecret)
+                    stmt.executeUpdate()
+                }
         }
         entityManager.clear()
     }

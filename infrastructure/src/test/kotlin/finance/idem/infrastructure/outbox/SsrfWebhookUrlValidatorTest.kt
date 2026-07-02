@@ -5,7 +5,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SsrfWebhookUrlValidatorTest {
-
     private val validator = SsrfWebhookUrlValidator(requireHttps = true)
     private val devValidator = SsrfWebhookUrlValidator(requireHttps = false)
 

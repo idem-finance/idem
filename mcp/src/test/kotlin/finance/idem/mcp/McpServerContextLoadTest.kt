@@ -17,13 +17,18 @@ import kotlin.test.assertTrue
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class McpServerContextLoadTest {
-
     @MockBean lateinit var executeWorkflowUseCase: ExecuteWorkflowUseCase
+
     @MockBean lateinit var getBalanceUseCase: GetBalanceUseCase
+
     @MockBean lateinit var getEntriesUseCase: GetEntriesUseCase
+
     @MockBean lateinit var describeAccountUseCase: DescribeAccountUseCase
+
     @MockBean lateinit var rollbackWorkflowUseCase: RollbackWorkflowUseCase
+
     @MockBean lateinit var reconcileEntriesUseCase: ReconcileEntriesUseCase
+
     @MockBean lateinit var getAgentAuditLogUseCase: GetAgentAuditLogUseCase
 
     @Autowired lateinit var toolCallbackProvider: ToolCallbackProvider
@@ -33,8 +38,13 @@ class McpServerContextLoadTest {
         val names = toolCallbackProvider.toolCallbacks.map { it.toolDefinition.name() }.toSet()
         assertEquals(
             setOf(
-                "postTransaction", "getBalance", "listEntries", "describeAccount",
-                "rollbackWorkflow", "reconcileBatch", "getAgentAuditLog",
+                "postTransaction",
+                "getBalance",
+                "listEntries",
+                "describeAccount",
+                "rollbackWorkflow",
+                "reconcileBatch",
+                "getAgentAuditLog",
             ),
             names,
         )

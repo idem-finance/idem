@@ -7,19 +7,20 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 class VaspTransferPartyTest {
+    private val naturalPerson =
+        NaturalPerson(
+            firstName = "Jane",
+            lastName = "Doe",
+            dateOfBirth = LocalDate.of(1990, 1, 1),
+            country = "BR",
+        )
 
-    private val naturalPerson = NaturalPerson(
-        firstName = "Jane",
-        lastName = "Doe",
-        dateOfBirth = LocalDate.of(1990, 1, 1),
-        country = "BR",
-    )
-
-    private val legalPerson = LegalPerson(
-        name = "Acme Corp",
-        registrationNumber = "REG123",
-        country = "US",
-    )
+    private val legalPerson =
+        LegalPerson(
+            name = "Acme Corp",
+            registrationNumber = "REG123",
+            country = "US",
+        )
 
     @Test
     fun `both naturalPerson and legalPerson null throws IllegalArgumentException`() {
@@ -56,11 +57,12 @@ class VaspTransferPartyTest {
 
     @Test
     fun `happy path with naturalPerson`() {
-        val party = VaspTransferParty(
-            naturalPerson = naturalPerson,
-            accountNumber = "0xAbCd1234",
-            vaspDid = "did:example:originator",
-        )
+        val party =
+            VaspTransferParty(
+                naturalPerson = naturalPerson,
+                accountNumber = "0xAbCd1234",
+                vaspDid = "did:example:originator",
+            )
         assertNotNull(party.naturalPerson)
         assertEquals(null, party.legalPerson)
         assertEquals("0xAbCd1234", party.accountNumber)
@@ -69,11 +71,12 @@ class VaspTransferPartyTest {
 
     @Test
     fun `happy path with legalPerson`() {
-        val party = VaspTransferParty(
-            legalPerson = legalPerson,
-            accountNumber = "GB29NWBK60161331926819",
-            vaspDid = "did:example:beneficiary-vasp",
-        )
+        val party =
+            VaspTransferParty(
+                legalPerson = legalPerson,
+                accountNumber = "GB29NWBK60161331926819",
+                vaspDid = "did:example:beneficiary-vasp",
+            )
         assertEquals(null, party.naturalPerson)
         assertNotNull(party.legalPerson)
         assertEquals("GB29NWBK60161331926819", party.accountNumber)

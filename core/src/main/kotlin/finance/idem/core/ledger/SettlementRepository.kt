@@ -10,7 +10,10 @@ import java.util.UUID
 interface SettlementRepository {
     fun save(settlement: Settlement): Settlement
 
-    fun findById(id: UUID, tenantId: TenantId): Settlement?
+    fun findById(
+        id: UUID,
+        tenantId: TenantId,
+    ): Settlement?
 
     /** PENDING rows for tenant where accountId ∈ accountIds, matching
      * token/chainId/walletAddress, createdAt >= since. Ordered createdAt ASC. */

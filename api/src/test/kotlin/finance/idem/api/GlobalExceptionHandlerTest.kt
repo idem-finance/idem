@@ -12,13 +12,13 @@ import finance.idem.application.settlement.AccountNotFoundForSettlement
 import finance.idem.application.settlement.SettlementAlreadyTerminal
 import finance.idem.application.settlement.SettlementIdempotencyConflict
 import finance.idem.application.settlement.SettlementNotFound
-import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.AccountId
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyViolation
 import finance.idem.core.agentic.PolicyViolationException
+import finance.idem.core.ledger.EntryStatus
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
@@ -37,15 +37,15 @@ import java.util.UUID
  * so each handler branch can be driven without needing a full Spring context.
  */
 class GlobalExceptionHandlerTest {
-
     private lateinit var mockMvc: MockMvc
 
     @BeforeEach
     fun setup() {
-        mockMvc = MockMvcBuilders
-            .standaloneSetup(ThrowingController())
-            .setControllerAdvice(GlobalExceptionHandler())
-            .build()
+        mockMvc =
+            MockMvcBuilders
+                .standaloneSetup(ThrowingController())
+                .setControllerAdvice(GlobalExceptionHandler())
+                .build()
     }
 
     @Test
@@ -177,26 +177,71 @@ class GlobalExceptionHandlerTest {
         private val now = Instant.now()
 
         @GetMapping("/throw")
-        fun throwException(@RequestParam type: String): String {
+        fun throwException(
+            @RequestParam type: String,
+        ): String =
             throw when (type) {
-                "ledger-invariant" -> LedgerInvariantViolation("invariant failed")
-                "invariant" -> InvariantViolation("invariant detail")
-                "idempotency" -> IdempotencyConflict("key-123")
-                "tx-account-not-found" -> TransactionAccountNotFound(accountId)
-                "balance-account-not-found" -> BalanceAccountNotFound(accountId)
-                "entries-account-not-found" -> EntriesAccountNotFound(accountId)
-                "statement-account-not-found" -> StatementAccountNotFound(accountId)
-                "invalid-range" -> InvalidStatementRange(now.plusSeconds(10), now)
-                "invalid-cursor" -> InvalidCursor("bad-cursor")
-                "policy-violation" -> PolicyViolationException(
-                    listOf(PolicyViolation(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("1000")), "Debit exceeds session limit"))
-                )
-                "settlement-not-found" -> SettlementNotFound(UUID.randomUUID())
-                "settlement-already-terminal" -> SettlementAlreadyTerminal(EntryStatus.SETTLED)
-                "account-not-found-for-settlement" -> AccountNotFoundForSettlement(finance.idem.core.AccountId(UUID.randomUUID()))
-                "settlement-idempotency-conflict" -> SettlementIdempotencyConflict("key-123")
-                else -> RuntimeException("unexpected boom")
+                "ledger-invariant" -> {
+                    LedgerInvariantViolation("invariant failed")
+                }
+
+                "invariant" -> {
+                    InvariantViolation("invariant detail")
+                }
+
+                "idempotency" -> {
+                    IdempotencyConflict("key-123")
+                }
+
+                "tx-account-not-found" -> {
+                    TransactionAccountNotFound(accountId)
+                }
+
+                "balance-account-not-found" -> {
+                    BalanceAccountNotFound(accountId)
+                }
+
+                "entries-account-not-found" -> {
+                    EntriesAccountNotFound(accountId)
+                }
+
+                "statement-account-not-found" -> {
+                    StatementAccountNotFound(accountId)
+                }
+
+                "invalid-range" -> {
+                    InvalidStatementRange(now.plusSeconds(10), now)
+                }
+
+                "invalid-cursor" -> {
+                    InvalidCursor("bad-cursor")
+                }
+
+                "policy-violation" -> {
+                    PolicyViolationException(
+                        listOf(PolicyViolation(PolicyRule.MaxDebitPerSession(MonetaryAmount.of("1000")), "Debit exceeds session limit")),
+                    )
+                }
+
+                "settlement-not-found" -> {
+                    SettlementNotFound(UUID.randomUUID())
+                }
+
+                "settlement-already-terminal" -> {
+                    SettlementAlreadyTerminal(EntryStatus.SETTLED)
+                }
+
+                "account-not-found-for-settlement" -> {
+                    AccountNotFoundForSettlement(finance.idem.core.AccountId(UUID.randomUUID()))
+                }
+
+                "settlement-idempotency-conflict" -> {
+                    SettlementIdempotencyConflict("key-123")
+                }
+
+                else -> {
+                    RuntimeException("unexpected boom")
+                }
             }
-        }
     }
 }

@@ -39,13 +39,13 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(TransactionRepositoryAdapter::class, AccountRepositoryAdapter::class, PersistenceTestConfig::class)
 class TransactionRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -57,6 +57,7 @@ class TransactionRepositoryAdapterTest {
     }
 
     @Autowired lateinit var adapter: TransactionRepositoryAdapter
+
     @Autowired lateinit var accountAdapter: AccountRepositoryAdapter
 
     private val tenantA = TenantId.generate()
@@ -70,21 +71,25 @@ class TransactionRepositoryAdapterTest {
     fun createAccounts() {
         debitAccountId = AccountId.generate()
         creditAccountId = AccountId.generate()
-        accountAdapter.save(Account.create(debitAccountId, tenantA, "Debit",  FiatCurrency.BRL, AccountType.ASSET,     now, "test"))
+        accountAdapter.save(Account.create(debitAccountId, tenantA, "Debit", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
         accountAdapter.save(Account.create(creditAccountId, tenantA, "Credit", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
     }
 
-    private fun brlLine(txId: TransactionId, accountId: AccountId, entryType: EntryType, amount: String) =
-        JournalLine(
-            id = UUID.randomUUID(),
-            transactionId = txId,
-            accountId = accountId,
-            tenantId = tenantA,
-            entryType = entryType,
-            monetaryEntry = FiatEntry(MonetaryAmount.of(amount), FiatCurrency.BRL, PaymentRail.PIX),
-            createdAt = now,
-            createdBy = "test",
-        )
+    private fun brlLine(
+        txId: TransactionId,
+        accountId: AccountId,
+        entryType: EntryType,
+        amount: String,
+    ) = JournalLine(
+        id = UUID.randomUUID(),
+        transactionId = txId,
+        accountId = accountId,
+        tenantId = tenantA,
+        entryType = entryType,
+        monetaryEntry = FiatEntry(MonetaryAmount.of(amount), FiatCurrency.BRL, PaymentRail.PIX),
+        createdAt = now,
+        createdBy = "test",
+    )
 
     private fun createTx(
         idempotencyKey: String = UUID.randomUUID().toString(),
@@ -92,12 +97,17 @@ class TransactionRepositoryAdapterTest {
     ): Transaction {
         val txId = TransactionId.generate()
         return Transaction.create(
-            id = txId, tenantId = tenantId, idempotencyKey = idempotencyKey,
-            lines = listOf(
-                brlLine(txId, debitAccountId, EntryType.DEBIT, "1000"),
-                brlLine(txId, creditAccountId, EntryType.CREDIT, "1000"),
-            ),
-            occurredAt = now, createdAt = now, createdBy = "test",
+            id = txId,
+            tenantId = tenantId,
+            idempotencyKey = idempotencyKey,
+            lines =
+                listOf(
+                    brlLine(txId, debitAccountId, EntryType.DEBIT, "1000"),
+                    brlLine(txId, creditAccountId, EntryType.CREDIT, "1000"),
+                ),
+            occurredAt = now,
+            createdAt = now,
+            createdBy = "test",
         )
     }
 
@@ -122,7 +132,8 @@ class TransactionRepositoryAdapterTest {
         adapter.save(tx)
 
         val found = adapter.findById(tx.id, tenantA)!!
-        val entry = found.lines.first { it.entryType == EntryType.DEBIT }.monetaryEntry
+        val entry =
+            found.lines.first { it.entryType == EntryType.DEBIT }.monetaryEntry
                 as FiatEntry
 
         assertEquals(MonetaryAmount.of("1000"), entry.amount)
@@ -133,26 +144,54 @@ class TransactionRepositoryAdapterTest {
     @Test
     fun `OnChainEntry round-trip preserves all fields`() {
         val txId = TransactionId.generate()
-        val onChainEntry = OnChainEntry(
-            amount = MonetaryAmount.of("180.00"), token = StablecoinToken.USDC,
-            chainId = ChainId.EVM, txHash = "0xabc123", blockNumber = 19_000_000L,
-            walletAddress = "0xWallet", tokenContract = "0xContract",
-            fromAddress = "0xfromsender",
-        )
-        val tx = Transaction.create(
-            id = txId, tenantId = tenantA, idempotencyKey = UUID.randomUUID().toString(),
-            lines = listOf(
-                JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantA, EntryType.DEBIT, onChainEntry, null, now, "test"),
-                JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantA, EntryType.CREDIT,
-                    OnChainEntry(MonetaryAmount.of("180.00"), StablecoinToken.USDC, ChainId.EVM, "0xabc123", 19_000_000L, "0xWallet2", "0xContract"),
-                    null, now, "test"),
-            ),
-            occurredAt = now, createdAt = now, createdBy = "test",
-        )
+        val onChainEntry =
+            OnChainEntry(
+                amount = MonetaryAmount.of("180.00"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                txHash = "0xabc123",
+                blockNumber = 19_000_000L,
+                walletAddress = "0xWallet",
+                tokenContract = "0xContract",
+                fromAddress = "0xfromsender",
+            )
+        val tx =
+            Transaction.create(
+                id = txId,
+                tenantId = tenantA,
+                idempotencyKey = UUID.randomUUID().toString(),
+                lines =
+                    listOf(
+                        JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantA, EntryType.DEBIT, onChainEntry, null, now, "test"),
+                        JournalLine(
+                            UUID.randomUUID(),
+                            txId,
+                            creditAccountId,
+                            tenantA,
+                            EntryType.CREDIT,
+                            OnChainEntry(
+                                MonetaryAmount.of("180.00"),
+                                StablecoinToken.USDC,
+                                ChainId.EVM,
+                                "0xabc123",
+                                19_000_000L,
+                                "0xWallet2",
+                                "0xContract",
+                            ),
+                            null,
+                            now,
+                            "test",
+                        ),
+                    ),
+                occurredAt = now,
+                createdAt = now,
+                createdBy = "test",
+            )
         adapter.save(tx)
 
         val found = adapter.findById(tx.id, tenantA)!!
-        val entry = found.lines.first { it.entryType == EntryType.DEBIT }.monetaryEntry
+        val entry =
+            found.lines.first { it.entryType == EntryType.DEBIT }.monetaryEntry
                 as OnChainEntry
 
         assertEquals(StablecoinToken.USDC, entry.token)
@@ -182,22 +221,31 @@ class TransactionRepositoryAdapterTest {
     @Test
     fun `agentContext round-trip preserves all fields`() {
         val txId = TransactionId.generate()
-        val agentCtx = finance.idem.core.agentic.AgentContext(
-            agentId = "agent-1",
-            sessionId = "sess-abc",
-            workflowPlanId = finance.idem.core.WorkflowPlanId.generate(),
-            intent = "post_offramp",
-        )
-        val tx = Transaction.create(
-            id = txId, tenantId = tenantA, idempotencyKey = UUID.randomUUID().toString(),
-            lines = listOf(
-                brlLine(txId, debitAccountId, EntryType.DEBIT, "500"),
-                brlLine(txId, creditAccountId, EntryType.CREDIT, "500"),
-            ),
-            occurredAt = now, createdAt = now, createdBy = "test",
-            agentContext = agentCtx,
-            metadata = mapOf("source" to "api", "ref" to "TX-001"),
-        )
+        val agentCtx =
+            finance.idem.core.agentic.AgentContext(
+                agentId = "agent-1",
+                sessionId = "sess-abc",
+                workflowPlanId =
+                    finance.idem.core.WorkflowPlanId
+                        .generate(),
+                intent = "post_offramp",
+            )
+        val tx =
+            Transaction.create(
+                id = txId,
+                tenantId = tenantA,
+                idempotencyKey = UUID.randomUUID().toString(),
+                lines =
+                    listOf(
+                        brlLine(txId, debitAccountId, EntryType.DEBIT, "500"),
+                        brlLine(txId, creditAccountId, EntryType.CREDIT, "500"),
+                    ),
+                occurredAt = now,
+                createdAt = now,
+                createdBy = "test",
+                agentContext = agentCtx,
+                metadata = mapOf("source" to "api", "ref" to "TX-001"),
+            )
         adapter.save(tx)
 
         val found = adapter.findById(tx.id, tenantA)!!

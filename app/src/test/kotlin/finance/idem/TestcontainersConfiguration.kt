@@ -9,17 +9,11 @@ import org.testcontainers.utility.DockerImageName
 
 @TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
-
     @Bean
     @ServiceConnection
-    fun postgresContainer(): PostgreSQLContainer<*> {
-        return PostgreSQLContainer(DockerImageName.parse("postgres:16"))
-    }
+    fun postgresContainer(): PostgreSQLContainer<*> = PostgreSQLContainer(DockerImageName.parse("postgres:16"))
 
     @Bean
     @ServiceConnection(name = "redis")
-    fun redisContainer(): GenericContainer<*> {
-        return GenericContainer(DockerImageName.parse("redis:7")).withExposedPorts(6379)
-    }
-
+    fun redisContainer(): GenericContainer<*> = GenericContainer(DockerImageName.parse("redis:7")).withExposedPorts(6379)
 }

@@ -10,19 +10,21 @@ import java.time.Instant
 class ChainCheckpointRepositoryAdapter(
     private val jpaRepository: ChainCheckpointJpaRepository,
 ) : ChainCheckpointRepository {
-
     @Transactional(readOnly = true)
-    override fun findByChainKey(chainKey: String): ChainCheckpoint? =
-        jpaRepository.findById(chainKey).orElse(null)?.toDomain()
+    override fun findByChainKey(chainKey: String): ChainCheckpoint? = jpaRepository.findById(chainKey).orElse(null)?.toDomain()
 
     @Transactional
-    override fun save(chainKey: String, lastBlock: Long) {
+    override fun save(
+        chainKey: String,
+        lastBlock: Long,
+    ) {
         jpaRepository.save(ChainCheckpointDataModel(chainKey, lastBlock, Instant.now()))
     }
 }
 
-private fun ChainCheckpointDataModel.toDomain() = ChainCheckpoint(
-    chainKey = chainId,
-    lastBlock = lastBlock,
-    updatedAt = updatedAt,
-)
+private fun ChainCheckpointDataModel.toDomain() =
+    ChainCheckpoint(
+        chainKey = chainId,
+        lastBlock = lastBlock,
+        updatedAt = updatedAt,
+    )

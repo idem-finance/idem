@@ -17,35 +17,54 @@ data class CreatePolicyRuleRequest(
     val tokens: List<String>? = null,
     val chains: List<String>? = null,
 ) {
-    fun toRule(): PolicyRule = when (type.uppercase()) {
-        "MAX_DEBIT_PER_SESSION" -> PolicyRule.MaxDebitPerSession(
-            limit = MonetaryAmount.of(require("amount", amount)),
-        )
-        "MAX_DEBIT_PER_HOUR" -> PolicyRule.MaxDebitPerHour(
-            limit = MonetaryAmount.of(require("amount", amount)),
-        )
-        "REQUIRE_HUMAN_APPROVAL_ABOVE" -> PolicyRule.RequireHumanApprovalAbove(
-            threshold = MonetaryAmount.of(require("amount", amount)),
-        )
-        "FORBIDDEN_ACCOUNT_PAIR" -> PolicyRule.ForbiddenAccountPair(
-            debitAccount = AccountId.of(require("debitAccountId", debitAccountId)),
-            creditAccount = AccountId.of(require("creditAccountId", creditAccountId)),
-        )
-        "ALLOWED_TOKENS" -> {
-            val list = require("tokens", tokens)
-            require(list.isNotEmpty()) { "Field 'tokens' must not be empty for rule type '$type'" }
-            PolicyRule.AllowedTokens(tokens = list.map { StablecoinToken.valueOf(it.uppercase()) }.toSet())
-        }
-        "ALLOWED_CHAINS" -> {
-            val list = require("chains", chains)
-            require(list.isNotEmpty()) { "Field 'chains' must not be empty for rule type '$type'" }
-            PolicyRule.AllowedChains(chains = list.map { ChainId.valueOf(it.uppercase()) }.toSet())
-        }
-        else -> throw IllegalArgumentException("Unknown policy rule type: $type")
-    }
+    fun toRule(): PolicyRule =
+        when (type.uppercase()) {
+            "MAX_DEBIT_PER_SESSION" -> {
+                PolicyRule.MaxDebitPerSession(
+                    limit = MonetaryAmount.of(require("amount", amount)),
+                )
+            }
 
-    private fun <T> require(field: String, value: T?): T =
-        value ?: throw IllegalArgumentException("Field '$field' is required for rule type '$type'")
+            "MAX_DEBIT_PER_HOUR" -> {
+                PolicyRule.MaxDebitPerHour(
+                    limit = MonetaryAmount.of(require("amount", amount)),
+                )
+            }
+
+            "REQUIRE_HUMAN_APPROVAL_ABOVE" -> {
+                PolicyRule.RequireHumanApprovalAbove(
+                    threshold = MonetaryAmount.of(require("amount", amount)),
+                )
+            }
+
+            "FORBIDDEN_ACCOUNT_PAIR" -> {
+                PolicyRule.ForbiddenAccountPair(
+                    debitAccount = AccountId.of(require("debitAccountId", debitAccountId)),
+                    creditAccount = AccountId.of(require("creditAccountId", creditAccountId)),
+                )
+            }
+
+            "ALLOWED_TOKENS" -> {
+                val list = require("tokens", tokens)
+                require(list.isNotEmpty()) { "Field 'tokens' must not be empty for rule type '$type'" }
+                PolicyRule.AllowedTokens(tokens = list.map { StablecoinToken.valueOf(it.uppercase()) }.toSet())
+            }
+
+            "ALLOWED_CHAINS" -> {
+                val list = require("chains", chains)
+                require(list.isNotEmpty()) { "Field 'chains' must not be empty for rule type '$type'" }
+                PolicyRule.AllowedChains(chains = list.map { ChainId.valueOf(it.uppercase()) }.toSet())
+            }
+
+            else -> {
+                throw IllegalArgumentException("Unknown policy rule type: $type")
+            }
+        }
+
+    private fun <T> require(
+        field: String,
+        value: T?,
+    ): T = value ?: throw IllegalArgumentException("Field '$field' is required for rule type '$type'")
 }
 
 data class PolicyRuleResponse(

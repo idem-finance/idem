@@ -11,7 +11,6 @@ import java.time.Instant
 class TenantRepositoryAdapter(
     private val jpaRepository: TenantJpaRepository,
 ) : TenantRepository {
-
     /**
      * Cross-tenant — deliberately does NOT set `app.tenant_id`. Relies on
      * `tenants` having NO FORCE RLS (V13): the table-owner role can resolve
@@ -31,16 +30,20 @@ class TenantRepositoryAdapter(
     }
 
     @Transactional
-    override fun upsertWebhookConfig(tenantId: TenantId, config: TenantWebhookConfig) {
+    override fun upsertWebhookConfig(
+        tenantId: TenantId,
+        config: TenantWebhookConfig,
+    ) {
         val now = Instant.now()
         val existing = jpaRepository.findById(tenantId.value).orElse(null)
-        val updated = TenantDataModel(
-            id = tenantId.value,
-            webhookUrl = config.webhookUrl,
-            webhookSecret = config.webhookSecret,
-            createdAt = existing?.createdAt ?: now,
-            updatedAt = now,
-        )
+        val updated =
+            TenantDataModel(
+                id = tenantId.value,
+                webhookUrl = config.webhookUrl,
+                webhookSecret = config.webhookSecret,
+                createdAt = existing?.createdAt ?: now,
+                updatedAt = now,
+            )
         jpaRepository.save(updated)
     }
 }

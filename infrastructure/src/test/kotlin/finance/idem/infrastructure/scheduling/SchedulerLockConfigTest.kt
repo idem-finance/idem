@@ -9,7 +9,6 @@ import org.mockito.kotlin.mock
 import javax.sql.DataSource
 
 class SchedulerLockConfigTest {
-
     @Test
     fun `lockProvider returns a JdbcTemplateLockProvider`() {
         val dataSource = mock<DataSource>()

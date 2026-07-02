@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service
 class GetAgentAuditLogService(
     private val agentAuditRepository: AgentAuditRepository,
 ) : GetAgentAuditLogUseCase {
-
     override fun execute(query: GetAgentAuditLogQuery): List<AgentAuditView> =
         agentAuditRepository.findByFilter(
             tenantId = query.tenantId,

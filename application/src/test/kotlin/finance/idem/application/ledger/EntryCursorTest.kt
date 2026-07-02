@@ -7,7 +7,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class EntryCursorTest {
-
     @Test
     fun `encode then decode round-trips createdAt and id exactly`() {
         val cursor = EntryCursor(Instant.parse("2026-01-15T10:30:45.123456789Z"), UUID.randomUUID())
@@ -36,8 +35,11 @@ class EntryCursorTest {
 
     @Test
     fun `decode of well-formed base64 with wrong shape returns failure`() {
-        val token = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("no-separator-here".toByteArray(Charsets.UTF_8))
+        val token =
+            java.util.Base64
+                .getUrlEncoder()
+                .withoutPadding()
+                .encodeToString("no-separator-here".toByteArray(Charsets.UTF_8))
 
         val decoded = EntryCursor.decode(token)
 

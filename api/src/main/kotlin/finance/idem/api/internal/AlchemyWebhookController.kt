@@ -11,14 +11,16 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/internal/webhooks")
-class AlchemyWebhookController(private val alchemyWebhookUseCase: AlchemyWebhookUseCase) {
-
+class AlchemyWebhookController(
+    private val alchemyWebhookUseCase: AlchemyWebhookUseCase,
+) {
     @PostMapping("/alchemy")
     fun receive(
         @RequestHeader(value = "X-Alchemy-Signature", required = false) signature: String?,
         @RequestBody rawBody: String,
-    ): ResponseEntity<Void> = alchemyWebhookUseCase.handle(signature, rawBody).fold(
-        onSuccess = { ResponseEntity.ok().build() },
-        onFailure = { ResponseEntity.status(HttpStatus.UNAUTHORIZED).build() },
-    )
+    ): ResponseEntity<Void> =
+        alchemyWebhookUseCase.handle(signature, rawBody).fold(
+            onSuccess = { ResponseEntity.ok().build() },
+            onFailure = { ResponseEntity.status(HttpStatus.UNAUTHORIZED).build() },
+        )
 }

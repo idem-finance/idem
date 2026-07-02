@@ -28,13 +28,13 @@ import java.util.UUID
 class ReconciliationController(
     private val reconcileBatchUseCase: ReconcileBatchUseCase,
 ) {
-
     @PostMapping("/batch")
     @PreAuthorize("hasAuthority('RECONCILIATION_WRITE')")
     @Operation(
         summary = "Trigger reconciliation for a batch of transactions",
-        description = "Re-runs reconciliation for each listed transaction ID. Useful for transactions " +
-            "that were not matched on initial commit, or after settlement expectations are updated.",
+        description =
+            "Re-runs reconciliation for each listed transaction ID. Useful for transactions " +
+                "that were not matched on initial commit, or after settlement expectations are updated.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Results for each transaction in the batch"),
@@ -42,20 +42,25 @@ class ReconciliationController(
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "403", description = "Requires RECONCILIATION_WRITE scope"),
     )
-    fun batch(@Valid @RequestBody request: ReconcileBatchRequest): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+    fun batch(
+        @Valid @RequestBody request: ReconcileBatchRequest,
+    ): ResponseEntity<Any> {
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val cmd = ReconcileBatchCommand(
-            transactionIds = request.transactionIds.map { TransactionId(it) },
-            tenantId = tenantId,
-        )
-        val results = reconcileBatchUseCase.execute(cmd).map { item ->
-            ReconcileBatchItemResponse(
-                transactionId = item.transactionId.value,
-                outcome = item.outcome.name,
+        val cmd =
+            ReconcileBatchCommand(
+                transactionIds = request.transactionIds.map { TransactionId(it) },
+                tenantId = tenantId,
             )
-        }
+        val results =
+            reconcileBatchUseCase.execute(cmd).map { item ->
+                ReconcileBatchItemResponse(
+                    transactionId = item.transactionId.value,
+                    outcome = item.outcome.name,
+                )
+            }
         return ResponseEntity.ok(results)
     }
 }

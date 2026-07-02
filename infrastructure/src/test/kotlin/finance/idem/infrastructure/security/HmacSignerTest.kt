@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class HmacSignerTest {
-
     @Test
     fun `hexHmacSha256 matches a known test vector`() {
         // echo -n "hello" | openssl dgst -sha256 -hmac "secret"

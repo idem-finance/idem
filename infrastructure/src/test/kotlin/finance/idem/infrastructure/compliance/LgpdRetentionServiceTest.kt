@@ -26,13 +26,13 @@ import kotlin.test.assertNull
 @Testcontainers
 @Import(LgpdRetentionRepositoryAdapter::class, LgpdRetentionService::class, PersistenceTestConfig::class)
 class LgpdRetentionServiceTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -44,24 +44,31 @@ class LgpdRetentionServiceTest {
     }
 
     @Autowired lateinit var adapter: LgpdRetentionRepositoryAdapter
+
     @Autowired lateinit var service: LgpdRetentionService
+
     @Autowired lateinit var scheduleRepo: LgpdRetentionScheduleJpaRepository
+
     @Autowired lateinit var travelRuleDataRepo: TravelRuleDataJpaRepository
 
     private val tenantA = TenantId.generate()
 
-    private fun saveTravelRuleData(transferId: String, tenantId: TenantId): TravelRuleDataDataModel {
-        val model = TravelRuleDataDataModel(
-            id = UUID.randomUUID(),
-            tenantId = tenantId.value,
-            transferId = transferId,
-            originator = """{"accountNumber":"0xabc","vaspDid":"did:vasp:orig"}""",
-            beneficiary = """{"accountNumber":"0xdef","vaspDid":"did:vasp:benef"}""",
-            transferAmount = BigDecimal("1500.00"),
-            transferAsset = "USDC",
-            threshold = BigDecimal("1000.00"),
-            createdAt = Instant.now(),
-        )
+    private fun saveTravelRuleData(
+        transferId: String,
+        tenantId: TenantId,
+    ): TravelRuleDataDataModel {
+        val model =
+            TravelRuleDataDataModel(
+                id = UUID.randomUUID(),
+                tenantId = tenantId.value,
+                transferId = transferId,
+                originator = """{"accountNumber":"0xabc","vaspDid":"did:vasp:orig"}""",
+                beneficiary = """{"accountNumber":"0xdef","vaspDid":"did:vasp:benef"}""",
+                transferAmount = BigDecimal("1500.00"),
+                transferAsset = "USDC",
+                threshold = BigDecimal("1000.00"),
+                createdAt = Instant.now(),
+            )
         return travelRuleDataRepo.save(model)
     }
 
@@ -78,7 +85,12 @@ class LgpdRetentionServiceTest {
         assertEquals(7, row.retentionYears)
         assertNull(row.processedAt)
         // deletion_due_at should be approximately 7 calendar years from now
-        val sevenYearsFromNow = Instant.now().atOffset(ZoneOffset.UTC).plusYears(7).toInstant()
+        val sevenYearsFromNow =
+            Instant
+                .now()
+                .atOffset(ZoneOffset.UTC)
+                .plusYears(7)
+                .toInstant()
         assert(row.deletionDueAt.isAfter(Instant.now())) { "deletionDueAt must be in the future" }
         assert(row.deletionDueAt.isBefore(sevenYearsFromNow.plusSeconds(60))) { "deletionDueAt must be ~7 years out" }
     }
@@ -98,7 +110,7 @@ class LgpdRetentionServiceTest {
                 retentionYears = 7,
                 scheduledAt = Instant.now().minus(8 * 365L, ChronoUnit.DAYS),
                 deletionDueAt = Instant.now().minus(1, ChronoUnit.DAYS),
-            )
+            ),
         )
 
         service.processExpiredData()
@@ -125,7 +137,7 @@ class LgpdRetentionServiceTest {
                 retentionYears = 7,
                 scheduledAt = Instant.now(),
                 deletionDueAt = Instant.now().plus(7 * 365L, ChronoUnit.DAYS),
-            )
+            ),
         )
 
         service.processExpiredData()
@@ -153,7 +165,7 @@ class LgpdRetentionServiceTest {
                 scheduledAt = Instant.now().minus(8 * 365L, ChronoUnit.DAYS),
                 deletionDueAt = Instant.now().minus(1, ChronoUnit.DAYS),
                 processedAt = alreadyProcessedAt,
-            )
+            ),
         )
 
         service.processExpiredData()
@@ -173,7 +185,7 @@ class LgpdRetentionServiceTest {
                 retentionYears = 7,
                 scheduledAt = Instant.now().minus(8 * 365L, ChronoUnit.DAYS),
                 deletionDueAt = Instant.now().minus(1, ChronoUnit.DAYS),
-            )
+            ),
         )
 
         service.processExpiredData()

@@ -11,7 +11,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class ApiKeyManagementModelsTest {
-
     private val tenantId = TenantId.generate()
 
     @Test
@@ -44,12 +43,13 @@ class ApiKeyManagementModelsTest {
         assertEquals("excess: [ADMIN]", error.message)
     }
 
-    private fun apiKey() = ApiKey(
-        id = ApiKeyId(UUID.randomUUID()),
-        tenantId = tenantId,
-        keyHash = "\$2a\$12\$fakehash",
-        prefix = "sk_live_test",
-        scopes = setOf(ApiScope.TRANSACTIONS_READ),
-        createdAt = Instant.now(),
-    )
+    private fun apiKey() =
+        ApiKey(
+            id = ApiKeyId(UUID.randomUUID()),
+            tenantId = tenantId,
+            keyHash = "\$2a\$12\$fakehash",
+            prefix = "sk_live_test",
+            scopes = setOf(ApiScope.TRANSACTIONS_READ),
+            createdAt = Instant.now(),
+        )
 }

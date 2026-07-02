@@ -27,13 +27,18 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class HttpClientFactoryTest {
-
-    data class Sample(val id: String, val createdAt: Instant)
+    data class Sample(
+        val id: String,
+        val createdAt: Instant,
+    )
 
     private suspend fun HttpRequestData.bodyAsString(): String {
         val content = body
         return when (content) {
-            is OutgoingContent.ByteArrayContent -> String(content.bytes(), Charsets.UTF_8)
+            is OutgoingContent.ByteArrayContent -> {
+                String(content.bytes(), Charsets.UTF_8)
+            }
+
             is OutgoingContent.WriteChannelContent -> {
                 val channel = ByteChannel()
                 coroutineScope {
@@ -44,45 +49,56 @@ class HttpClientFactoryTest {
                 }
                 String(channel.readRemaining().readBytes(), Charsets.UTF_8)
             }
-            else -> ""
+
+            else -> {
+                ""
+            }
         }
     }
 
     @Test
-    fun `defaultHttpClient serializes Instant as ISO-8601 string via JavaTimeModule`() = runTest {
-        var captured: HttpRequestData? = null
-        val client = defaultHttpClient(MockEngine { request ->
-            captured = request
-            respond(
-                content = ByteReadChannel("{}"),
-                status = HttpStatusCode.OK,
-                headers = headersOf(HttpHeaders.ContentType, "application/json"),
-            )
-        })
+    fun `defaultHttpClient serializes Instant as ISO-8601 string via JavaTimeModule`() =
+        runTest {
+            var captured: HttpRequestData? = null
+            val client =
+                defaultHttpClient(
+                    MockEngine { request ->
+                        captured = request
+                        respond(
+                            content = ByteReadChannel("{}"),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
+                    },
+                )
 
-        client.post("http://localhost/echo") {
-            contentType(ContentType.Application.Json)
-            setBody(Sample(id = "abc", createdAt = Instant.parse("2024-01-15T10:30:00Z")))
+            client.post("http://localhost/echo") {
+                contentType(ContentType.Application.Json)
+                setBody(Sample(id = "abc", createdAt = Instant.parse("2024-01-15T10:30:00Z")))
+            }
+
+            assertTrue(captured!!.bodyAsString().contains("\"2024-01-15T10:30:00Z\""))
+            client.close()
         }
 
-        assertTrue(captured!!.bodyAsString().contains("\"2024-01-15T10:30:00Z\""))
-        client.close()
-    }
-
     @Test
-    fun `defaultHttpClient deserializes a Kotlin data class response body`() = runTest {
-        val client = defaultHttpClient(MockEngine {
-            respond(
-                content = ByteReadChannel("""{"id":"abc","createdAt":"2024-01-15T10:30:00Z"}"""),
-                status = HttpStatusCode.OK,
-                headers = headersOf(HttpHeaders.ContentType, "application/json"),
-            )
-        })
+    fun `defaultHttpClient deserializes a Kotlin data class response body`() =
+        runTest {
+            val client =
+                defaultHttpClient(
+                    MockEngine {
+                        respond(
+                            content = ByteReadChannel("""{"id":"abc","createdAt":"2024-01-15T10:30:00Z"}"""),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
+                    },
+                )
 
-        val result: Sample = client.get("http://localhost/sample").body()
+            val result: Sample = client.get("http://localhost/sample").body()
 
-        assertEquals("abc", result.id)
-        assertEquals(Instant.parse("2024-01-15T10:30:00Z"), result.createdAt)
-        client.close()
-    }
+            assertEquals("abc", result.id)
+            assertEquals(Instant.parse("2024-01-15T10:30:00Z"), result.createdAt)
+            client.close()
+        }
 }

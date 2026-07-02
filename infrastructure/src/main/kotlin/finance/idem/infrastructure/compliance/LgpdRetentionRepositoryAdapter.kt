@@ -15,9 +15,13 @@ class LgpdRetentionRepositoryAdapter(
     private val jpaRepository: LgpdRetentionScheduleJpaRepository,
     private val entityManager: EntityManager,
 ) : LgpdRetentionRepository {
-
     @Transactional
-    override fun schedule(tenantId: TenantId, entityType: String, entityId: String, retentionYears: Int) {
+    override fun schedule(
+        tenantId: TenantId,
+        entityType: String,
+        entityId: String,
+        retentionYears: Int,
+    ) {
         entityManager.setRlsTenantId(tenantId)
         val now = Instant.now()
         jpaRepository.save(
@@ -29,7 +33,7 @@ class LgpdRetentionRepositoryAdapter(
                 retentionYears = retentionYears,
                 scheduledAt = now,
                 deletionDueAt = now.atOffset(ZoneOffset.UTC).plusYears(retentionYears.toLong()).toInstant(),
-            )
+            ),
         )
     }
 }

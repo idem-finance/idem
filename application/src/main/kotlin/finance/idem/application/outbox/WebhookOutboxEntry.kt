@@ -40,9 +40,10 @@ data class WebhookOutboxEntry(
                 id = UUID.randomUUID(),
                 tenantId = settlement.tenantId,
                 eventType = "transaction.settled",
-                transactionId = requireNotNull(settlement.matchedTransactionId) {
-                    "UNMATCHED settlement ${settlement.id} must have matchedTransactionId"
-                },
+                transactionId =
+                    requireNotNull(settlement.matchedTransactionId) {
+                        "UNMATCHED settlement ${settlement.id} must have matchedTransactionId"
+                    },
                 occurredAt = settlement.confirmedAt ?: Instant.now(),
             )
 
@@ -61,9 +62,10 @@ data class WebhookOutboxEntry(
                 id = UUID.randomUUID(),
                 tenantId = settlement.tenantId,
                 eventType = "reconciliation.exception",
-                transactionId = requireNotNull(settlement.matchedTransactionId) {
-                    "UNMATCHED settlement ${settlement.id} must have matchedTransactionId"
-                },
+                transactionId =
+                    requireNotNull(settlement.matchedTransactionId) {
+                        "UNMATCHED settlement ${settlement.id} must have matchedTransactionId"
+                    },
                 occurredAt = settlement.confirmedAt ?: Instant.now(),
             )
 

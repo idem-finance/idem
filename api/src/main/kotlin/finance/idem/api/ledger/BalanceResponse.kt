@@ -21,12 +21,13 @@ data class BalanceResponse(
     val computedAt: Instant,
 ) {
     companion object {
-        fun from(balance: Balance) = BalanceResponse(
-            accountId = balance.accountId.value,
-            currency = balance.currency,
-            amount = balance.amount.value,
-            normalBalance = balance.normalBalance,
-            computedAt = balance.computedAt,
-        )
+        fun from(balance: Balance) =
+            BalanceResponse(
+                accountId = balance.accountId.value,
+                currency = balance.currency,
+                amount = balance.amount.value,
+                normalBalance = balance.normalBalance,
+                computedAt = balance.computedAt,
+            )
     }
 }

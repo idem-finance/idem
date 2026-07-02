@@ -19,17 +19,18 @@ import kotlin.test.assertTrue
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
 class ApiKeyServiceIntegrationTest {
-
     companion object {
         @Container
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @Container
-        val redis: GenericContainer<*> = GenericContainer("redis:7")
-            .withExposedPorts(6379)
+        val redis: GenericContainer<*> =
+            GenericContainer("redis:7")
+                .withExposedPorts(6379)
 
         @DynamicPropertySource
         @JvmStatic

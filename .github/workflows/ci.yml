@@ -24,5 +24,13 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - name: ktlint check
+        run: ./mvnw test-compile antrun:run@ktlint-check --no-transfer-progress
+        continue-on-error: true
+
+      - name: Detekt check
+        run: ./mvnw test-compile antrun:run@detekt-check --no-transfer-progress
+        continue-on-error: true
+
       - name: Build and test
         run: ./mvnw verify --no-transfer-progress

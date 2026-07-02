@@ -7,7 +7,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SettlementCursorTest {
-
     @Test
     fun `encode and decode round-trip`() {
         val cursor = SettlementCursor(Instant.parse("2025-06-15T12:00:00.123456789Z"), UUID.randomUUID())
@@ -31,8 +30,11 @@ class SettlementCursorTest {
 
     @Test
     fun `decode returns failure for missing separator`() {
-        val noCursor = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("nodivider".toByteArray())
+        val noCursor =
+            java.util.Base64
+                .getUrlEncoder()
+                .withoutPadding()
+                .encodeToString("nodivider".toByteArray())
         assertTrue(SettlementCursor.decode(noCursor).isFailure)
     }
 }

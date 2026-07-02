@@ -9,5 +9,8 @@ interface AccountJpaRepository : JpaRepository<AccountDataModel, UUID> {
     fun findAllByTenantId(tenantId: UUID): List<AccountDataModel>
 
     @Query("SELECT a.id FROM AccountDataModel a WHERE a.id IN :ids AND a.tenantId = :tenantId")
-    fun findExistingIds(@Param("ids") ids: Collection<UUID>, @Param("tenantId") tenantId: UUID): Set<UUID>
+    fun findExistingIds(
+        @Param("ids") ids: Collection<UUID>,
+        @Param("tenantId") tenantId: UUID,
+    ): Set<UUID>
 }

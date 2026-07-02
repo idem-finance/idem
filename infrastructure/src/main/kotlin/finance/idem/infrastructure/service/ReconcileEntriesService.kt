@@ -26,24 +26,36 @@ class ReconcileEntriesService(
     txManager: PlatformTransactionManager,
     @Value("\${idem.reconciliation.amount-tolerance-percent:0}") private val tolerancePercent: BigDecimal,
 ) : ReconcileEntriesUseCase {
-
     private val transactionTemplate = TransactionTemplate(txManager)
 
     private sealed class EntryOutcome {
-        data class Settled(val settlementId: String) : EntryOutcome()
-        data class Unmatched(val exception: ReconciliationException) : EntryOutcome()
-        data class Failed(val exception: ReconciliationException) : EntryOutcome()
+        data class Settled(
+            val settlementId: String,
+        ) : EntryOutcome()
+
+        data class Unmatched(
+            val exception: ReconciliationException,
+        ) : EntryOutcome()
+
+        data class Failed(
+            val exception: ReconciliationException,
+        ) : EntryOutcome()
     }
 
-    private data class GroupKey(val token: StablecoinToken, val chainId: ChainId, val walletAddress: String)
+    private data class GroupKey(
+        val token: StablecoinToken,
+        val chainId: ChainId,
+        val walletAddress: String,
+    )
 
     override fun execute(cmd: ReconcileEntriesCommand): Result<ReconcileEntriesResult> {
-        val unmatchedEntries = settlementRepository.findUnmatchedInWindow(
-            tenantId = cmd.tenantId,
-            accountId = cmd.accountId,
-            from = cmd.from,
-            to = cmd.to,
-        )
+        val unmatchedEntries =
+            settlementRepository.findUnmatchedInWindow(
+                tenantId = cmd.tenantId,
+                accountId = cmd.accountId,
+                from = cmd.from,
+                to = cmd.to,
+            )
 
         val effectiveTolerance = cmd.tolerancePercent ?: tolerancePercent
         require(effectiveTolerance.compareTo(BigDecimal.ZERO) >= 0 && effectiveTolerance.compareTo(BigDecimal("100")) <= 0) {
@@ -54,31 +66,39 @@ class ReconcileEntriesService(
 
         for ((key, entries) in grouped) {
             try {
-                val groupOutcomes = transactionTemplate.execute { processGroup(cmd, key, entries, effectiveTolerance) }
-                    ?: entries.map { EntryOutcome.Failed(ReconciliationException(it.id, it.txHash, "transaction aborted")) }
+                val groupOutcomes =
+                    transactionTemplate.execute { processGroup(cmd, key, entries, effectiveTolerance) }
+                        ?: entries.map { EntryOutcome.Failed(ReconciliationException(it.id, it.txHash, "transaction aborted")) }
                 outcomes += groupOutcomes
             } catch (e: Exception) {
                 log.error(
                     "ReconcileEntries: group failed token={} chainId={} wallet={} tenant={} — {}",
-                    key.token, key.chainId, key.walletAddress, cmd.tenantId.value, e.message, e,
+                    key.token,
+                    key.chainId,
+                    key.walletAddress,
+                    cmd.tenantId.value,
+                    e.message,
+                    e,
                 )
                 entries.forEach { entry ->
-                    outcomes += EntryOutcome.Failed(
-                        ReconciliationException(entry.id, entry.txHash, e.message ?: "unexpected error")
-                    )
+                    outcomes +=
+                        EntryOutcome.Failed(
+                            ReconciliationException(entry.id, entry.txHash, e.message ?: "unexpected error"),
+                        )
                 }
             }
         }
 
         val matched = outcomes.count { it is EntryOutcome.Settled }
         val settlementIds = outcomes.filterIsInstance<EntryOutcome.Settled>().map { it.settlementId }
-        val exceptions = outcomes.mapNotNull {
-            when (it) {
-                is EntryOutcome.Settled -> null
-                is EntryOutcome.Unmatched -> it.exception
-                is EntryOutcome.Failed -> it.exception
+        val exceptions =
+            outcomes.mapNotNull {
+                when (it) {
+                    is EntryOutcome.Settled -> null
+                    is EntryOutcome.Unmatched -> it.exception
+                    is EntryOutcome.Failed -> it.exception
+                }
             }
-        }
         val unmatched = unmatchedEntries.size - matched
         return Result.success(ReconcileEntriesResult(matched, unmatched, exceptions, settlementIds))
     }
@@ -89,19 +109,25 @@ class ReconcileEntriesService(
         entries: List<Settlement>,
         effectiveTolerance: BigDecimal,
     ): List<EntryOutcome> {
-        val candidates = settlementRepository.findPendingCandidates(
-            tenantId = cmd.tenantId,
-            accountIds = entries.map { it.accountId }.toSet(),
-            token = key.token,
-            chainId = key.chainId,
-            walletAddress = key.walletAddress,
-            since = cmd.from,
-        ).toMutableList()
+        val candidates =
+            settlementRepository
+                .findPendingCandidates(
+                    tenantId = cmd.tenantId,
+                    accountIds = entries.map { it.accountId }.toSet(),
+                    token = key.token,
+                    chainId = key.chainId,
+                    walletAddress = key.walletAddress,
+                    since = cmd.from,
+                ).toMutableList()
 
         return entries.map { entry -> settleEntry(entry, candidates, effectiveTolerance) }
     }
 
-    private fun settleEntry(entry: Settlement, candidates: MutableList<Settlement>, effectiveTolerance: BigDecimal): EntryOutcome {
+    private fun settleEntry(
+        entry: Settlement,
+        candidates: MutableList<Settlement>,
+        effectiveTolerance: BigDecimal,
+    ): EntryOutcome {
         val match = findMatch(candidates.filter { it.accountId == entry.accountId }, entry, effectiveTolerance)
         return if (match != null) {
             candidates.remove(match)
@@ -112,25 +138,36 @@ class ReconcileEntriesService(
                     txHash = entry.txHash,
                     blockNumber = entry.blockNumber,
                     confirmedAt = Instant.now(),
-                )
+                ),
             )
             settlementRepository.save(entry.copy(status = EntryStatus.SETTLED))
             webhookOutboxRepository.save(WebhookOutboxEntry.transactionSettled(entry))
             log.info(
                 "ReconcileEntries: settled UNMATCHED={} against PENDING={} tenant={} amount={} token={} txHash={}",
-                entry.id, match.id, entry.tenantId.value, entry.amount.value, entry.token, entry.txHash,
+                entry.id,
+                match.id,
+                entry.tenantId.value,
+                entry.amount.value,
+                entry.token,
+                entry.txHash,
             )
             EntryOutcome.Settled(entry.id.toString())
         } else {
             webhookOutboxRepository.save(WebhookOutboxEntry.reconciliationException(entry))
-            val exception = ReconciliationException(
-                settlementId = entry.id,
-                txHash = entry.txHash,
-                reason = "No matching pending settlement found",
-            )
+            val exception =
+                ReconciliationException(
+                    settlementId = entry.id,
+                    txHash = entry.txHash,
+                    reason = "No matching pending settlement found",
+                )
             log.warn(
                 "ReconcileEntries: no PENDING match for UNMATCHED={} tenant={} amount={} token={} chainId={} wallet={}",
-                entry.id, entry.tenantId.value, entry.amount.value, entry.token, entry.chainId, entry.walletAddress,
+                entry.id,
+                entry.tenantId.value,
+                entry.amount.value,
+                entry.token,
+                entry.chainId,
+                entry.walletAddress,
             )
             EntryOutcome.Unmatched(exception)
         }
@@ -143,7 +180,11 @@ class ReconcileEntriesService(
      * in a sweep context. Configurable tolerance via idem.reconciliation.amount-tolerance-percent,
      * overridable per-call via ReconcileEntriesCommand.tolerancePercent.
      */
-    private fun findMatch(candidates: List<Settlement>, entry: Settlement, effectiveTolerance: BigDecimal): Settlement? =
+    private fun findMatch(
+        candidates: List<Settlement>,
+        entry: Settlement,
+        effectiveTolerance: BigDecimal,
+    ): Settlement? =
         candidates
             .filter { it.expectedFromAddress == null }
             .firstOrNull { candidate ->

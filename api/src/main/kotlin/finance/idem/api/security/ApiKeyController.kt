@@ -35,7 +35,6 @@ class ApiKeyController(
     private val listUseCase: ListApiKeysUseCase,
     private val revokeUseCase: RevokeApiKeyUseCase,
 ) {
-
     @PostMapping
     @PreAuthorize("hasAuthority('ADMIN')")
     @Operation(summary = "Create a new API key with the given scopes")
@@ -45,19 +44,24 @@ class ApiKeyController(
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "403", description = "Requires ADMIN scope"),
     )
-    fun create(@Valid @RequestBody request: CreateApiKeyRequest): ResponseEntity<Any> {
+    fun create(
+        @Valid @RequestBody request: CreateApiKeyRequest,
+    ): ResponseEntity<Any> {
         val auth = SecurityContextHolder.getContext().authentication
-        val tenantId = auth?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            auth?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val callerScopes = auth.authorities
-            .mapNotNullTo(mutableSetOf()) { runCatching { ApiScope.valueOf(it.authority) }.getOrNull() }
+        val callerScopes =
+            auth.authorities
+                .mapNotNullTo(mutableSetOf()) { runCatching { ApiScope.valueOf(it.authority) }.getOrNull() }
 
-        val cmd = GenerateApiKeyCommand(
-            tenantId = tenantId,
-            requestedScopes = request.scopes,
-            callerScopes = callerScopes,
-        )
+        val cmd =
+            GenerateApiKeyCommand(
+                tenantId = tenantId,
+                requestedScopes = request.scopes,
+                callerScopes = callerScopes,
+            )
 
         return generateUseCase.execute(cmd).fold(
             onSuccess = { generated ->
@@ -68,17 +72,22 @@ class ApiKeyController(
                         prefix = generated.apiKey.prefix,
                         scopes = generated.apiKey.scopes.map { it.name },
                         createdAt = generated.apiKey.createdAt,
-                    )
+                    ),
                 )
             },
             onFailure = { error ->
                 when (error) {
-                    is InsufficientCallerScope ->
-                        ResponseEntity.badRequest()
+                    is InsufficientCallerScope -> {
+                        ResponseEntity
+                            .badRequest()
                             .body(ErrorResponse("INSUFFICIENT_CALLER_SCOPE", error.message ?: ""))
-                    else ->
-                        ResponseEntity.internalServerError()
+                    }
+
+                    else -> {
+                        ResponseEntity
+                            .internalServerError()
                             .body(ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred"))
+                    }
                 }
             },
         )
@@ -93,8 +102,9 @@ class ApiKeyController(
         ApiResponse(responseCode = "403", description = "Requires ADMIN scope"),
     )
     fun list(): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         val keys = listUseCase.execute(tenantId).map { ApiKeyResponse.from(it) }
         return ResponseEntity.ok(keys)
@@ -109,15 +119,19 @@ class ApiKeyController(
         ApiResponse(responseCode = "401", description = "Missing or invalid API key"),
         ApiResponse(responseCode = "403", description = "Requires ADMIN scope"),
     )
-    fun revoke(@PathVariable keyId: UUID): ResponseEntity<Any> {
-        val tenantId = SecurityContextHolder.getContext().authentication?.principal as? TenantId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+    fun revoke(
+        @PathVariable keyId: UUID,
+    ): ResponseEntity<Any> {
+        val tenantId =
+            SecurityContextHolder.getContext().authentication?.principal as? TenantId
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         val found = revokeUseCase.execute(ApiKeyId(keyId), tenantId)
         return if (found) {
             ResponseEntity.noContent().build()
         } else {
-            ResponseEntity.status(HttpStatus.NOT_FOUND)
+            ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse("API_KEY_NOT_FOUND", "Key not found for this tenant"))
         }
     }

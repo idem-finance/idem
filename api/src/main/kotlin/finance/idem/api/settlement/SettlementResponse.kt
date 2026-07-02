@@ -23,7 +23,10 @@ data class SettlementResponse(
     val createdAt: Instant,
 ) {
     companion object {
-        fun from(settlement: Settlement, matchWindowHours: Long): SettlementResponse =
+        fun from(
+            settlement: Settlement,
+            matchWindowHours: Long,
+        ): SettlementResponse =
             SettlementResponse(
                 settlementId = settlement.id,
                 accountId = settlement.accountId.value,
@@ -37,9 +40,12 @@ data class SettlementResponse(
                 txHash = settlement.txHash,
                 blockNumber = settlement.blockNumber,
                 confirmedAt = settlement.confirmedAt,
-                expiresAt = if (settlement.status == EntryStatus.PENDING)
-                    settlement.createdAt.plus(matchWindowHours, ChronoUnit.HOURS)
-                else null,
+                expiresAt =
+                    if (settlement.status == EntryStatus.PENDING) {
+                        settlement.createdAt.plus(matchWindowHours, ChronoUnit.HOURS)
+                    } else {
+                        null
+                    },
                 createdAt = settlement.createdAt,
             )
     }

@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class EnumsTest {
-
     @Test
     fun `FiatCurrency contains expected values`() {
         val values = FiatCurrency.entries

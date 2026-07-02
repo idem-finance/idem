@@ -16,7 +16,16 @@ import java.util.concurrent.ConcurrentHashMap
 class McpSseSessionAuthStore {
     private val store = ConcurrentHashMap<String, Authentication>()
 
-    fun register(sessionId: String, auth: Authentication) { store[sessionId] = auth }
+    fun register(
+        sessionId: String,
+        auth: Authentication,
+    ) {
+        store[sessionId] = auth
+    }
+
     fun getAuth(sessionId: String): Authentication? = store[sessionId]
-    fun remove(sessionId: String) { store.remove(sessionId) }
+
+    fun remove(sessionId: String) {
+        store.remove(sessionId)
+    }
 }

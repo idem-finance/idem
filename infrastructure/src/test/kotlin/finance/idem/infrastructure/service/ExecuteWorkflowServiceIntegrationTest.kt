@@ -14,10 +14,6 @@ import finance.idem.core.agentic.AgentContext
 import finance.idem.core.agentic.PolicyRule
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.agentic.WorkflowStatus
-import finance.idem.infrastructure.persistence.policy.PolicyRepositoryAdapter
-import finance.idem.infrastructure.persistence.policy.PolicyRuleDataModel
-import finance.idem.infrastructure.persistence.policy.PolicyRuleJpaRepository
-import finance.idem.infrastructure.persistence.policy.SessionDebitAdapter
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountType
 import finance.idem.core.monetary.FiatEntry
@@ -31,6 +27,10 @@ import finance.idem.infrastructure.persistence.audit.AuditConfig
 import finance.idem.infrastructure.persistence.audit.AuditRepositoryAdapter
 import finance.idem.infrastructure.persistence.idempotency.PostgresIdempotencyStore
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
+import finance.idem.infrastructure.persistence.policy.PolicyRepositoryAdapter
+import finance.idem.infrastructure.persistence.policy.PolicyRuleDataModel
+import finance.idem.infrastructure.persistence.policy.PolicyRuleJpaRepository
+import finance.idem.infrastructure.persistence.policy.SessionDebitAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
 import finance.idem.infrastructure.persistence.workflow.WorkflowPlanRepositoryAdapter
 import org.junit.jupiter.api.BeforeEach
@@ -72,12 +72,16 @@ import kotlin.test.assertTrue
     SessionDebitAdapter::class,
 )
 class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase() {
-
     @Autowired lateinit var executeService: ExecuteWorkflowService
+
     @Autowired lateinit var accountAdapter: AccountRepositoryAdapter
+
     @Autowired lateinit var workflowPlanAdapter: WorkflowPlanRepositoryAdapter
+
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
+
     @Autowired lateinit var txManager: PlatformTransactionManager
+
     @Autowired lateinit var policyRepository: PolicyRepositoryAdapter
 
     private val tenantId = TenantId.generate()
@@ -99,18 +103,24 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private fun brlLine(accountId: AccountId, entryType: EntryType) = JournalLineRequest(
+    private fun brlLine(
+        accountId: AccountId,
+        entryType: EntryType,
+    ) = JournalLineRequest(
         accountId = accountId,
         entryType = entryType,
         monetaryEntry = FiatEntry(MonetaryAmount.of("500.00"), FiatCurrency.BRL, PaymentRail.PIX),
     )
 
-    private fun buildStep(key: String, debit: AccountId = debitId, credit: AccountId = creditId) =
-        WorkflowStepCommand(
-            idempotencyKey = key,
-            description = key,
-            lines = listOf(brlLine(debit, EntryType.DEBIT), brlLine(credit, EntryType.CREDIT)),
-        )
+    private fun buildStep(
+        key: String,
+        debit: AccountId = debitId,
+        credit: AccountId = creditId,
+    ) = WorkflowStepCommand(
+        idempotencyKey = key,
+        description = key,
+        lines = listOf(brlLine(debit, EntryType.DEBIT), brlLine(credit, EntryType.CREDIT)),
+    )
 
     private fun buildCmd(
         steps: List<WorkflowStepCommand>,
@@ -122,10 +132,18 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
         createdBy = "integration-test",
     )
 
-    private fun auditCount(planId: WorkflowPlanId, status: String): Long =
-        (entityManager.createNativeQuery(
-            "SELECT COUNT(*) FROM agent_audit_events WHERE workflow_plan_id = ?::uuid AND status = ?"
-        ).setParameter(1, planId.value.toString()).setParameter(2, status).singleResult as Number).toLong()
+    private fun auditCount(
+        planId: WorkflowPlanId,
+        status: String,
+    ): Long =
+        (
+            entityManager
+                .createNativeQuery(
+                    "SELECT COUNT(*) FROM agent_audit_events WHERE workflow_plan_id = ?::uuid AND status = ?",
+                ).setParameter(1, planId.value.toString())
+                .setParameter(2, status)
+                .singleResult as Number
+        ).toLong()
 
     // ── single step ───────────────────────────────────────────────────────────
 
@@ -152,9 +170,11 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
 
     @Test
     fun `multi-step — all steps committed atomically`() {
-        val planId = executeService.execute(
-            buildCmd(listOf(buildStep("ms-0"), buildStep("ms-1")))
-        ).getOrThrow()
+        val planId =
+            executeService
+                .execute(
+                    buildCmd(listOf(buildStep("ms-0"), buildStep("ms-1"))),
+                ).getOrThrow()
 
         entityManager.flush()
         entityManager.clear()
@@ -185,10 +205,13 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
             executeService.execute(buildCmd(listOf(buildStep("denied-0"))))
         }
         // PolicyGuard throws before workflowPlanRepository.insert() — no rows expected
-        val planCount = (entityManager
-            .createNativeQuery("SELECT COUNT(*) FROM workflow_plans WHERE tenant_id = ?::uuid")
-            .setParameter(1, tenantId.value.toString())
-            .singleResult as Number).toLong()
+        val planCount =
+            (
+                entityManager
+                    .createNativeQuery("SELECT COUNT(*) FROM workflow_plans WHERE tenant_id = ?::uuid")
+                    .setParameter(1, tenantId.value.toString())
+                    .singleResult as Number
+            ).toLong()
         assertEquals(0L, planCount)
     }
 
@@ -210,38 +233,51 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
         }
 
         val unknownId = AccountId.generate() // never saved → TransactionAccountNotFound on step 1
-        val cmd = buildCmd(
-            steps = listOf(
-                buildStep("pf-0", localDebit, localCredit),
-                buildStep("pf-1", localDebit, unknownId),
-            ),
-            tenantId = localTenantId,
-        )
+        val cmd =
+            buildCmd(
+                steps =
+                    listOf(
+                        buildStep("pf-0", localDebit, localCredit),
+                        buildStep("pf-1", localDebit, unknownId),
+                    ),
+                tenantId = localTenantId,
+            )
 
         assertThrows<RuntimeException> { executeService.execute(cmd) }
 
         // Service transaction rolled back — no plan, no transactions for this tenant
-        val planCount = txTemplate.execute {
-            (entityManager.createNativeQuery(
-                "SELECT COUNT(*) FROM workflow_plans WHERE tenant_id = ?::uuid"
-            ).setParameter(1, localTenantId.value.toString()).singleResult as Number).toLong()
-        }!!
+        val planCount =
+            txTemplate.execute {
+                (
+                    entityManager
+                        .createNativeQuery(
+                            "SELECT COUNT(*) FROM workflow_plans WHERE tenant_id = ?::uuid",
+                        ).setParameter(1, localTenantId.value.toString())
+                        .singleResult as Number
+                ).toLong()
+            }!!
         assertEquals(0L, planCount)
 
-        val txCount = txTemplate.execute {
-            (entityManager.createNativeQuery(
-                "SELECT COUNT(*) FROM transactions WHERE tenant_id = ?::uuid"
-            ).setParameter(1, localTenantId.value.toString()).singleResult as Number).toLong()
-        }!!
+        val txCount =
+            txTemplate.execute {
+                (
+                    entityManager
+                        .createNativeQuery(
+                            "SELECT COUNT(*) FROM transactions WHERE tenant_id = ?::uuid",
+                        ).setParameter(1, localTenantId.value.toString())
+                        .singleResult as Number
+                ).toLong()
+            }!!
         assertEquals(0L, txCount)
 
         // Cleanup: localTenantId accounts from setup tx AND this.tenantId accounts from @BeforeEach
         txTemplate.execute {
-            entityManager.createNativeQuery(
-                "DELETE FROM accounts WHERE tenant_id = ?::uuid OR tenant_id = ?::uuid"
-            ).setParameter(1, localTenantId.value.toString())
-             .setParameter(2, tenantId.value.toString())
-             .executeUpdate()
+            entityManager
+                .createNativeQuery(
+                    "DELETE FROM accounts WHERE tenant_id = ?::uuid OR tenant_id = ?::uuid",
+                ).setParameter(1, localTenantId.value.toString())
+                .setParameter(2, tenantId.value.toString())
+                .executeUpdate()
         }
     }
 

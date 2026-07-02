@@ -40,7 +40,6 @@ class IdemClient(
     val apiKey: String,
     val httpClient: HttpClient = defaultHttpClient(),
 ) : Closeable {
-
     companion object {
         // Mirrored in infrastructure/src/main/kotlin/finance/idem/infrastructure/observability/TraceIdFilter.kt
         // (TraceIdFilter.TRACE_ID_HEADER) — duplicated as a literal because sdk-kotlin has zero
@@ -56,24 +55,29 @@ class IdemClient(
         request: PostTransactionRequest,
         idempotencyKey: String? = null,
     ): TransactionResponse {
-        val response = executeRequest {
-            httpClient.post("$baseUrl/api/v1/transactions") {
-                header("X-API-Key", apiKey)
-                header("Idempotency-Key", idempotencyKey ?: UUID.randomUUID().toString())
-                contentType(ContentType.Application.Json)
-                setBody(request)
+        val response =
+            executeRequest {
+                httpClient.post("$baseUrl/api/v1/transactions") {
+                    header("X-API-Key", apiKey)
+                    header("Idempotency-Key", idempotencyKey ?: UUID.randomUUID().toString())
+                    contentType(ContentType.Application.Json)
+                    setBody(request)
+                }
             }
-        }
         return handleResponse(response)
     }
 
-    suspend fun getBalance(accountId: String, asOf: Instant? = null): BalanceResponse {
-        val response = executeRequest {
-            httpClient.get("$baseUrl/api/v1/accounts/$accountId/balance") {
-                header("X-API-Key", apiKey)
-                asOf?.let { parameter("asOf", it.toString()) }
+    suspend fun getBalance(
+        accountId: String,
+        asOf: Instant? = null,
+    ): BalanceResponse {
+        val response =
+            executeRequest {
+                httpClient.get("$baseUrl/api/v1/accounts/$accountId/balance") {
+                    header("X-API-Key", apiKey)
+                    asOf?.let { parameter("asOf", it.toString()) }
+                }
             }
-        }
         return handleResponse(response)
     }
 
@@ -84,26 +88,32 @@ class IdemClient(
         limit: Int = 50,
         cursor: String? = null,
     ): EntriesPage {
-        val response = executeRequest {
-            httpClient.get("$baseUrl/api/v1/accounts/$accountId/entries") {
-                header("X-API-Key", apiKey)
-                from?.let { parameter("from", it.toString()) }
-                to?.let { parameter("to", it.toString()) }
-                parameter("limit", limit)
-                cursor?.let { parameter("cursor", it) }
+        val response =
+            executeRequest {
+                httpClient.get("$baseUrl/api/v1/accounts/$accountId/entries") {
+                    header("X-API-Key", apiKey)
+                    from?.let { parameter("from", it.toString()) }
+                    to?.let { parameter("to", it.toString()) }
+                    parameter("limit", limit)
+                    cursor?.let { parameter("cursor", it) }
+                }
             }
-        }
         return handleResponse(response)
     }
 
-    suspend fun getStatement(accountId: String, from: Instant, to: Instant): StatementResponse {
-        val response = executeRequest {
-            httpClient.get("$baseUrl/api/v1/accounts/$accountId/statement") {
-                header("X-API-Key", apiKey)
-                parameter("from", from.toString())
-                parameter("to", to.toString())
+    suspend fun getStatement(
+        accountId: String,
+        from: Instant,
+        to: Instant,
+    ): StatementResponse {
+        val response =
+            executeRequest {
+                httpClient.get("$baseUrl/api/v1/accounts/$accountId/statement") {
+                    header("X-API-Key", apiKey)
+                    parameter("from", from.toString())
+                    parameter("to", to.toString())
+                }
             }
-        }
         return handleResponse(response)
     }
 
@@ -125,15 +135,16 @@ class IdemClient(
             val retryAfterSeconds = response.headers[HttpHeaders.RetryAfter]?.toIntOrNull() ?: 0
             throw RateLimitException(retryAfterSeconds = retryAfterSeconds, traceId = traceId)
         }
-        val error = try {
-            response.body<ErrorResponse>()
-        } catch (e: Exception) {
-            if (response.status == HttpStatusCode.NotFound) {
-                ErrorResponse(code = "NOT_FOUND", message = "Resource not found")
-            } else {
-                ErrorResponse(code = "UNKNOWN_ERROR", message = "Unexpected error response from server")
+        val error =
+            try {
+                response.body<ErrorResponse>()
+            } catch (e: Exception) {
+                if (response.status == HttpStatusCode.NotFound) {
+                    ErrorResponse(code = "NOT_FOUND", message = "Resource not found")
+                } else {
+                    ErrorResponse(code = "UNKNOWN_ERROR", message = "Unexpected error response from server")
+                }
             }
-        }
         throw ApiException(
             statusCode = response.status.value,
             errorCode = error.code,

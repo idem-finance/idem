@@ -24,18 +24,21 @@ data class TravelRuleData(
          * Returns the FATF $1,000 USD threshold expressed in native token units for [asset].
          * BRZ values are reviewed quarterly against the BRL/USD rate.
          */
-        fun defaultThresholdFor(asset: StablecoinToken): MonetaryAmount = when (asset) {
-            StablecoinToken.USDC,
-            StablecoinToken.USDT,
-            StablecoinToken.PYUSD -> MonetaryAmount.of("1000")
-            StablecoinToken.BRZ   -> MonetaryAmount.of("5500")  // ~$1,000 USD at BRL/USD 5.5
-        }
+        fun defaultThresholdFor(asset: StablecoinToken): MonetaryAmount =
+            when (asset) {
+                StablecoinToken.USDC,
+                StablecoinToken.USDT,
+                StablecoinToken.PYUSD,
+                -> MonetaryAmount.of("1000")
+
+                StablecoinToken.BRZ -> MonetaryAmount.of("5500") // ~$1,000 USD at BRL/USD 5.5
+            }
     }
 
     init {
-        require(transferId.isNotBlank())              { "transferId must not be blank" }
+        require(transferId.isNotBlank()) { "transferId must not be blank" }
         require(transferAmount > MonetaryAmount.ZERO) { "transferAmount must be positive" }
-        require(threshold > MonetaryAmount.ZERO)      { "threshold must be positive" }
+        require(threshold > MonetaryAmount.ZERO) { "threshold must be positive" }
     }
 
     fun isAboveThreshold(): Boolean = transferAmount >= threshold

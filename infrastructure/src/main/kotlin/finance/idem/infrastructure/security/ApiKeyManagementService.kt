@@ -16,22 +16,24 @@ import org.springframework.stereotype.Service
 class ApiKeyManagementService(
     private val apiKeyService: ApiKeyService,
     private val apiKeyRepository: ApiKeyRepository,
-) : GenerateApiKeyUseCase, ListApiKeysUseCase, RevokeApiKeyUseCase {
-
+) : GenerateApiKeyUseCase,
+    ListApiKeysUseCase,
+    RevokeApiKeyUseCase {
     override fun execute(cmd: GenerateApiKeyCommand): Result<GeneratedApiKey> {
         if (!cmd.callerScopes.containsAll(cmd.requestedScopes)) {
             val excess = cmd.requestedScopes - cmd.callerScopes
             return Result.failure(
-                InsufficientCallerScope("Requested scopes exceed caller's own scopes: $excess")
+                InsufficientCallerScope("Requested scopes exceed caller's own scopes: $excess"),
             )
         }
         val (rawKey, apiKey) = apiKeyService.generate(cmd.tenantId, cmd.requestedScopes)
         return Result.success(GeneratedApiKey(rawKey, apiKey))
     }
 
-    override fun execute(tenantId: TenantId): List<ApiKey> =
-        apiKeyRepository.findAllByTenantId(tenantId)
+    override fun execute(tenantId: TenantId): List<ApiKey> = apiKeyRepository.findAllByTenantId(tenantId)
 
-    override fun execute(keyId: ApiKeyId, tenantId: TenantId): Boolean =
-        apiKeyService.revoke(keyId, tenantId)
+    override fun execute(
+        keyId: ApiKeyId,
+        tenantId: TenantId,
+    ): Boolean = apiKeyService.revoke(keyId, tenantId)
 }

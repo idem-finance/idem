@@ -28,13 +28,13 @@ import kotlin.test.assertTrue
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
 class TelemetryPingServiceIntegrationTest {
-
     companion object {
         @Container
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         val wireMock: WireMockServer = WireMockServer(wireMockConfig().dynamicPort())
 
@@ -120,7 +120,6 @@ class TelemetryPingServiceIntegrationTest {
         properties = ["idem.telemetry.enabled=false"],
     )
     inner class WhenTelemetryDisabled {
-
         @Autowired
         lateinit var applicationContext: ApplicationContext
 

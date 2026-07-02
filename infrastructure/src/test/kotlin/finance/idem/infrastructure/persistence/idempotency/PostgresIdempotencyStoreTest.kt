@@ -24,13 +24,13 @@ import kotlin.test.assertTrue
 @Testcontainers
 @Import(PostgresIdempotencyStore::class)
 class PostgresIdempotencyStoreTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -115,11 +115,13 @@ class PostgresIdempotencyStoreTest {
     fun `find returns null when key is expired`() {
         val txId = TransactionId.generate()
         entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
-        entityManager.createNativeQuery("""
+        entityManager
+            .createNativeQuery(
+                """
             INSERT INTO idempotency_keys (tenant_id, key, transaction_id, expires_at)
             VALUES (CAST(:tenantId AS uuid), :key, CAST(:txId AS uuid), now() - interval '1 second')
-        """)
-            .setParameter("tenantId", tenantA.value.toString())
+        """,
+            ).setParameter("tenantId", tenantA.value.toString())
             .setParameter("key", "expired-key")
             .setParameter("txId", txId.value.toString())
             .executeUpdate()

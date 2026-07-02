@@ -20,12 +20,13 @@ data class StatementMovementResponse(
     val occurredAt: Instant,
 ) {
     companion object {
-        fun from(movement: StatementMovement) = StatementMovementResponse(
-            transactionId = movement.transactionId.value,
-            type = movement.type,
-            amount = movement.amount.value,
-            description = movement.description,
-            occurredAt = movement.occurredAt,
-        )
+        fun from(movement: StatementMovement) =
+            StatementMovementResponse(
+                transactionId = movement.transactionId.value,
+                type = movement.type,
+                amount = movement.amount.value,
+                description = movement.description,
+                occurredAt = movement.occurredAt,
+            )
     }
 }

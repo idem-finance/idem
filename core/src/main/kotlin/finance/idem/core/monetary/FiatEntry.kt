@@ -12,8 +12,10 @@ data class FiatEntry(
     val bankReference: String? = null,
 ) : MonetaryEntry() {
     init {
-        if (!amount.isPositive()) throw LedgerInvariantViolation(
-            "FiatEntry amount must be positive, got ${amount.value}"
-        )
+        if (!amount.isPositive()) {
+            throw LedgerInvariantViolation(
+                "FiatEntry amount must be positive, got ${amount.value}",
+            )
+        }
     }
 }

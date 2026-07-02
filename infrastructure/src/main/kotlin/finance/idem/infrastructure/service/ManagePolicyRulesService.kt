@@ -12,13 +12,16 @@ import org.springframework.stereotype.Service
 class ManagePolicyRulesService(
     private val policyRepository: PolicyRepository,
 ) : ManagePolicyRulesUseCase {
+    override fun create(
+        tenantId: TenantId,
+        agentKeyPrefix: String?,
+        rule: PolicyRule,
+    ): PolicyRuleRecord = policyRepository.save(tenantId, agentKeyPrefix, rule)
 
-    override fun create(tenantId: TenantId, agentKeyPrefix: String?, rule: PolicyRule): PolicyRuleRecord =
-        policyRepository.save(tenantId, agentKeyPrefix, rule)
+    override fun findAll(tenantId: TenantId): List<PolicyRuleRecord> = policyRepository.findAll(tenantId)
 
-    override fun findAll(tenantId: TenantId): List<PolicyRuleRecord> =
-        policyRepository.findAll(tenantId)
-
-    override fun delete(tenantId: TenantId, ruleId: PolicyRuleId): Boolean =
-        policyRepository.delete(tenantId, ruleId)
+    override fun delete(
+        tenantId: TenantId,
+        ruleId: PolicyRuleId,
+    ): Boolean = policyRepository.delete(tenantId, ruleId)
 }

@@ -23,13 +23,13 @@ import java.util.UUID
 @Testcontainers
 @Import(WatchedAddressRepositoryAdapter::class)
 class WatchedAddressRepositoryAdapterTest {
-
     companion object {
         @Container
-        val postgres = PostgreSQLContainer("postgres:16")
-            .withDatabaseName("idem_test")
-            .withUsername("idem")
-            .withPassword("idem")
+        val postgres =
+            PostgreSQLContainer("postgres:16")
+                .withDatabaseName("idem_test")
+                .withUsername("idem")
+                .withPassword("idem")
 
         @DynamicPropertySource
         @JvmStatic
@@ -41,11 +41,13 @@ class WatchedAddressRepositoryAdapterTest {
     }
 
     @Autowired lateinit var jpaRepository: WatchedAddressJpaRepository
+
     @Autowired lateinit var adapter: WatchedAddressRepositoryAdapter
+
     @Autowired lateinit var jdbcTemplate: JdbcTemplate
 
     private val tenantId = UUID.fromString("a1b2c3d4-0000-0000-0000-000000000001")
-    private val debitId  = UUID.fromString("a1b2c3d4-0000-0000-0000-000000000002")
+    private val debitId = UUID.fromString("a1b2c3d4-0000-0000-0000-000000000002")
     private val creditId = UUID.fromString("a1b2c3d4-0000-0000-0000-000000000003")
 
     @BeforeEach
@@ -54,11 +56,21 @@ class WatchedAddressRepositoryAdapterTest {
         jdbcTemplate.execute("SET LOCAL app.tenant_id = '$tenantId'")
         jdbcTemplate.update(
             "INSERT INTO accounts (id, tenant_id, name, currency, type, created_by) VALUES (?::UUID, ?::UUID, ?, ?, ?, ?)",
-            debitId.toString(), tenantId.toString(), "Debit Account", "USD", "ASSET", "test",
+            debitId.toString(),
+            tenantId.toString(),
+            "Debit Account",
+            "USD",
+            "ASSET",
+            "test",
         )
         jdbcTemplate.update(
             "INSERT INTO accounts (id, tenant_id, name, currency, type, created_by) VALUES (?::UUID, ?::UUID, ?, ?, ?, ?)",
-            creditId.toString(), tenantId.toString(), "Credit Account", "USD", "LIABILITY", "test",
+            creditId.toString(),
+            tenantId.toString(),
+            "Credit Account",
+            "USD",
+            "LIABILITY",
+            "test",
         )
     }
 

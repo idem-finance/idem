@@ -22,7 +22,6 @@ import reactor.core.publisher.Hooks
  */
 @Configuration
 class McpReactorSecurityConfig {
-
     @PostConstruct
     fun configureReactorContextPropagation() {
         ContextRegistry.getInstance().registerThreadLocalAccessor(SecurityContextAccessor())
@@ -31,7 +30,6 @@ class McpReactorSecurityConfig {
 }
 
 private class SecurityContextAccessor : ThreadLocalAccessor<SecurityContext> {
-
     override fun key(): Any = KEY
 
     override fun getValue(): SecurityContext = SecurityContextHolder.getContext()

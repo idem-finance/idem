@@ -11,7 +11,6 @@ import java.util.UUID
 import kotlin.test.assertEquals
 
 class GetAgentAuditLogServiceTest {
-
     private val tenantId = TenantId.generate()
 
     // TenantId is @JvmInline — findByFilter's JVM signature is mangled; use a concrete anon object.
@@ -19,45 +18,56 @@ class GetAgentAuditLogServiceTest {
     private var capturedSessionId: String? = null
     private var capturedLimit: Int = -1
 
-    private val repo: AgentAuditRepository = object : AgentAuditRepository {
-        override fun save(event: AgentAuditEvent) = Unit
-        override fun findByFilter(
-            tenantId: TenantId,
-            sessionId: String?,
-            from: Instant?,
-            to: Instant?,
-            limit: Int,
-        ): List<AgentAuditView> {
-            capturedSessionId = sessionId
-            capturedLimit = limit
-            return stubbedResult
+    private val repo: AgentAuditRepository =
+        object : AgentAuditRepository {
+            override fun save(event: AgentAuditEvent) = Unit
+
+            override fun findByFilter(
+                tenantId: TenantId,
+                sessionId: String?,
+                from: Instant?,
+                to: Instant?,
+                limit: Int,
+            ): List<AgentAuditView> {
+                capturedSessionId = sessionId
+                capturedLimit = limit
+                return stubbedResult
+            }
         }
-    }
 
     private val service = GetAgentAuditLogService(repo)
 
     @Test
     fun `delegates to repository with query fields`() {
         val now = Instant.now()
-        service.execute(GetAgentAuditLogQuery(
-            tenantId = tenantId,
-            sessionId = "sess-1",
-            from = now.minusSeconds(3600),
-            to = now,
-            limit = 25,
-        ))
+        service.execute(
+            GetAgentAuditLogQuery(
+                tenantId = tenantId,
+                sessionId = "sess-1",
+                from = now.minusSeconds(3600),
+                to = now,
+                limit = 25,
+            ),
+        )
         assertEquals("sess-1", capturedSessionId)
         assertEquals(25, capturedLimit)
     }
 
     @Test
     fun `returns repository results`() {
-        val view = AgentAuditView(
-            id = UUID.randomUUID(), workflowPlanId = UUID.randomUUID(),
-            agentId = "a", sessionId = "s", eventType = "AGENT_ACTION_STARTED",
-            intentPayload = null, status = "PENDING", occurredAt = Instant.now(),
-            completedAt = null, hmacSignature = "sig",
-        )
+        val view =
+            AgentAuditView(
+                id = UUID.randomUUID(),
+                workflowPlanId = UUID.randomUUID(),
+                agentId = "a",
+                sessionId = "s",
+                eventType = "AGENT_ACTION_STARTED",
+                intentPayload = null,
+                status = "PENDING",
+                occurredAt = Instant.now(),
+                completedAt = null,
+                hmacSignature = "sig",
+            )
         stubbedResult = listOf(view)
         val result = service.execute(GetAgentAuditLogQuery(tenantId = tenantId))
         assertEquals(1, result.size)

@@ -22,9 +22,10 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class TraceIdFilterTest {
-
     @Mock lateinit var request: HttpServletRequest
+
     @Mock lateinit var response: HttpServletResponse
+
     @Mock lateinit var chain: FilterChain
 
     private val filter = TraceIdFilter()

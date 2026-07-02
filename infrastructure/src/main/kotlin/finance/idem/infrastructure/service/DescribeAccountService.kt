@@ -18,18 +18,20 @@ class DescribeAccountService(
     private val journalLineRepository: JournalLineRepository,
     private val getBalanceUseCase: GetBalanceUseCase,
 ) : DescribeAccountUseCase {
-
     override fun execute(query: DescribeAccountQuery): Result<AccountDescription> {
-        val account = accountRepository.findById(query.accountId, query.tenantId)
-            ?: return Result.failure(DescribeAccountAccountNotFound(query.accountId))
+        val account =
+            accountRepository.findById(query.accountId, query.tenantId)
+                ?: return Result.failure(DescribeAccountAccountNotFound(query.accountId))
 
         val entryCount = journalLineRepository.countByAccountId(query.accountId, query.tenantId)
 
         val lastActivityAt = journalLineRepository.findMostRecentEntry(query.accountId, query.tenantId)?.createdAt
 
-        val balance = getBalanceUseCase.execute(
-            GetBalanceQuery(accountId = query.accountId, tenantId = query.tenantId, asOf = null),
-        ).getOrElse { return Result.failure(it) }
+        val balance =
+            getBalanceUseCase
+                .execute(
+                    GetBalanceQuery(accountId = query.accountId, tenantId = query.tenantId, asOf = null),
+                ).getOrElse { return Result.failure(it) }
 
         return Result.success(
             AccountDescription(

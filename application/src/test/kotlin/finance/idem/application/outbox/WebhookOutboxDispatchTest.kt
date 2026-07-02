@@ -6,19 +6,19 @@ import java.util.UUID
 import kotlin.test.assertEquals
 
 class WebhookOutboxDispatchTest {
-
     @Test
     fun `WebhookOutboxDispatch holds all fields`() {
         val id = UUID.randomUUID()
         val tenantId = TenantId.generate()
 
-        val dispatch = WebhookOutboxDispatch(
-            id = id,
-            tenantId = tenantId,
-            eventType = "transaction.committed",
-            payload = """{"eventType":"transaction.committed"}""",
-            attempts = 2,
-        )
+        val dispatch =
+            WebhookOutboxDispatch(
+                id = id,
+                tenantId = tenantId,
+                eventType = "transaction.committed",
+                payload = """{"eventType":"transaction.committed"}""",
+                attempts = 2,
+            )
 
         assertEquals(id, dispatch.id)
         assertEquals(tenantId, dispatch.tenantId)

@@ -20,7 +20,6 @@ import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class ListAccountsServiceTest {
-
     @Mock
     lateinit var accountRepository: AccountRepository
 
@@ -35,15 +34,16 @@ class ListAccountsServiceTest {
 
     @Test
     fun `execute returns all accounts for tenant`() {
-        val account = Account.create(
-            id = AccountId.generate(),
-            tenantId = tenantId,
-            name = "USDC Wallet",
-            currency = FiatCurrency.USD,
-            type = AccountType.ASSET,
-            createdAt = Instant.now(),
-            createdBy = "sk_live_abc",
-        )
+        val account =
+            Account.create(
+                id = AccountId.generate(),
+                tenantId = tenantId,
+                name = "USDC Wallet",
+                currency = FiatCurrency.USD,
+                type = AccountType.ASSET,
+                createdAt = Instant.now(),
+                createdBy = "sk_live_abc",
+            )
         whenever(accountRepository.findAllByTenantId(tenantId)).thenReturn(listOf(account))
 
         val result = service.execute(ListAccountsQuery(tenantId))

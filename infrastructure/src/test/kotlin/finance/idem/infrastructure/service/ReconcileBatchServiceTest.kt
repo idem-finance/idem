@@ -18,7 +18,6 @@ import kotlin.test.assertEquals
 
 @ExtendWith(MockitoExtension::class)
 class ReconcileBatchServiceTest {
-
     @Mock
     private lateinit var transactionRepository: TransactionRepository
 

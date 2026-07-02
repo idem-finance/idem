@@ -20,14 +20,19 @@ fun DetectedTransfer.toCommand(createdBy: String): PostTransactionCommand =
     PostTransactionCommand(
         tenantId = TenantId.of(watchedAddress.tenantId),
         idempotencyKey = idempotencyKey,
-        lines = listOf(
-            JournalLineRequest(AccountId.of(watchedAddress.debitAccountId), EntryType.DEBIT, entry),
-            JournalLineRequest(AccountId.of(watchedAddress.creditAccountId), EntryType.CREDIT, entry),
-        ),
+        lines =
+            listOf(
+                JournalLineRequest(AccountId.of(watchedAddress.debitAccountId), EntryType.DEBIT, entry),
+                JournalLineRequest(AccountId.of(watchedAddress.creditAccountId), EntryType.CREDIT, entry),
+            ),
         createdBy = createdBy,
     )
 
-fun DetectedTransfer.toFailedChainTransfer(chainKey: String, source: String, error: Throwable): FailedChainTransfer =
+fun DetectedTransfer.toFailedChainTransfer(
+    chainKey: String,
+    source: String,
+    error: Throwable,
+): FailedChainTransfer =
     FailedChainTransfer(
         id = UUID.randomUUID(),
         chainKey = chainKey,

@@ -15,7 +15,6 @@ class ComplianceQueueRepositoryAdapter(
     private val entityManager: EntityManager,
     private val objectMapper: ObjectMapper,
 ) : ComplianceQueueRepository {
-
     @Transactional
     override fun enqueue(item: ComplianceQueueItem) {
         entityManager.setRlsTenantId(item.tenantId)
@@ -30,7 +29,7 @@ class ComplianceQueueRepositoryAdapter(
                 missingFields = objectMapper.writeValueAsString(item.missingFields),
                 status = "PENDING",
                 createdAt = item.enqueuedAt,
-            )
+            ),
         )
     }
 }

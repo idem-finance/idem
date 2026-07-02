@@ -13,10 +13,8 @@ class InstallationMetadataDataModel(
     @Id
     @Column(name = "singleton", nullable = false)
     val singleton: Int,
-
     @Column(name = "id", nullable = false)
     val id: UUID,
-
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant,
 ) {
