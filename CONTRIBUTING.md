@@ -1,6 +1,6 @@
 # Contributing to Idem
 
-Thanks for your interest in contributing. This document covers the mechanics of getting a change merged. For product/architecture context, see [CLAUDE.md](CLAUDE.md) and [STRATEGY.md](STRATEGY.md).
+Thanks for your interest in contributing. This document covers the mechanics of getting a change merged. For product/architecture context, see /docs.
 
 ---
 
