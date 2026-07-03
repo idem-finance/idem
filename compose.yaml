@@ -29,14 +29,12 @@ services:
       retries: 5
 
   # Run with: docker compose --profile app up -d
-  # Builds from source by default. To use the published image instead of building,
-  # run `docker compose --profile app pull app` first (pulls idemfinance/idem:latest,
-  # or set IDEM_VERSION to pin a version).
+  # Pulls and runs the published image (idemfinance/idem:latest) by default.
+  # Set IDEM_VERSION to pin a version, e.g. IDEM_VERSION=0.1.0.
+  # To build from local source instead, layer the override file:
+  #   docker compose -f compose.yaml -f compose.build.yaml --profile app up -d --build
   app:
     image: idemfinance/idem:${IDEM_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
     container_name: idem-app
     profiles:
       - app

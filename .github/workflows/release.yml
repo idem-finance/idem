@@ -28,6 +28,11 @@ jobs:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
+      - name: Set release version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
       - name: Build and sign artifacts
         run: ./mvnw --no-transfer-progress -P release clean verify
         env:
@@ -81,6 +86,7 @@ jobs:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
   publish-and-sign-image:
+    needs: sign-artifacts
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -90,6 +96,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Set release version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -136,6 +154,7 @@ jobs:
             ghcr.io/idem-finance/idem@${{ steps.push.outputs.digest }}
 
   publish-dockerhub-jvm:
+    needs: sign-artifacts
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -144,6 +163,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Set release version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -190,6 +221,7 @@ jobs:
             idemfinance/idem@${{ steps.push.outputs.digest }}
 
   publish-dockerhub-native:
+    needs: sign-artifacts
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -198,6 +230,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Set release version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -273,6 +317,8 @@ jobs:
   create-github-release:
     needs:
       - sign-artifacts
+      - publish-central
+      - publish-and-sign-image
       - publish-dockerhub-jvm
       - publish-dockerhub-native
     runs-on: ubuntu-latest

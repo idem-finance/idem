@@ -285,6 +285,10 @@ gpg --keyserver keys.openpgp.org --recv-keys 3E333148F633F4749F6A4DF30ABC39374C2
 gpg --verify idem-core-0.1.0.jar.asc idem-core-0.1.0.jar
 ```
 
+**Stewardship:** the private key is held by Idem Finance and used exclusively by the `release.yml` GitHub Actions workflow (via the `GPG_PRIVATE_KEY`/`GPG_PASSPHRASE` repo secrets) to sign artifacts on tag push. It is not held in plaintext on any individual's machine.
+
+**Rotation plan:** the key is rotated at minimum every 2 years, or immediately if compromise is suspected. On rotation: a new key pair is generated, the new public key is published to `keys.openpgp.org`, this table is updated with the new fingerprint, and the old key is revoked on the keyserver. Artifacts signed under a prior key remain verifiable against that key's fingerprint in the corresponding release's git history.
+
 SHA256 checksums for every release's signed jars and native binary are also attached to the corresponding [GitHub Release](https://github.com/idem-finance/idem/releases) as `checksums.txt`.
 
 </details>
