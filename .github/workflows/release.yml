@@ -189,7 +189,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: idemfinance/idem
+          images: id3mfin4nc3/idem
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -211,14 +211,14 @@ jobs:
       - name: Sign image
         run: |
           cosign sign --yes \
-            idemfinance/idem@${{ steps.push.outputs.digest }}
+            id3mfin4nc3/idem@${{ steps.push.outputs.digest }}
 
       - name: Verify signature
         run: |
           cosign verify \
             --certificate-identity-regexp="https://github.com/idem-finance/idem/.github/workflows/release.yml@refs/tags/" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            idemfinance/idem@${{ steps.push.outputs.digest }}
+            id3mfin4nc3/idem@${{ steps.push.outputs.digest }}
 
   publish-dockerhub-native:
     needs: sign-artifacts
@@ -256,7 +256,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: idemfinance/idem
+          images: id3mfin4nc3/idem
           flavor: |
             latest=false
           tags: |
@@ -305,14 +305,14 @@ jobs:
       - name: Sign image
         run: |
           cosign sign --yes \
-            idemfinance/idem@${{ steps.push.outputs.digest }}
+            id3mfin4nc3/idem@${{ steps.push.outputs.digest }}
 
       - name: Verify signature
         run: |
           cosign verify \
             --certificate-identity-regexp="https://github.com/idem-finance/idem/.github/workflows/release.yml@refs/tags/" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            idemfinance/idem@${{ steps.push.outputs.digest }}
+            id3mfin4nc3/idem@${{ steps.push.outputs.digest }}
 
   create-github-release:
     needs:
