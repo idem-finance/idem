@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Idem Ledger API
   description: Double-entry ledger for stablecoin payments
-  version: 0.1.0
+  version: 0.1.0-SNAPSHOT
 servers:
 - url: http://localhost:8081
   description: Generated server url
@@ -1016,7 +1016,6 @@ components:
             $ref: "#/components/schemas/JournalLineRequestDto"
           maxItems: 1000
           minItems: 2
-          minLength: 2
         metadata:
           type: object
           additionalProperties:
