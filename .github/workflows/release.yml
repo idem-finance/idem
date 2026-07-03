@@ -28,6 +28,11 @@ jobs:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
+      - name: Set release version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
       - name: Build and sign artifacts
         run: ./mvnw --no-transfer-progress -P release clean verify
         env:
@@ -42,7 +47,7 @@ jobs:
             **/target/*.jar.asc
           if-no-files-found: error
 
-  publish-sdk:
+  publish-central:
     needs: sign-artifacts
     runs-on: ubuntu-latest
     permissions:
@@ -73,14 +78,15 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
-      - name: Publish idem-sdk-kotlin to Maven Central
-        run: ./mvnw --no-transfer-progress -P release deploy -pl sdk-kotlin -DskipTests
+      - name: Publish idem-core and idem-sdk-kotlin to Maven Central
+        run: ./mvnw --no-transfer-progress -P release deploy -pl core,sdk-kotlin -DskipTests
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
   publish-and-sign-image:
+    needs: sign-artifacts
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -90,6 +96,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Set release version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -134,3 +152,203 @@ jobs:
             --certificate-identity-regexp="https://github.com/idem-finance/idem/.github/workflows/release.yml@refs/tags/" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
             ghcr.io/idem-finance/idem@${{ steps.push.outputs.digest }}
+
+  publish-dockerhub-jvm:
+    needs: sign-artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Set release version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: idemfinance/idem
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push JVM image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image
+        run: |
+          cosign sign --yes \
+            idemfinance/idem@${{ steps.push.outputs.digest }}
+
+      - name: Verify signature
+        run: |
+          cosign verify \
+            --certificate-identity-regexp="https://github.com/idem-finance/idem/.github/workflows/release.yml@refs/tags/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            idemfinance/idem@${{ steps.push.outputs.digest }}
+
+  publish-dockerhub-native:
+    needs: sign-artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Set release version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: idemfinance/idem
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=native
+            type=semver,pattern=native-{{version}}
+
+      - name: Build native builder stage (local, for binary extraction)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.native
+          target: builder
+          push: false
+          load: true
+          tags: idem-native-builder:tmp
+          cache-from: type=gha,scope=native-image
+          cache-to: type=gha,mode=max,scope=native-image
+
+      - name: Extract native binary
+        run: |
+          docker create --name extract-native idem-native-builder:tmp
+          docker cp extract-native:/workspace/app/target/idem ./idem-native-linux-amd64
+          docker rm extract-native
+
+      - name: Upload native binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-binary
+          path: idem-native-linux-amd64
+          if-no-files-found: error
+
+      - name: Build and push native image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.native
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=native-image
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image
+        run: |
+          cosign sign --yes \
+            idemfinance/idem@${{ steps.push.outputs.digest }}
+
+      - name: Verify signature
+        run: |
+          cosign verify \
+            --certificate-identity-regexp="https://github.com/idem-finance/idem/.github/workflows/release.yml@refs/tags/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            idemfinance/idem@${{ steps.push.outputs.digest }}
+
+  create-github-release:
+    needs:
+      - sign-artifacts
+      - publish-central
+      - publish-and-sign-image
+      - publish-dockerhub-jvm
+      - publish-dockerhub-native
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download signed jars
+        uses: actions/download-artifact@v6
+        with:
+          name: signed-jars
+          path: signed-jars
+
+      - name: Download native binary
+        uses: actions/download-artifact@v6
+        with:
+          name: native-binary
+          path: native-binary
+
+      - name: Generate SHA256 checksums
+        run: |
+          find signed-jars -type f \( -name '*.jar' -o -name '*.jar.asc' \) | sort | xargs sha256sum > checksums.txt
+          sha256sum native-binary/idem-native-linux-amd64 >> checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            signed-jars/**/*.jar
+            signed-jars/**/*.jar.asc
+            native-binary/idem-native-linux-amd64
+            checksums.txt
+          generate_release_notes: true

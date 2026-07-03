@@ -271,7 +271,7 @@ IDEM_TELEMETRY_ENABLED=false
 <details>
 <summary>GPG signature (Maven artifacts)</summary>
 
-All release JARs published under `finance.idem` on Maven Central are GPG-signed.
+Published Maven Central artifacts — `finance.idem:idem-core` and `finance.idem:idem-sdk-kotlin` — are GPG-signed.
 
 | Field | Value |
 |-------|-------|
@@ -282,21 +282,30 @@ All release JARs published under `finance.idem` on Maven Central are GPG-signed.
 
 ```bash
 gpg --keyserver keys.openpgp.org --recv-keys 3E333148F633F4749F6A4DF30ABC39374C2B51EC
-gpg --verify finance.idem.core-0.1.0.jar.asc finance.idem.core-0.1.0.jar
+gpg --verify idem-core-0.1.0.jar.asc idem-core-0.1.0.jar
 ```
+
+**Stewardship:** the private key is held by Idem Finance and used exclusively by the `release.yml` GitHub Actions workflow (via the `GPG_PRIVATE_KEY`/`GPG_PASSPHRASE` repo secrets) to sign artifacts on tag push. It is not held in plaintext on any individual's machine.
+
+**Rotation plan:** the key is rotated at minimum every 2 years, or immediately if compromise is suspected. On rotation: a new key pair is generated, the new public key is published to `keys.openpgp.org`, this table is updated with the new fingerprint, and the old key is revoked on the keyserver. Artifacts signed under a prior key remain verifiable against that key's fingerprint in the corresponding release's git history.
+
+SHA256 checksums for every release's signed jars and native binary are also attached to the corresponding [GitHub Release](https://github.com/idem-finance/idem/releases) as `checksums.txt`.
 
 </details>
 
 <details>
 <summary>Cosign signature (container images)</summary>
 
-Docker images at `ghcr.io/idem-finance/idem` are signed with [Sigstore Cosign](https://docs.sigstore.dev/cosign/overview/) via keyless signing (GitHub Actions OIDC).
+Docker images are signed with [Sigstore Cosign](https://docs.sigstore.dev/cosign/overview/) via keyless signing (GitHub Actions OIDC), published to both GHCR and Docker Hub:
+
+- `ghcr.io/idem-finance/idem` — JVM image only
+- `idemfinance/idem` — JVM (`latest`, `{version}`) and GraalVM native (`native`, `native-{version}`) variants
 
 ```bash
 cosign verify \
   --certificate-identity-regexp="https://github.com/idem-finance/idem/.github/workflows/release.yml@refs/tags/" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/idem-finance/idem:v0.1.0
+  idemfinance/idem:v0.1.0
 ```
 
 </details>

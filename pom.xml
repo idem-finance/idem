@@ -15,6 +15,7 @@
     <packaging>pom</packaging>
     <name>idem</name>
     <description>Open-source event-sourced double-entry ledger for cross-border stablecoin payments</description>
+    <url>https://github.com/idem-finance/idem</url>
 
     <licenses>
         <license>
@@ -82,7 +83,7 @@
             <!-- Internal module versions — child poms omit <version> -->
             <dependency>
                 <groupId>finance.idem</groupId>
-                <artifactId>core</artifactId>
+                <artifactId>idem-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

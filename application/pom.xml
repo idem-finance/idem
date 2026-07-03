@@ -15,7 +15,7 @@
     <dependencies>
         <dependency>
             <groupId>finance.idem</groupId>
-            <artifactId>core</artifactId>
+            <artifactId>idem-core</artifactId>
         </dependency>
 
 <dependency>

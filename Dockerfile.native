@@ -11,6 +11,11 @@ COPY api/pom.xml api/pom.xml
 COPY mcp/pom.xml mcp/pom.xml
 COPY app/pom.xml app/pom.xml
 COPY sdk-kotlin/pom.xml sdk-kotlin/pom.xml
+# detekt.yml + per-module baselines: required because step "install" below runs
+# through the verify phase (ktlint-check/detekt-check), unlike the plain Dockerfile
+# which stops at package.
+COPY detekt.yml detekt.yml
+COPY detekt-baseline-*.xml ./
 # Resolve dependencies in a cacheable layer before copying source
 RUN ./mvnw dependency:go-offline --no-transfer-progress -q
 COPY core/src core/src
@@ -20,7 +25,12 @@ COPY api/src api/src
 COPY mcp/src mcp/src
 COPY app/src app/src
 COPY sdk-kotlin/src sdk-kotlin/src
-RUN ./mvnw -Pnative native:compile -pl app -am --no-transfer-progress -DskipTests
+RUN ./mvnw install -pl app -am -DskipTests --no-transfer-progress
+# -DskipTests required here too: native:compile forks the lifecycle through package,
+# which runs Surefire — and Testcontainers-backed integration tests can't reach a
+# Docker daemon from inside this isolated build step (unlike native-build.yml, which
+# runs directly on the GitHub Actions runner where Docker is available).
+RUN ./mvnw -Pnative native:compile -pl app --no-transfer-progress -DskipTests
 
 # Stage 2 — scratch image, just the static musl-linked binary
 FROM scratch
