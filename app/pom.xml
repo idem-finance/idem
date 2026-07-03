@@ -110,6 +110,67 @@
 
     <profiles>
         <!--
+          Activated explicitly with -P generate-openapi. Boots the full app (requires a live
+          Postgres + Redis, e.g. via `docker-compose up -d`) and hits its /api-docs endpoint to
+          regenerate the repo-root openapi.yaml. Not part of the default build/CI lifecycle —
+          run locally and commit the resulting openapi.yaml as part of the PR:
+
+            docker-compose up -d
+            ./mvnw -P generate-openapi verify -pl app -am
+        -->
+        <profile>
+            <id>generate-openapi</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>pre-integration-test</id>
+                                <goals>
+                                    <goal>start</goal>
+                                </goals>
+                                <configuration>
+                                    <!-- spring-boot-docker-compose looks for compose.yaml relative to
+                                         the process working directory (this module's basedir), where
+                                         none exists — it only lives at the repo root. Disable it here;
+                                         the documented workflow already requires `docker-compose up -d`
+                                         to be run manually before this profile. -->
+                                    <jvmArguments>-Dspring.docker.compose.enabled=false -Dspring.profiles.active=dev</jvmArguments>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>post-integration-test</id>
+                                <goals>
+                                    <goal>stop</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.springdoc</groupId>
+                        <artifactId>springdoc-openapi-maven-plugin</artifactId>
+                        <version>1.4</version>
+                        <executions>
+                            <execution>
+                                <phase>integration-test</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <apiDocsUrl>http://localhost:8081/api-docs.yaml</apiDocsUrl>
+                            <outputFileName>openapi.yaml</outputFileName>
+                            <outputDir>${project.basedir}/../</outputDir>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
           Activated explicitly with -P native. Enables both:
             ./mvnw -Pnative native:compile        (standalone binary, used by CI + Dockerfile.native)
             ./mvnw -Pnative spring-boot:build-image (Paketo buildpacks native container image)

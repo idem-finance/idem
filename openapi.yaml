@@ -1,0 +1,1160 @@
+openapi: 3.1.0
+info:
+  title: Idem Ledger API
+  description: Double-entry ledger for stablecoin payments
+  version: 0.1.0
+servers:
+- url: http://localhost:8081
+  description: Generated server url
+tags:
+- name: Reconciliation
+  description: Manual reconciliation triggers
+- name: Policy Rules
+  description: Agent policy rule management — configure what agent-originated transactions
+    are permitted
+- name: Transactions
+  description: Double-entry transaction posting
+- name: Compliance
+  description: Compliance and audit export endpoints
+- name: Tenant
+  description: Tenant configuration
+- name: API Keys
+  description: Tenant API key management
+- name: Settlements
+  description: Settlement expectation management
+- name: Accounts
+  description: Account management and balance queries
+paths:
+  /api/v1/tenant/webhook:
+    get:
+      tags:
+      - Tenant
+      summary: Retrieve the tenant webhook configuration (secret masked)
+      operationId: getWebhook
+      responses:
+        "200":
+          description: Current webhook config
+          content:
+            '*/*':
+              schema:
+                type: object
+        "404":
+          description: Webhook not configured
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: Requires WEBHOOK_MANAGE scope
+          content:
+            '*/*':
+              schema:
+                type: object
+    put:
+      tags:
+      - Tenant
+      summary: Register or update the tenant webhook URL
+      operationId: updateWebhook
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWebhookConfigRequest"
+        required: true
+      responses:
+        "200":
+          description: Webhook configured — secret shown once
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: Invalid or blocked webhook URL
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: Requires WEBHOOK_MANAGE scope
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/transactions:
+    post:
+      tags:
+      - Transactions
+      summary: Post a balanced transaction
+      operationId: postTransaction
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        description: "Client-generated idempotency key, max 255 chars"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostTransactionRequest"
+        required: true
+      responses:
+        "201":
+          description: Transaction committed
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: Missing/invalid Idempotency-Key or malformed body
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the TRANSACTIONS_WRITE scope
+          content:
+            '*/*':
+              schema:
+                type: object
+        "409":
+          description: Duplicate idempotency key for an in-progress transaction
+          content:
+            '*/*':
+              schema:
+                type: object
+        "422":
+          description: Account not found or double-entry invariant violated
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/settlements:
+    get:
+      tags:
+      - Settlements
+      summary: List settlements for this tenant with optional filters
+      operationId: list
+      parameters:
+      - name: status
+        in: query
+        description: "Filter by status (PENDING, SETTLED, UNMATCHED, CANCELLED)"
+        required: false
+        schema:
+          type: string
+      - name: from
+        in: query
+        description: Inclusive lower bound on createdAt
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        description: Inclusive upper bound on createdAt
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: limit
+        in: query
+        description: "Max results per page, 1-200"
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+      - name: cursor
+        in: query
+        description: Opaque pagination cursor from a previous page's nextCursor
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Paginated list of settlements
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: "Invalid status value, invalid range, or malformed cursor"
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the TRANSACTIONS_READ scope
+          content:
+            '*/*':
+              schema:
+                type: object
+    post:
+      tags:
+      - Settlements
+      summary: Register a pending settlement expectation
+      operationId: register
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        description: "Client-generated idempotency key, max 255 chars"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterSettlementRequest"
+        required: true
+      responses:
+        "201":
+          description: "Settlement registered — status PENDING, watching for on-chain\
+            \ transfer"
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: "Missing/invalid Idempotency-Key, malformed request body, or\
+            \ invalid token/chainId values"
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the TRANSACTIONS_WRITE scope
+          content:
+            '*/*':
+              schema:
+                type: object
+        "409":
+          description: Duplicate idempotency key for an in-progress registration
+          content:
+            '*/*':
+              schema:
+                type: object
+        "422":
+          description: Account not found for this tenant
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/reconciliation/batch:
+    post:
+      tags:
+      - Reconciliation
+      summary: Trigger reconciliation for a batch of transactions
+      description: "Re-runs reconciliation for each listed transaction ID. Useful\
+        \ for transactions that were not matched on initial commit, or after settlement\
+        \ expectations are updated."
+      operationId: batch
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReconcileBatchRequest"
+        required: true
+      responses:
+        "200":
+          description: Results for each transaction in the batch
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: Empty or oversized batch
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: Requires RECONCILIATION_WRITE scope
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/api-keys:
+    get:
+      tags:
+      - API Keys
+      summary: List all API keys for this tenant
+      operationId: list_1
+      responses:
+        "200":
+          description: Key list (hashes omitted)
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: Requires ADMIN scope
+          content:
+            '*/*':
+              schema:
+                type: object
+    post:
+      tags:
+      - API Keys
+      summary: Create a new API key with the given scopes
+      operationId: create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiKeyRequest"
+        required: true
+      responses:
+        "201":
+          description: Key created — raw key shown once
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: Validation error or scope not allowed for caller
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: Requires ADMIN scope
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/admin/policy-rules:
+    get:
+      tags:
+      - Policy Rules
+      summary: List all policy rules for this tenant
+      operationId: list_2
+      responses:
+        "200":
+          description: Rule list
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PolicyRuleResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PolicyRuleResponse"
+        "403":
+          description: Requires ADMIN scope
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PolicyRuleResponse"
+    post:
+      tags:
+      - Policy Rules
+      summary: Create a policy rule for this tenant
+      operationId: create_1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePolicyRuleRequest"
+        required: true
+      responses:
+        "201":
+          description: Rule created
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: Invalid rule type or missing required fields
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: Requires ADMIN scope
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/accounts:
+    get:
+      tags:
+      - Accounts
+      summary: List all accounts for this tenant
+      operationId: listAccounts
+      responses:
+        "200":
+          description: Account list returned
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the ACCOUNTS_READ scope
+          content:
+            '*/*':
+              schema:
+                type: object
+    post:
+      tags:
+      - Accounts
+      summary: Create a new account
+      operationId: createAccount
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+        required: true
+      responses:
+        "201":
+          description: Account created
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: "Blank name, invalid currency, or invalid account type"
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the ACCOUNTS_WRITE scope
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/settlements/{id}:
+    get:
+      tags:
+      - Settlements
+      summary: Get a settlement by ID
+      operationId: getById
+      parameters:
+      - name: id
+        in: path
+        description: Settlement UUID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: Settlement found
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the TRANSACTIONS_READ scope
+          content:
+            '*/*':
+              schema:
+                type: object
+        "404":
+          description: Settlement not found for this tenant
+          content:
+            '*/*':
+              schema:
+                type: object
+    delete:
+      tags:
+      - Settlements
+      summary: Cancel a PENDING settlement
+      operationId: cancel
+      parameters:
+      - name: id
+        in: path
+        description: Settlement UUID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: Settlement cancelled
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the TRANSACTIONS_WRITE scope
+          content:
+            '*/*':
+              schema:
+                type: object
+        "404":
+          description: Settlement not found for this tenant
+          content:
+            '*/*':
+              schema:
+                type: object
+        "409":
+          description: Settlement is already in a terminal status and cannot be cancelled
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/compliance/audit-export:
+    get:
+      tags:
+      - Compliance
+      summary: Export audit log as NDJSON for a time window
+      operationId: exportAudit
+      parameters:
+      - name: from
+        in: query
+        description: Inclusive lower bound (ISO-8601 instant)
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        description: Exclusive upper bound (ISO-8601 instant)
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: type
+        in: query
+        description: "Filter by entry type: HUMAN, AGENT, or ALL (default)"
+        required: false
+        schema:
+          type: string
+          default: ALL
+          enum:
+          - HUMAN
+          - AGENT
+          - ALL
+      responses:
+        "200":
+          description: NDJSON stream of audit records
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: Missing from/to or from after to
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the COMPLIANCE_EXPORT scope
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/accounts/{accountId}/statement:
+    get:
+      tags:
+      - Accounts
+      summary: "Generate an account statement for a period, with opening/closing balances\
+        \ and movements"
+      operationId: getStatement
+      parameters:
+      - name: accountId
+        in: path
+        description: Account UUID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        description: Inclusive lower bound on occurredAt for the statement period
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        description: Inclusive upper bound on occurredAt for the statement period
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          description: Statement generated successfully
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: "Missing from/to, invalid accountId format, or from after to"
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the ACCOUNTS_READ scope
+          content:
+            '*/*':
+              schema:
+                type: object
+        "404":
+          description: Account not found for this tenant
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/accounts/{accountId}/entries:
+    get:
+      tags:
+      - Accounts
+      summary: "Get a paginated, reverse-chronological timeline of journal entries\
+        \ for an account"
+      operationId: listEntries
+      parameters:
+      - name: accountId
+        in: path
+        description: Account UUID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        description: Inclusive lower bound on createdAt; must not be after 'to' if
+          both are present
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        description: Inclusive upper bound on createdAt; must not be before 'from'
+          if both are present
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: limit
+        in: query
+        description: "Max entries per page, 1-200"
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+      - name: cursor
+        in: query
+        description: Opaque pagination cursor from a previous page's nextCursor
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Page of journal entries returned successfully
+          content:
+            '*/*':
+              schema:
+                type: object
+        "400":
+          description: "Invalid accountId/limit/range, or invalid cursor"
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the ACCOUNTS_READ scope
+          content:
+            '*/*':
+              schema:
+                type: object
+        "404":
+          description: Account not found for this tenant
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/accounts/{accountId}/balance:
+    get:
+      tags:
+      - Accounts
+      summary: "Get account balance, optionally as of a past point in time"
+      operationId: getBalance
+      parameters:
+      - name: accountId
+        in: path
+        description: Account UUID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: asOf
+        in: query
+        description: Return balance as of this ISO-8601 instant (omit for current
+          balance)
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          description: Balance computed successfully
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: API key does not have the ACCOUNTS_READ scope
+          content:
+            '*/*':
+              schema:
+                type: object
+        "404":
+          description: Account not found for this tenant
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/api-keys/{keyId}:
+    delete:
+      tags:
+      - API Keys
+      summary: Revoke an API key
+      operationId: revoke
+      parameters:
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: Key revoked
+          content:
+            '*/*':
+              schema:
+                type: object
+        "404":
+          description: Key not found for this tenant
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: Requires ADMIN scope
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/v1/admin/policy-rules/{ruleId}:
+    delete:
+      tags:
+      - Policy Rules
+      summary: Delete a policy rule
+      operationId: delete
+      parameters:
+      - name: ruleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: Rule deleted
+          content:
+            '*/*':
+              schema:
+                type: object
+        "404":
+          description: Rule not found for this tenant
+          content:
+            '*/*':
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            '*/*':
+              schema:
+                type: object
+        "403":
+          description: Requires ADMIN scope
+          content:
+            '*/*':
+              schema:
+                type: object
+components:
+  schemas:
+    UpdateWebhookConfigRequest:
+      type: object
+      properties:
+        webhookUrl:
+          type: string
+          minLength: 1
+      required:
+      - webhookUrl
+    FiatEntryDto:
+      allOf:
+      - $ref: "#/components/schemas/MonetaryEntryRequestDto"
+      - type: object
+        properties:
+          amount:
+            type: number
+          currency:
+            type: string
+            enum:
+            - BRL
+            - USD
+            - MXN
+            - EUR
+          rail:
+            type: string
+            enum:
+            - ACH
+            - WIRE
+            - PIX
+            - SWIFT
+            - SEPA
+          bankReference:
+            type: string
+      required:
+      - amount
+      - currency
+      - rail
+    JournalLineRequestDto:
+      type: object
+      properties:
+        accountId:
+          type: string
+          format: uuid
+          description: Account UUID
+        entryType:
+          type: string
+          description: DEBIT or CREDIT
+          enum:
+          - DEBIT
+          - CREDIT
+        monetaryEntry:
+          description: Monetary entry — FIAT or ONCHAIN
+          oneOf:
+          - $ref: "#/components/schemas/FiatEntryDto"
+          - $ref: "#/components/schemas/OnChainEntryDto"
+        description:
+          type: string
+      required:
+      - accountId
+      - entryType
+      - monetaryEntry
+    MonetaryEntryRequestDto:
+      discriminator:
+        propertyName: type
+      properties:
+        type:
+          type: string
+      required:
+      - type
+    OnChainEntryDto:
+      allOf:
+      - $ref: "#/components/schemas/MonetaryEntryRequestDto"
+      - type: object
+        properties:
+          amount:
+            type: number
+          token:
+            type: string
+            enum:
+            - USDC
+            - USDT
+            - BRZ
+            - PYUSD
+          chainId:
+            type: string
+            enum:
+            - EVM
+            - SOLANA
+            - TRON
+          txHash:
+            type: string
+          blockNumber:
+            type: integer
+            format: int64
+          walletAddress:
+            type: string
+          tokenContract:
+            type: string
+      required:
+      - amount
+      - blockNumber
+      - chainId
+      - token
+      - tokenContract
+      - txHash
+      - walletAddress
+    PostTransactionRequest:
+      type: object
+      properties:
+        lines:
+          type: array
+          description: Journal lines — must be balanced (debits == credits per currency)
+          items:
+            $ref: "#/components/schemas/JournalLineRequestDto"
+          maxItems: 1000
+          minItems: 2
+          minLength: 2
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Arbitrary key-value metadata attached to the transaction
+      required:
+      - lines
+      - metadata
+    RegisterSettlementRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+          format: uuid
+          description: Account that will receive the on-chain transfer
+        expectedToken:
+          type: string
+          description: "Expected stablecoin token (e.g. USDC, USDT)"
+          minLength: 1
+        expectedAmount:
+          type: string
+          description: Expected transfer amount (e.g. "100.00")
+          minLength: 1
+        expectedWalletAddress:
+          type: string
+          description: Wallet address to watch for the incoming transfer
+          minLength: 1
+        expectedChainId:
+          type: string
+          description: "Chain ID (EVM, SOLANA, TRON)"
+          minLength: 1
+        expectedFromAddress:
+          type: string
+          description: "Optional: expected sender address for sender-confirmed matching"
+      required:
+      - accountId
+      - expectedAmount
+      - expectedChainId
+      - expectedToken
+      - expectedWalletAddress
+    ReconcileBatchRequest:
+      type: object
+      properties:
+        transactionIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 100
+          minItems: 0
+      required:
+      - transactionIds
+    CreateApiKeyRequest:
+      type: object
+      properties:
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - TRANSACTIONS_READ
+            - TRANSACTIONS_WRITE
+            - ACCOUNTS_READ
+            - ACCOUNTS_WRITE
+            - AGENTS_EXECUTE
+            - AGENTS_ROLLBACK
+            - AGENTS_AUDIT_READ
+            - RECONCILIATION_READ
+            - RECONCILIATION_WRITE
+            - COMPLIANCE_EXPORT
+            - WEBHOOK_MANAGE
+            - ADMIN
+          minItems: 1
+          uniqueItems: true
+      required:
+      - scopes
+    CreatePolicyRuleRequest:
+      type: object
+      properties:
+        type:
+          type: string
+        agentKeyPrefix:
+          type: string
+        amount:
+          type: string
+        debitAccountId:
+          type: string
+        creditAccountId:
+          type: string
+        tokens:
+          type: array
+          items:
+            type: string
+        chains:
+          type: array
+          items:
+            type: string
+      required:
+      - type
+    CreateAccountRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Account display name
+          minLength: 1
+        description:
+          type: string
+          description: Optional description
+        currency:
+          type: string
+          description: "ISO 4217 currency code: BRL, USD, MXN, EUR"
+          minLength: 1
+        type:
+          type: string
+          description: "Account type: ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE"
+          minLength: 1
+      required:
+      - currency
+      - name
+      - type
+    PolicyRuleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        agentKeyPrefix:
+          type: string
+        params:
+          type: object
+          additionalProperties: {}
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - createdAt
+      - id
+      - params
+      - type
