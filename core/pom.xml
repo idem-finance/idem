@@ -8,7 +8,7 @@
         <version>0.1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>core</artifactId>
+    <artifactId>idem-core</artifactId>
     <name>idem-core</name>
     <description>Pure domain model — zero framework dependencies</description>
 
@@ -17,5 +17,78 @@
         and kotlin-test-junit5 are inherited from the root pom.
         Adding ANY Spring, JPA, or Kafka dependency here is a build violation.
     -->
+
+    <profiles>
+        <!--
+          Activated with -P release during the publish-central CI job.
+          Attaches sources and Dokka javadoc JARs (both required by Maven Central),
+          then deploys to the Central Portal via the central-publishing-maven-plugin.
+          Mirrors sdk-kotlin/pom.xml's release profile.
+          Credentials come from the 'central' server entry in ~/.m2/settings.xml
+          (injected by setup-java in CI using SONATYPE_USERNAME/SONATYPE_PASSWORD secrets).
+        -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <!--
+                      Produces a self-contained .flattened-pom.xml that resolves all parent
+                      inheritance (licenses, developers, scm) into explicit values. Maven Central
+                      requires a standalone pom — it cannot resolve the parent (finance.idem:idem)
+                      because it is not published to Central.
+                      Must run before package/sign so the flattened pom is what gets deployed.
+                    -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>flatten-maven-plugin</artifactId>
+                        <version>1.7.0</version>
+                        <configuration>
+                            <updatePomFile>true</updatePomFile>
+                            <flattenMode>ossrh</flattenMode>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>flatten</id>
+                                <phase>process-resources</phase>
+                                <goals><goal>flatten</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.11.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <autoPublish>true</autoPublish>
+                            <waitUntil>published</waitUntil>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals><goal>jar-no-fork</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.jetbrains.dokka</groupId>
+                        <artifactId>dokka-maven-plugin</artifactId>
+                        <version>${dokka.version}</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals><goal>javadocJar</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>
