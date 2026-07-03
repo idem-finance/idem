@@ -21,6 +21,10 @@ server:
 
 springdoc:
   paths-to-exclude: /internal/**
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui
 
 management:
   endpoints:

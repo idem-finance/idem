@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size
 
 data class PostTransactionRequest(
     @field:Size(min = 2, max = 1000, message = "lines must contain between 2 and 1000 entries")
-    @Schema(description = "Journal lines — must be balanced (debits == credits per currency)", minLength = 2)
+    @Schema(description = "Journal lines — must be balanced (debits == credits per currency)")
     val lines: List<JournalLineRequestDto>,
     @field:Size(max = 50, message = "metadata must not exceed 50 entries")
     @Schema(description = "Arbitrary key-value metadata attached to the transaction")
