@@ -34,7 +34,7 @@ class WebSecurityConfig {
                 auth.requestMatchers("/actuator/**").hasAuthority("ADMIN")
                 auth.requestMatchers("/error").permitAll()
                 auth.requestMatchers("/swagger-ui/**").permitAll()
-                auth.requestMatchers("/v3/api-docs/**").permitAll()
+                auth.requestMatchers("/api-docs/**", "/api-docs.yaml").permitAll()
                 auth.anyRequest().authenticated()
             }.addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
             // MCP bridge runs after API key filter: picks up session auth for POST /mcp/messages
