@@ -299,13 +299,13 @@ SHA256 checksums for every release's signed jars and native binary are also atta
 Docker images are signed with [Sigstore Cosign](https://docs.sigstore.dev/cosign/overview/) via keyless signing (GitHub Actions OIDC), published to both GHCR and Docker Hub:
 
 - `ghcr.io/idem-finance/idem` — JVM image only
-- `idemfinance/idem` — JVM (`latest`, `{version}`) and GraalVM native (`native`, `native-{version}`) variants
+- `id3mfin4nc3/idem` — JVM (`latest`, `{version}`) and GraalVM native (`native`, `native-{version}`) variants
 
 ```bash
 cosign verify \
   --certificate-identity-regexp="https://github.com/idem-finance/idem/.github/workflows/release.yml@refs/tags/" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  idemfinance/idem:v0.1.0
+  id3mfin4nc3/idem:v0.1.0
 ```
 
 </details>
