@@ -370,7 +370,6 @@ infrastructure/src/main/kotlin/finance/idem/infrastructure/security/
 
 - `docs/policy-guard.md` — PolicyGuard, PolicyRule variants, evaluation pipeline
 - `docs/domain-model.md` — AgentContext, MonetaryEntry, Transaction
-- `docs/demo-video-script.md` — MCP demo video script and recording checklist
 - `infrastructure/security/McpSseAuthBridgeFilter.kt` — SSE session auth bridge
 - `infrastructure/security/McpReactorSecurityConfig.kt` — Reactor context propagation
 - Issue [#166](https://github.com/idem-finance/idem/issues/166) — MCP tools implementation
