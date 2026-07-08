@@ -5,6 +5,7 @@ HELP.md
 CLAUDE.md
 STRATEGY.md
 CONTEXT.md
+docs/demo-video-script.md
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

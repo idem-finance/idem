@@ -163,7 +163,7 @@ Plug Idem directly into Claude Desktop, Claude Code, or any MCP-compatible agent
 }
 ```
 
-Requires an API key with `AGENTS_EXECUTE` scope. Available tools: `post_transaction`, `get_balance`, `list_entries`, `describe_account`. Full connection guide: [`docs/mcp-server.md`](docs/mcp-server.md).
+Available tools: `post_transaction`, `get_balance`, `list_entries`, `describe_account`, `reconcile_batch` (require `AGENTS_EXECUTE` scope), `rollback_workflow` (requires `AGENTS_ROLLBACK` scope), and `get_agent_audit_log` (requires `AGENTS_AUDIT_READ` scope). Full connection guide: [`docs/mcp-server.md`](docs/mcp-server.md).
 
 ---
 
@@ -225,7 +225,7 @@ Technical documentation for individual components lives in [`docs/`](docs/).
 
 ## Project status
 
-Idem is under active development. The core ledger engine, API key authentication, chain readers (EVM, Solana, Tron), webhook outbox, reconciliation, Kotlin SDK, PolicyGuard (agentic policy evaluation), and MCP server (four tools: `post_transaction`, `get_balance`, `list_entries`, `describe_account`) are complete. **Not yet implemented:** agentic workflow engine (WorkflowOrchestrator, RollbackService), MCP tools that depend on it (`rollback_workflow`, `reconcile_batch`, `get_agent_audit_log`), agent audit trail (HMAC-signed `AgentAuditEvent`), Travel Rule (IVMS 101), LGPD export, and Keycloak dashboard login.
+Idem is under active development. The core ledger engine, API key authentication, chain readers (EVM, Solana, Tron), webhook outbox, reconciliation, Kotlin SDK, PolicyGuard (agentic policy evaluation, backed by a per-tenant/per-agent `PolicyRepository`), the agent audit trail (HMAC-signed `AgentAuditEvent`, written before execution), rollback via compensating transactions (saga pattern), and the full seven-tool MCP server (`post_transaction`, `get_balance`, `list_entries`, `describe_account`, `reconcile_batch`, `rollback_workflow`, `get_agent_audit_log`) are complete. **Not yet implemented:** Travel Rule (IVMS 101), LGPD export, and Keycloak dashboard login.
 
 Not yet recommended for production use without independent review.
 

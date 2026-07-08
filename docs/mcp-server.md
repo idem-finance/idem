@@ -55,7 +55,18 @@ spring:
 
 ## Implemented tools
 
-All four tools require the `AGENTS_EXECUTE` scope (`@PreAuthorize("hasAuthority('AGENTS_EXECUTE')")`).
+Seven tools are exposed. Most require `AGENTS_EXECUTE`; `rollback_workflow` requires the
+separate `AGENTS_ROLLBACK` scope, and `get_agent_audit_log` requires `AGENTS_AUDIT_READ`.
+
+| Tool | Required scope |
+|---|---|
+| `post_transaction` | `AGENTS_EXECUTE` |
+| `get_balance` | `AGENTS_EXECUTE` |
+| `list_entries` | `AGENTS_EXECUTE` |
+| `describe_account` | `AGENTS_EXECUTE` |
+| `reconcile_batch` | `AGENTS_EXECUTE` |
+| `rollback_workflow` | `AGENTS_ROLLBACK` |
+| `get_agent_audit_log` | `AGENTS_AUDIT_READ` |
 
 ### `post_transaction`
 
@@ -142,6 +153,74 @@ describe_account(
 
 ---
 
+### `rollback_workflow`
+
+Rolls back a committed or executing workflow via compensating transactions (saga pattern):
+each executed step is reversed in reverse order. Delegates to `RollbackWorkflowUseCase`.
+Requires the `AGENTS_ROLLBACK` scope, deliberately separate from `AGENTS_EXECUTE` — an agent
+authorized to commit transactions cannot roll them back unless explicitly granted this scope.
+
+```
+rollback_workflow(
+    workflowPlanId: String,   // WorkflowPlan UUID to roll back
+    reason: String,           // human-readable reason, recorded in the audit log
+    agentId: String,          // agent identity
+    sessionId: String,        // session grouping related actions
+) → RollbackWorkflowResult(rollbackId, compensatedSteps: List<CompensatedStepItem>, status)
+```
+
+`CompensatedStepItem`: `stepOrder`, `description`, `compensatingTransactionId?`.
+
+Compensating transactions post directly via `PostTransactionUseCase`, bypassing `PolicyGuard`
+by design (a rollback is a corrective action, not a new agent-initiated debit). The workflow
+plan transitions to a terminal `ROLLED_BACK` status on success.
+
+---
+
+### `reconcile_batch`
+
+Runs a reconciliation sweep over on-chain settlements within a time window, matching
+`UNMATCHED` chain entries against `PENDING` journal lines by amount. Delegates to
+`ReconcileEntriesUseCase`.
+
+```
+reconcile_batch(
+    accountId: String?,          // optional account UUID to scope the sweep
+    from: String,                // ISO-8601 lower bound on settlement timestamp
+    to: String,                  // ISO-8601 upper bound on settlement timestamp
+    tolerancePercent: Double?,   // optional per-call override of the server default
+) → ReconcileBatchResult(matched, unmatched, exceptions: List<String>, settlementIds: List<String>)
+```
+
+Matching is exact by default; `tolerancePercent` (or the server-wide
+`idem.reconciliation.amount-tolerance-percent` property) allows a bounded amount difference.
+Entries with no matching `PENDING` candidate within tolerance surface in `exceptions` with a
+`"No matching pending settlement found"` reason and are not settled.
+
+---
+
+### `get_agent_audit_log`
+
+Retrieves HMAC-signed audit events for agent actions, filterable by session and time range.
+Delegates to `GetAgentAuditLogUseCase`. Requires the separate `AGENTS_AUDIT_READ` scope.
+
+```
+get_agent_audit_log(
+    sessionId: String?,   // optional session identifier filter
+    from: String?,        // optional ISO-8601 lower bound
+    to: String?,          // optional ISO-8601 upper bound
+    limit: Int?,          // 1-200, default 50
+) → AuditLogResult(auditEvents: List<AuditEventItem>, total)
+```
+
+`AuditEventItem`: `id`, `workflowPlanId`, `agentId`, `sessionId`, `eventType`, `intentPayload`,
+`status`, `occurredAt`, `completedAt?`, `hmacSignature`. Every mutating tool call writes a
+`PENDING` `AgentAuditEvent` **before** execution and a `COMPLETED`/`FAILED` event after —
+`AgentAuditEvent` is append-only and each event's `hmacSignature` can be independently
+re-verified against the tenant's audit HMAC secret.
+
+---
+
 ## Auth model
 
 ### API key requirement
@@ -222,7 +301,8 @@ Hooks.enableAutomaticContextPropagation()
    ```bash
    curl -X POST http://localhost:8081/api/v1/api-keys \
      -H "X-API-Key: $IDEM_ADMIN_KEY" \
-     -d '{"name":"claude-desktop","scopes":["AGENTS_EXECUTE","ACCOUNTS_READ"]}'
+     -H "Content-Type: application/json" \
+     -d '{"scopes":["AGENTS_EXECUTE","ACCOUNTS_READ"]}'
    ```
    Copy the `rawKey` value — it is shown exactly once.
 
@@ -241,7 +321,7 @@ Hooks.enableAutomaticContextPropagation()
    }
    ```
 
-4. Restart Claude Desktop. The four Idem tools appear in the tool list.
+4. Restart Claude Desktop. The seven Idem tools appear in the tool list.
 
 ---
 
@@ -266,23 +346,16 @@ mcp/
     ├── BalanceResult.kt
     ├── EntryItem.kt
     ├── EntryListResult.kt
-    └── AccountDescriptionResult.kt
+    ├── AccountDescriptionResult.kt
+    ├── RollbackWorkflowResult.kt  ← includes CompensatedStepItem
+    ├── ReconcileBatchResult.kt
+    └── AuditLogResult.kt          ← includes AuditEventItem
 
 infrastructure/src/main/kotlin/finance/idem/infrastructure/security/
     ├── McpSseAuthBridgeFilter.kt    ← SSE session ↔ API-key auth bridge
     ├── McpSseSessionAuthStore.kt    ← ConcurrentHashMap[sessionId → Authentication]
     └── McpReactorSecurityConfig.kt  ← Reactor context propagation for @PreAuthorize
 ```
-
----
-
-## Planned tools (post WorkflowOrchestrator / RollbackService)
-
-| Tool | Depends on | Issue |
-|---|---|---|
-| `rollback_workflow` | RollbackService | — |
-| `reconcile_batch` | ReconcileEntriesUseCase (exists) + MCP wiring | — |
-| `get_agent_audit_log` | AgentAuditEvent (issue #160) | — |
 
 ---
 
@@ -300,4 +373,3 @@ infrastructure/src/main/kotlin/finance/idem/infrastructure/security/
 - `infrastructure/security/McpSseAuthBridgeFilter.kt` — SSE session auth bridge
 - `infrastructure/security/McpReactorSecurityConfig.kt` — Reactor context propagation
 - Issue [#166](https://github.com/idem-finance/idem/issues/166) — MCP tools implementation
-- Issue [#200](https://github.com/idem-finance/idem/issues/200) — PolicyRepository + `POST/GET/DELETE /api/v1/admin/policy-rules`
