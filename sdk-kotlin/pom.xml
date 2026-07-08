@@ -176,6 +176,9 @@
                         <exclude>finance/idem/sdk/model/EntriesPage*</exclude>
                         <exclude>finance/idem/sdk/model/JournalLineResponse*</exclude>
                         <exclude>finance/idem/sdk/model/StatementResponse*</exclude>
+                        <exclude>finance/idem/sdk/model/CreateAccountRequest*</exclude>
+                        <exclude>finance/idem/sdk/model/CreateAccountResponse*</exclude>
+                        <exclude>finance/idem/sdk/model/SettlementResponse*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
