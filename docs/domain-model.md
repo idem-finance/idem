@@ -478,7 +478,7 @@ See `docs/reconciliation.md` for the matching algorithm.
 | `PENDING` | A settlement expectation has been registered, awaiting a matching `OnChainEntry` |
 | `SETTLED` | A `PENDING` expectation was matched to a posted `OnChainEntry` |
 | `UNMATCHED` | A posted `OnChainEntry` had no matching `PENDING` expectation |
-| `CANCELLED` | Reserved for a future "cancel expectation" API — not set by the matching engine |
+| `CANCELLED` | A `PENDING` expectation was cancelled via `DELETE /api/v1/settlements/{id}` — never set by the matching engine |
 
 ### Settlement
 
@@ -491,18 +491,25 @@ Settlement(id: UUID, tenantId: TenantId, accountId: AccountId, amount: MonetaryA
            createdAt: Instant, createdBy: String)
 ```
 
-Both PENDING rows (registered ahead of time, e.g. via a future `POST
-/accounts/{id}/settlements`) and UNMATCHED rows (created reactively when no expectation
-matches an incoming transfer) live in the same table. `matchedTransactionId`, `txHash`,
-`blockNumber`, and `confirmedAt` are null on PENDING rows and populated when the row
-transitions to SETTLED or is created as UNMATCHED. `Settlement` is a plain `data class`
-with no `init` invariants — matching `JournalLine`'s style.
+Both PENDING rows (registered ahead of time via `POST /api/v1/settlements`) and UNMATCHED
+rows (created reactively when no expectation matches an incoming transfer) live in the same
+table. `matchedTransactionId`, `txHash`, `blockNumber`, and `confirmedAt` are null on PENDING
+rows and populated when the row transitions to SETTLED or is created as UNMATCHED.
+`Settlement` is a plain `data class` with no `init` invariants — matching `JournalLine`'s
+style.
 
-`expectedFromAddress` is an optional sender-address hint on a PENDING row: when set, it's
-compared case-insensitively against the incoming `OnChainEntry.fromAddress` as a preferred
-"tier 1" match ahead of the amount+FIFO fallback, and a disagreeing sender excludes that row
-from matching entirely. Always `null` today — there is no endpoint yet to register it. See
-`docs/reconciliation.md` for the full matching algorithm.
+`expectedFromAddress` is an optional sender-address hint on a PENDING row, settable via
+`RegisterSettlementRequest.expectedFromAddress` on `POST /api/v1/settlements`: when set,
+it's compared case-insensitively against the incoming `OnChainEntry.fromAddress` as a
+preferred "tier 1" match ahead of the amount+FIFO fallback, and a disagreeing sender
+excludes that row from matching entirely. See `docs/reconciliation.md` for the full
+matching algorithm.
+
+A registered PENDING settlement can be cancelled via `DELETE /api/v1/settlements/{id}`
+(`CancelSettlementService`) — only while still `PENDING`; cancelling a `SETTLED` or already
+`CANCELLED` row is rejected. `GET /api/v1/settlements` lists settlements for the tenant with
+optional `status`/`from`/`to` filters, keyset-paginated via `SettlementRepository.findPage`.
+`GET /api/v1/settlements/{id}` fetches a single settlement by ID.
 
 ### SettlementRepository
 
@@ -521,11 +528,36 @@ interface SettlementRepository {
         walletAddress: String,
         since: Instant,
     ): List<Settlement>
+
+    /** UNMATCHED rows for tenant in [from, to), optionally filtered by accountId.
+     * Ordered createdAt ASC. */
+    fun findUnmatchedInWindow(
+        tenantId: TenantId,
+        accountId: AccountId?,
+        from: Instant,
+        to: Instant,
+    ): List<Settlement>
+
+    /** Paginated listing for a tenant, optionally filtered by status and/or time range.
+     * Keyset cursor: rows where (createdAt < afterCreatedAt) OR (createdAt == afterCreatedAt
+     * AND id < afterId). Ordered createdAt DESC, id DESC. */
+    fun findPage(
+        tenantId: TenantId,
+        status: EntryStatus?,
+        from: Instant?,
+        to: Instant?,
+        afterCreatedAt: Instant?,
+        afterId: UUID?,
+        limit: Int,
+    ): List<Settlement>
 }
 ```
 
-`save()` is an upsert — transitioning a row from `PENDING` to `SETTLED` updates the
-existing row in place rather than inserting a new one.
+`save()` is an upsert — transitioning a row from `PENDING` to `SETTLED` (or `CANCELLED`)
+updates the existing row in place rather than inserting a new one.
+
+`findPage` backs `GET /api/v1/settlements` — the same keyset-pagination style as
+`JournalLineRepository.findByAccountId`, for the same append-only-table reasons.
 
 ---
 
