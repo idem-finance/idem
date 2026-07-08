@@ -4,7 +4,9 @@ import finance.idem.sdk.exception.ApiException
 import finance.idem.sdk.exception.NetworkException
 import finance.idem.sdk.exception.RateLimitException
 import finance.idem.sdk.http.defaultHttpClient
+import finance.idem.sdk.model.AccountType
 import finance.idem.sdk.model.ChainId
+import finance.idem.sdk.model.CreateAccountRequest
 import finance.idem.sdk.model.EntryType
 import finance.idem.sdk.model.FiatCurrency
 import finance.idem.sdk.model.FiatEntryRequest
@@ -14,6 +16,7 @@ import finance.idem.sdk.model.OnChainEntryRequest
 import finance.idem.sdk.model.OnChainEntryResponse
 import finance.idem.sdk.model.PaymentRail
 import finance.idem.sdk.model.PostTransactionRequest
+import finance.idem.sdk.model.RegisterSettlementRequest
 import finance.idem.sdk.model.StablecoinToken
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandler
@@ -719,6 +722,422 @@ class IdemClientTest {
             assertEquals(404, exception.statusCode)
             assertEquals("NOT_FOUND", exception.errorCode)
         }
+
+    // ---- createAccount ----
+
+    @Test
+    fun `createAccount returns mapped response on 201 and sends api key header`() =
+        runTest {
+            val id = UUID.randomUUID()
+            var captured: HttpRequestData? = null
+            val client =
+                clientWith { request ->
+                    captured = request
+                    respond(
+                        content =
+                            ByteReadChannel(
+                                """
+                                {"id":"$id","name":"Treasury","description":null,"currency":"USD",
+                                "type":"ASSET","normalBalance":"DEBIT","createdAt":"2024-01-01T00:00:00Z"}
+                                """.trimIndent(),
+                            ),
+                        status = HttpStatusCode.Created,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val response =
+                client.createAccount(
+                    CreateAccountRequest(name = "Treasury", currency = FiatCurrency.USD, type = AccountType.ASSET),
+                )
+
+            assertEquals(id, response.id)
+            assertEquals(AccountType.ASSET, response.type)
+            assertEquals(EntryType.DEBIT, response.normalBalance)
+            assertEquals("sk_live_test", captured!!.headers["X-API-Key"])
+        }
+
+    @Test
+    fun `createAccount maps 400 invalid currency to ApiException`() =
+        runTest {
+            val client =
+                clientWith {
+                    respond(
+                        content =
+                            ByteReadChannel(
+                                """{"code":"INVALID_CURRENCY","message":"currency must be one of: BRL, USD, MXN, EUR"}""",
+                            ),
+                        status = HttpStatusCode.BadRequest,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val exception =
+                assertFailsWith<ApiException> {
+                    client.createAccount(
+                        CreateAccountRequest(name = "Treasury", currency = FiatCurrency.USD, type = AccountType.ASSET),
+                    )
+                }
+            assertEquals(400, exception.statusCode)
+            assertEquals("INVALID_CURRENCY", exception.errorCode)
+        }
+
+    @Test
+    fun `createAccount maps 400 invalid account type to ApiException`() =
+        runTest {
+            val client =
+                clientWith {
+                    respond(
+                        content =
+                            ByteReadChannel(
+                                """
+                                {"code":"INVALID_ACCOUNT_TYPE",
+                                "message":"type must be one of: ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE"}
+                                """.trimIndent(),
+                            ),
+                        status = HttpStatusCode.BadRequest,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val exception =
+                assertFailsWith<ApiException> {
+                    client.createAccount(
+                        CreateAccountRequest(name = "Treasury", currency = FiatCurrency.USD, type = AccountType.ASSET),
+                    )
+                }
+            assertEquals(400, exception.statusCode)
+            assertEquals("INVALID_ACCOUNT_TYPE", exception.errorCode)
+        }
+
+    // ---- reconcileBatch ----
+
+    @Test
+    fun `reconcileBatch sends transactionIds and deserializes a raw JSON array with mixed outcomes`() =
+        runTest {
+            val txId1 = UUID.randomUUID()
+            val txId2 = UUID.randomUUID()
+            var captured: HttpRequestData? = null
+            val client =
+                clientWith { request ->
+                    captured = request
+                    respond(
+                        content =
+                            ByteReadChannel(
+                                """[{"transactionId":"$txId1","outcome":"SETTLED"},{"transactionId":"$txId2","outcome":"UNMATCHED"}]""",
+                            ),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val results = client.reconcileBatch(listOf(txId1, txId2))
+
+            assertEquals(2, results.size)
+            assertEquals("SETTLED", results[0].outcome)
+            assertEquals("UNMATCHED", results[1].outcome)
+            val body = captured!!.bodyAsString()
+            assertTrue(body.contains(txId1.toString()))
+            assertTrue(body.contains(txId2.toString()))
+        }
+
+    @Test
+    fun `reconcileBatch maps 400 to ApiException`() =
+        runTest {
+            val client =
+                clientWith {
+                    respond(
+                        content = ByteReadChannel("""{"code":"INVALID_REQUEST","message":"transactionIds must not be empty"}"""),
+                        status = HttpStatusCode.BadRequest,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val exception =
+                assertFailsWith<ApiException> {
+                    client.reconcileBatch(emptyList())
+                }
+            assertEquals(400, exception.statusCode)
+        }
+
+    // ---- registerSettlement ----
+
+    private fun sampleSettlementRequest(): RegisterSettlementRequest =
+        RegisterSettlementRequest(
+            accountId = UUID.randomUUID(),
+            expectedToken = StablecoinToken.USDC,
+            expectedAmount = BigDecimal("2500.00"),
+            expectedWalletAddress = "0xwallet",
+            expectedChainId = ChainId.EVM,
+        )
+
+    @Test
+    fun `registerSettlement serializes expectedAmount as a quoted JSON string`() =
+        runTest {
+            var captured: HttpRequestData? = null
+            val client =
+                clientWith { request ->
+                    captured = request
+                    respond(
+                        content = ByteReadChannel(sampleSettlementResponseJson()),
+                        status = HttpStatusCode.Created,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            client.registerSettlement(sampleSettlementRequest(), idempotencyKey = "settlement-key-1")
+
+            val body = captured!!.bodyAsString()
+            assertTrue(body.contains(""""expectedAmount":"2500.00""""))
+            assertEquals("settlement-key-1", captured!!.headers["Idempotency-Key"])
+        }
+
+    @Test
+    fun `registerSettlement returns full mapped response with nullable fields absent`() =
+        runTest {
+            val settlementId = UUID.randomUUID()
+            val accountId = UUID.randomUUID()
+            val client =
+                clientWith {
+                    respond(
+                        content =
+                            ByteReadChannel(
+                                """
+                                {
+                                  "settlementId":"$settlementId","accountId":"$accountId","status":"PENDING",
+                                  "expectedToken":"USDC","expectedAmount":"2500.00","expectedWalletAddress":"0xwallet",
+                                  "expectedChainId":"EVM","expectedFromAddress":null,"matchedTransactionId":null,
+                                  "txHash":null,"blockNumber":null,"confirmedAt":null,
+                                  "expiresAt":"2024-01-02T00:00:00Z","createdAt":"2024-01-01T00:00:00Z"
+                                }
+                                """.trimIndent(),
+                            ),
+                        status = HttpStatusCode.Created,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val response = client.registerSettlement(sampleSettlementRequest(), idempotencyKey = "key-1")
+
+            assertEquals(settlementId, response.settlementId)
+            assertEquals("PENDING", response.status)
+            assertNull(response.matchedTransactionId)
+            assertNull(response.txHash)
+        }
+
+    @Test
+    fun `registerSettlement maps 400 invalid token to ApiException`() =
+        runTest {
+            val client =
+                clientWith {
+                    respond(
+                        content =
+                            ByteReadChannel(
+                                """{"code":"INVALID_TOKEN","message":"expectedToken must be one of: USDC, USDT, BRZ, PYUSD"}""",
+                            ),
+                        status = HttpStatusCode.BadRequest,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val exception =
+                assertFailsWith<ApiException> {
+                    client.registerSettlement(sampleSettlementRequest(), idempotencyKey = "key-1")
+                }
+            assertEquals("INVALID_TOKEN", exception.errorCode)
+        }
+
+    @Test
+    fun `registerSettlement maps 409 idempotency conflict to ApiException`() =
+        runTest {
+            val client =
+                clientWith {
+                    respond(
+                        content = ByteReadChannel("""{"code":"IDEMPOTENCY_CONFLICT","message":"key already used"}"""),
+                        status = HttpStatusCode.Conflict,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val exception =
+                assertFailsWith<ApiException> {
+                    client.registerSettlement(sampleSettlementRequest(), idempotencyKey = "key-1")
+                }
+            assertEquals(409, exception.statusCode)
+            assertEquals("IDEMPOTENCY_CONFLICT", exception.errorCode)
+        }
+
+    @Test
+    fun `registerSettlement maps 422 account not found to ApiException`() =
+        runTest {
+            val client =
+                clientWith {
+                    respond(
+                        content = ByteReadChannel("""{"code":"ACCOUNT_NOT_FOUND","message":"Account not found"}"""),
+                        status = HttpStatusCode.UnprocessableEntity,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val exception =
+                assertFailsWith<ApiException> {
+                    client.registerSettlement(sampleSettlementRequest(), idempotencyKey = "key-1")
+                }
+            assertEquals(422, exception.statusCode)
+            assertEquals("ACCOUNT_NOT_FOUND", exception.errorCode)
+        }
+
+    // ---- getSettlement ----
+
+    @Test
+    fun `getSettlement returns mapped response on 200`() =
+        runTest {
+            val settlementId = UUID.randomUUID()
+            val client =
+                clientWith {
+                    respond(
+                        content = ByteReadChannel(sampleSettlementResponseJson(settlementId = settlementId, status = "SETTLED")),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val response = client.getSettlement(settlementId)
+
+            assertEquals(settlementId, response.settlementId)
+            assertEquals("SETTLED", response.status)
+        }
+
+    @Test
+    fun `getSettlement maps 404 to ApiException`() =
+        runTest {
+            val client =
+                clientWith {
+                    respond(
+                        content = ByteReadChannel("""{"code":"SETTLEMENT_NOT_FOUND","message":"Settlement not found"}"""),
+                        status = HttpStatusCode.NotFound,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val exception =
+                assertFailsWith<ApiException> {
+                    client.getSettlement(UUID.randomUUID())
+                }
+            assertEquals(404, exception.statusCode)
+            assertEquals("SETTLEMENT_NOT_FOUND", exception.errorCode)
+        }
+
+    // ---- listSettlements ----
+
+    @Test
+    fun `listSettlements sends default limit and omits optional params`() =
+        runTest {
+            var captured: HttpRequestData? = null
+            val client =
+                clientWith { request ->
+                    captured = request
+                    respond(
+                        content = ByteReadChannel("""{"settlements":[],"nextCursor":null}"""),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            client.listSettlements()
+
+            val params = captured!!.url.parameters
+            assertEquals("50", params["limit"])
+            assertNull(params["status"])
+            assertNull(params["from"])
+            assertNull(params["to"])
+            assertNull(params["cursor"])
+        }
+
+    @Test
+    fun `listSettlements sends all optional params when provided`() =
+        runTest {
+            val from = java.time.Instant.parse("2024-01-01T00:00:00Z")
+            val to = java.time.Instant.parse("2024-01-31T00:00:00Z")
+            var captured: HttpRequestData? = null
+            val client =
+                clientWith { request ->
+                    captured = request
+                    respond(
+                        content = ByteReadChannel("""{"settlements":[],"nextCursor":"cursor-2"}"""),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val page =
+                client.listSettlements(status = "PENDING", from = from, to = to, limit = 10, cursor = "cursor-1")
+
+            val params = captured!!.url.parameters
+            assertEquals("PENDING", params["status"])
+            assertEquals(from.toString(), params["from"])
+            assertEquals(to.toString(), params["to"])
+            assertEquals("10", params["limit"])
+            assertEquals("cursor-1", params["cursor"])
+            assertEquals("cursor-2", page.nextCursor)
+        }
+
+    // ---- cancelSettlement ----
+
+    @Test
+    fun `cancelSettlement returns settlement with cancelled status`() =
+        runTest {
+            val settlementId = UUID.randomUUID()
+            val client =
+                clientWith {
+                    respond(
+                        content = ByteReadChannel(sampleSettlementResponseJson(settlementId = settlementId, status = "CANCELLED")),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val response = client.cancelSettlement(settlementId)
+
+            assertEquals("CANCELLED", response.status)
+        }
+
+    @Test
+    fun `cancelSettlement maps 409 already terminal to ApiException`() =
+        runTest {
+            val client =
+                clientWith {
+                    respond(
+                        content =
+                            ByteReadChannel(
+                                """{"code":"SETTLEMENT_ALREADY_TERMINAL","message":"Settlement is already in a terminal status"}""",
+                            ),
+                        status = HttpStatusCode.Conflict,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val exception =
+                assertFailsWith<ApiException> {
+                    client.cancelSettlement(UUID.randomUUID())
+                }
+            assertEquals(409, exception.statusCode)
+            assertEquals("SETTLEMENT_ALREADY_TERMINAL", exception.errorCode)
+        }
+
+    private fun sampleSettlementResponseJson(
+        settlementId: UUID = UUID.randomUUID(),
+        status: String = "PENDING",
+    ): String =
+        """
+        {
+          "settlementId":"$settlementId","accountId":"${UUID.randomUUID()}","status":"$status",
+          "expectedToken":"USDC","expectedAmount":"2500.00","expectedWalletAddress":"0xwallet",
+          "expectedChainId":"EVM","expectedFromAddress":null,"matchedTransactionId":null,
+          "txHash":null,"blockNumber":null,"confirmedAt":null,
+          "expiresAt":null,"createdAt":"2024-01-01T00:00:00Z"
+        }
+        """.trimIndent()
 
     // ---- close ----
 

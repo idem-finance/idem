@@ -5,13 +5,21 @@ import finance.idem.sdk.exception.NetworkException
 import finance.idem.sdk.exception.RateLimitException
 import finance.idem.sdk.http.defaultHttpClient
 import finance.idem.sdk.model.BalanceResponse
+import finance.idem.sdk.model.CreateAccountRequest
+import finance.idem.sdk.model.CreateAccountResponse
 import finance.idem.sdk.model.EntriesPage
 import finance.idem.sdk.model.ErrorResponse
 import finance.idem.sdk.model.PostTransactionRequest
+import finance.idem.sdk.model.ReconcileBatchItemResponse
+import finance.idem.sdk.model.ReconcileBatchRequest
+import finance.idem.sdk.model.RegisterSettlementRequest
+import finance.idem.sdk.model.SettlementListResponse
+import finance.idem.sdk.model.SettlementResponse
 import finance.idem.sdk.model.StatementResponse
 import finance.idem.sdk.model.TransactionResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -30,6 +38,8 @@ import java.util.UUID
 
 /**
  * HTTP client for the Idem ledger REST API.
+ *
+ * Covers accounts, transactions, balances/entries/statements, reconciliation, and settlements.
  *
  * Every request carries the API key in the `X-API-Key` header. Non-2xx responses are mapped
  * to [ApiException]/[RateLimitException]; transport-level failures (connection refused,
@@ -112,6 +122,87 @@ class IdemClient(
                     header("X-API-Key", apiKey)
                     parameter("from", from.toString())
                     parameter("to", to.toString())
+                }
+            }
+        return handleResponse(response)
+    }
+
+    suspend fun createAccount(request: CreateAccountRequest): CreateAccountResponse {
+        val response =
+            executeRequest {
+                httpClient.post("$baseUrl/api/v1/accounts") {
+                    header("X-API-Key", apiKey)
+                    contentType(ContentType.Application.Json)
+                    setBody(request)
+                }
+            }
+        return handleResponse(response)
+    }
+
+    suspend fun reconcileBatch(transactionIds: List<UUID>): List<ReconcileBatchItemResponse> {
+        val response =
+            executeRequest {
+                httpClient.post("$baseUrl/api/v1/reconciliation/batch") {
+                    header("X-API-Key", apiKey)
+                    contentType(ContentType.Application.Json)
+                    setBody(ReconcileBatchRequest(transactionIds))
+                }
+            }
+        return handleResponse(response)
+    }
+
+    suspend fun registerSettlement(
+        request: RegisterSettlementRequest,
+        idempotencyKey: String,
+    ): SettlementResponse {
+        val response =
+            executeRequest {
+                httpClient.post("$baseUrl/api/v1/settlements") {
+                    header("X-API-Key", apiKey)
+                    header("Idempotency-Key", idempotencyKey)
+                    contentType(ContentType.Application.Json)
+                    setBody(request)
+                }
+            }
+        return handleResponse(response)
+    }
+
+    suspend fun getSettlement(settlementId: UUID): SettlementResponse {
+        val response =
+            executeRequest {
+                httpClient.get("$baseUrl/api/v1/settlements/$settlementId") {
+                    header("X-API-Key", apiKey)
+                }
+            }
+        return handleResponse(response)
+    }
+
+    suspend fun listSettlements(
+        status: String? = null,
+        from: Instant? = null,
+        to: Instant? = null,
+        limit: Int = 50,
+        cursor: String? = null,
+    ): SettlementListResponse {
+        val response =
+            executeRequest {
+                httpClient.get("$baseUrl/api/v1/settlements") {
+                    header("X-API-Key", apiKey)
+                    status?.let { parameter("status", it) }
+                    from?.let { parameter("from", it.toString()) }
+                    to?.let { parameter("to", it.toString()) }
+                    parameter("limit", limit)
+                    cursor?.let { parameter("cursor", it) }
+                }
+            }
+        return handleResponse(response)
+    }
+
+    suspend fun cancelSettlement(settlementId: UUID): SettlementResponse {
+        val response =
+            executeRequest {
+                httpClient.delete("$baseUrl/api/v1/settlements/$settlementId") {
+                    header("X-API-Key", apiKey)
                 }
             }
         return handleResponse(response)
