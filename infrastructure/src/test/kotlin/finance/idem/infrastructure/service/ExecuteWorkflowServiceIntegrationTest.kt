@@ -53,6 +53,7 @@ import kotlin.test.assertTrue
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(
     ExecuteWorkflowService::class,
+    AgentAuditRecorder::class,
     PostTransactionService::class,
     BasicReconciliationService::class,
     WorkflowPlanRepositoryAdapter::class,
@@ -83,6 +84,8 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
     @Autowired lateinit var txManager: PlatformTransactionManager
 
     @Autowired lateinit var policyRepository: PolicyRepositoryAdapter
+
+    @Autowired lateinit var agentAuditAdapter: AgentAuditRepositoryAdapter
 
     private val tenantId = TenantId.generate()
     private val agentCtx = AgentContext(agentId = "agent-it", sessionId = "sess-it", intent = "test")
@@ -215,6 +218,38 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
         assertEquals(0L, planCount)
     }
 
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `PolicyGuard denial — durable FAILED audit committed despite business rollback`() {
+        val txTemplate = TransactionTemplate(txManager)
+        val localTenant = TenantId.generate()
+        // Commit a deny-all rule before the service's own transaction starts.
+        txTemplate.execute {
+            policyRepository.save(localTenant, null, PolicyRule.MaxDebitPerSession(MonetaryAmount.of("0")))
+        }
+
+        assertThrows<PolicyViolationException> {
+            executeService.execute(buildCmd(listOf(buildStep("denied-durable")), tenantId = localTenant))
+        }
+
+        // No plan row (the business transaction rolled back)…
+        val planCount =
+            txTemplate.execute {
+                (
+                    entityManager
+                        .createNativeQuery("SELECT COUNT(*) FROM workflow_plans WHERE tenant_id = ?::uuid")
+                        .setParameter(1, localTenant.value.toString())
+                        .singleResult as Number
+                ).toLong()
+            }!!
+        assertEquals(0L, planCount)
+
+        // …but the denied attempt is durably recorded as a FAILED audit event.
+        val events = txTemplate.execute { agentAuditAdapter.findByFilter(localTenant) }!!
+        val denied = events.filter { it.status == "FAILED" }
+        assertEquals(1, denied.size, "Denied agent attempt must leave exactly one FAILED audit event")
+    }
+
     // ── partial failure ───────────────────────────────────────────────────────
 
     @Test
@@ -269,6 +304,12 @@ class ExecuteWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBase
                 ).toLong()
             }!!
         assertEquals(0L, txCount)
+
+        // Audit trail survives the rollback: the attempt (PENDING) and its failure (FAILED)
+        // were written durably, even though the plan and transactions were rolled back.
+        val events = txTemplate.execute { agentAuditAdapter.findByFilter(localTenantId) }!!
+        assertTrue(events.any { it.status == "PENDING" }, "Durable PENDING audit must survive rollback")
+        assertTrue(events.any { it.status == "FAILED" }, "Durable FAILED audit must survive rollback")
 
         // Cleanup: localTenantId accounts from setup tx AND this.tenantId accounts from @BeforeEach
         txTemplate.execute {

@@ -49,6 +49,7 @@ import kotlin.test.assertNull
 @Import(
     ExecuteWorkflowService::class,
     RollbackWorkflowService::class,
+    AgentAuditRecorder::class,
     PostTransactionService::class,
     BasicReconciliationService::class,
     WorkflowPlanRepositoryAdapter::class,

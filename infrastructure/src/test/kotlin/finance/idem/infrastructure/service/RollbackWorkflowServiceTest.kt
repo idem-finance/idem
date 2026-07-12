@@ -49,6 +49,8 @@ class RollbackWorkflowServiceTest {
 
     @Mock lateinit var agentAuditRepository: AgentAuditRepository
 
+    @Mock lateinit var agentAuditRecorder: AgentAuditRecorder
+
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
 
     @Mock lateinit var transactionRepository: TransactionRepository
@@ -70,6 +72,7 @@ class RollbackWorkflowServiceTest {
             RollbackWorkflowService(
                 workflowPlanRepository,
                 agentAuditRepository,
+                agentAuditRecorder,
                 webhookOutboxRepository,
                 transactionRepository,
                 postTransactionUseCase,
@@ -273,11 +276,15 @@ class RollbackWorkflowServiceTest {
 
         service.execute(rollbackCommand())
 
-        val auditCaptor = argumentCaptor<AgentAuditEvent>()
-        verify(agentAuditRepository, times(2)).save(auditCaptor.capture())
-        assertEquals(AgentAuditStatus.PENDING, auditCaptor.allValues[0].status)
-        assertEquals(AgentAuditStatus.COMPLETED, auditCaptor.allValues[1].status)
-        assertTrue(auditCaptor.allValues[1].outcome!!.contains("compliance review"))
+        // PENDING is written durably (own transaction); COMPLETED joins the business tx.
+        val pendingCaptor = argumentCaptor<AgentAuditEvent>()
+        verify(agentAuditRecorder, times(1)).recordDurable(pendingCaptor.capture())
+        assertEquals(AgentAuditStatus.PENDING, pendingCaptor.firstValue.status)
+
+        val completedCaptor = argumentCaptor<AgentAuditEvent>()
+        verify(agentAuditRepository, times(1)).save(completedCaptor.capture())
+        assertEquals(AgentAuditStatus.COMPLETED, completedCaptor.firstValue.status)
+        assertTrue(completedCaptor.firstValue.outcome!!.contains("compliance review"))
     }
 
     @Test
@@ -333,5 +340,12 @@ class RollbackWorkflowServiceTest {
             }
         assertTrue(ex.message!!.contains("step 0"))
         verify(webhookOutboxRepository, times(0)).save(any())
+
+        // The failed rollback attempt is recorded durably (PENDING at start, FAILED on abort).
+        val auditCaptor = argumentCaptor<AgentAuditEvent>()
+        verify(agentAuditRecorder, times(2)).recordDurable(auditCaptor.capture())
+        assertEquals(AgentAuditStatus.PENDING, auditCaptor.allValues[0].status)
+        assertEquals(AgentAuditStatus.FAILED, auditCaptor.allValues[1].status)
+        verify(agentAuditRepository, never()).save(any())
     }
 }

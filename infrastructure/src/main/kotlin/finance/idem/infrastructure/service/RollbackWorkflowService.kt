@@ -16,6 +16,7 @@ import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.WorkflowPlanRepository
 import finance.idem.core.agentic.WorkflowStatus
 import finance.idem.core.ledger.TransactionRepository
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -25,10 +26,13 @@ import java.time.Instant
 class RollbackWorkflowService(
     private val workflowPlanRepository: WorkflowPlanRepository,
     private val agentAuditRepository: AgentAuditRepository,
+    private val agentAuditRecorder: AgentAuditRecorder,
     private val webhookOutboxRepository: WebhookOutboxRepository,
     private val transactionRepository: TransactionRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
 ) : RollbackWorkflowUseCase {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     override fun execute(cmd: RollbackWorkflowCommand): Result<RollbackWorkflowSummary> {
         val plan =
             workflowPlanRepository.findById(cmd.workflowPlanId, cmd.tenantId)
@@ -42,7 +46,9 @@ class RollbackWorkflowService(
             )
         }
 
-        agentAuditRepository.save(
+        // Durable "rollback started" record — survives a rollback of this business tx
+        // (e.g. if a compensating transaction below fails and the whole rollback aborts).
+        recordDurable(
             AgentAuditEvent.pending(
                 workflowPlanId = cmd.workflowPlanId,
                 tenantId = cmd.tenantId,
@@ -92,6 +98,16 @@ class RollbackWorkflowService(
                 )
             val compensatingTxId =
                 postTransactionUseCase.execute(compensatingCmd).getOrElse { ex ->
+                    // Durable failure record — the throw rolls back the entire rollback
+                    // transaction (all compensations), so this must commit independently.
+                    recordDurable(
+                        AgentAuditEvent.failed(
+                            workflowPlanId = cmd.workflowPlanId,
+                            tenantId = cmd.tenantId,
+                            agentContext = cmd.agentContext.copy(intent = "ROLLBACK"),
+                            outcome = "Rollback failed: compensating transaction for step ${step.stepOrder} failed: ${ex.message}",
+                        ),
+                    )
                     throw RuntimeException("Failed to post compensating transaction for step ${step.stepOrder}: ${ex.message}", ex)
                 }
             updatedPlan = updatedPlan.withStepRolledBack(step.stepOrder, compensatingTxId)
@@ -128,5 +144,15 @@ class RollbackWorkflowService(
                 .sortedBy { it.stepOrder }
                 .map { CompensatedStepSummary(it.stepOrder, it.description, it.compensatingTransactionId) }
         return Result.success(RollbackWorkflowSummary(cmd.workflowPlanId, compensated, "ROLLED_BACK"))
+    }
+
+    /**
+     * Writes an audit event in its own committed transaction via [AgentAuditRecorder].
+     * A failure to persist the audit event is logged but never masks the outcome the caller
+     * is about to propagate.
+     */
+    private fun recordDurable(event: AgentAuditEvent) {
+        runCatching { agentAuditRecorder.recordDurable(event) }
+            .onFailure { log.error("Failed to write durable agent audit event for plan {}", event.workflowPlanId.value, it) }
     }
 }
