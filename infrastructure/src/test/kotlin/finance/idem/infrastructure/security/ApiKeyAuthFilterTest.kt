@@ -126,4 +126,18 @@ class ApiKeyAuthFilterTest {
         assertNull(SecurityContextHolder.getContext().authentication)
         verify(chain).doFilter(request, response)
     }
+
+    @Test
+    fun `validation failure — no authentication set, no exception escapes, chain continues`() {
+        // Simulates a dependency failure (e.g. Redis outage) inside ApiKeyService.validate.
+        // The filter must degrade to unauthenticated (leading to a clean 401 downstream)
+        // rather than propagate the exception as a 500.
+        whenever(request.getHeader("X-API-Key")).thenReturn("sk_live_boom")
+        whenever(apiKeyService.validate("sk_live_boom")).thenThrow(RuntimeException("redis down"))
+
+        filter.doFilter(request, response, chain)
+
+        assertNull(SecurityContextHolder.getContext().authentication)
+        verify(chain).doFilter(request, response)
+    }
 }

@@ -52,6 +52,8 @@ class ExecuteWorkflowServiceTest {
 
     @Mock lateinit var agentAuditRepository: AgentAuditRepository
 
+    @Mock lateinit var agentAuditRecorder: AgentAuditRecorder
+
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
 
     @Mock lateinit var postTransactionUseCase: PostTransactionUseCase
@@ -73,6 +75,7 @@ class ExecuteWorkflowServiceTest {
             ExecuteWorkflowService(
                 workflowPlanRepository,
                 agentAuditRepository,
+                agentAuditRecorder,
                 webhookOutboxRepository,
                 postTransactionUseCase,
                 policyRepository,
@@ -130,10 +133,14 @@ class ExecuteWorkflowServiceTest {
 
         verify(workflowPlanRepository, times(2)).updateStep(any(), any(), any())
 
-        val auditCaptor = argumentCaptor<AgentAuditEvent>()
-        verify(agentAuditRepository, times(2)).save(auditCaptor.capture())
-        assertEquals(AgentAuditStatus.PENDING, auditCaptor.allValues[0].status)
-        assertEquals(AgentAuditStatus.COMPLETED, auditCaptor.allValues[1].status)
+        // PENDING is written durably (own transaction); COMPLETED joins the business tx.
+        val pendingCaptor = argumentCaptor<AgentAuditEvent>()
+        verify(agentAuditRecorder, times(1)).recordDurable(pendingCaptor.capture())
+        assertEquals(AgentAuditStatus.PENDING, pendingCaptor.firstValue.status)
+
+        val completedCaptor = argumentCaptor<AgentAuditEvent>()
+        verify(agentAuditRepository, times(1)).save(completedCaptor.capture())
+        assertEquals(AgentAuditStatus.COMPLETED, completedCaptor.firstValue.status)
 
         val outboxCaptor = argumentCaptor<WebhookOutboxEntry>()
         verify(webhookOutboxRepository).save(outboxCaptor.capture())
@@ -151,7 +158,12 @@ class ExecuteWorkflowServiceTest {
 
         verify(workflowPlanRepository, times(0)).insert(any())
         verify(workflowPlanRepository, times(0)).updateStatus(any(), any(), any(), anyOrNull(), anyOrNull(), anyOrNull())
+        // No COMPLETED/in-tx audit, but the denied attempt is recorded durably as FAILED.
         verify(agentAuditRepository, times(0)).save(any())
+        val deniedCaptor = argumentCaptor<AgentAuditEvent>()
+        verify(agentAuditRecorder, times(1)).recordDurable(deniedCaptor.capture())
+        assertEquals(AgentAuditStatus.FAILED, deniedCaptor.firstValue.status)
+        assertTrue(deniedCaptor.firstValue.outcome!!.startsWith("Policy denied"))
     }
 
     @Test
@@ -177,10 +189,12 @@ class ExecuteWorkflowServiceTest {
         assertNotNull(stepCaptor.allValues[0].transactionId)
         assertEquals(StepStatus.FAILED, stepCaptor.allValues[1].status)
 
+        // Both PENDING and FAILED are written durably so they survive the business-tx rollback.
         val auditCaptor = argumentCaptor<AgentAuditEvent>()
-        verify(agentAuditRepository, times(2)).save(auditCaptor.capture())
+        verify(agentAuditRecorder, times(2)).recordDurable(auditCaptor.capture())
         assertEquals(AgentAuditStatus.PENDING, auditCaptor.allValues[0].status)
         assertEquals(AgentAuditStatus.FAILED, auditCaptor.allValues[1].status)
+        verify(agentAuditRepository, times(0)).save(any())
 
         verify(webhookOutboxRepository, times(0)).save(any())
     }
@@ -192,10 +206,10 @@ class ExecuteWorkflowServiceTest {
 
         service.execute(twoStepCommand())
 
-        val order = inOrder(agentAuditRepository, postTransactionUseCase, webhookOutboxRepository)
-        order.verify(agentAuditRepository).save(any())
+        val order = inOrder(agentAuditRecorder, postTransactionUseCase, agentAuditRepository, webhookOutboxRepository)
+        order.verify(agentAuditRecorder).recordDurable(any()) // durable PENDING before steps
         order.verify(postTransactionUseCase, times(2)).execute(any())
-        order.verify(agentAuditRepository).save(any())
+        order.verify(agentAuditRepository).save(any()) // in-tx COMPLETED after steps
         order.verify(webhookOutboxRepository).save(any())
     }
 

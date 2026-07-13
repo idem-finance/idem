@@ -41,6 +41,8 @@ class ExecuteWorkflowServicePolicyTest {
 
     @Mock lateinit var agentAuditRepository: AgentAuditRepository
 
+    @Mock lateinit var agentAuditRecorder: AgentAuditRecorder
+
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
 
     @Mock lateinit var postTransactionUseCase: PostTransactionUseCase
@@ -62,6 +64,7 @@ class ExecuteWorkflowServicePolicyTest {
             ExecuteWorkflowService(
                 workflowPlanRepository,
                 agentAuditRepository,
+                agentAuditRecorder,
                 webhookOutboxRepository,
                 postTransactionUseCase,
                 policyRepository,

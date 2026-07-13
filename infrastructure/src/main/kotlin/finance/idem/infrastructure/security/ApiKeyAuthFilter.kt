@@ -16,10 +16,19 @@ class ApiKeyAuthFilter(
         chain: FilterChain,
     ) {
         extractRawKey(request)?.let { rawKey ->
-            apiKeyService.validate(rawKey)?.let { validated ->
-                val authorities = validated.scopes.map { SimpleGrantedAuthority(it.name) }
+            // Isolate validation failures (e.g. Redis outage, cache deserialization error):
+            // degrade to unauthenticated so the request gets a clean 401 from the
+            // authentication entry point rather than a 500 leaking from this filter.
+            val validated =
+                runCatching { apiKeyService.validate(rawKey) }
+                    .getOrElse { e ->
+                        logger.error("API key validation failed unexpectedly; treating request as unauthenticated", e)
+                        null
+                    }
+            validated?.let {
+                val authorities = it.scopes.map { scope -> SimpleGrantedAuthority(scope.name) }
                 SecurityContextHolder.getContext().authentication =
-                    ApiKeyAuthentication(validated.tenantId, rawKey.take(12), authorities)
+                    ApiKeyAuthentication(it.tenantId, rawKey.take(12), authorities)
             }
         }
         chain.doFilter(request, response)

@@ -21,6 +21,7 @@ import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.agentic.WorkflowPlan
 import finance.idem.core.agentic.WorkflowPlanRepository
 import finance.idem.core.agentic.WorkflowStatus
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -30,11 +31,14 @@ import java.time.Instant
 class ExecuteWorkflowService(
     private val workflowPlanRepository: WorkflowPlanRepository,
     private val agentAuditRepository: AgentAuditRepository,
+    private val agentAuditRecorder: AgentAuditRecorder,
     private val webhookOutboxRepository: WebhookOutboxRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
     private val policyRepository: PolicyRepository,
     private val sessionDebitPort: SessionDebitPort,
 ) : ExecuteWorkflowUseCase {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     override fun execute(cmd: ExecuteWorkflowCommand): Result<WorkflowPlanId> {
         val priorSession = sessionDebitPort.sumDebitsForSession(cmd.tenantId, cmd.agentContext.sessionId)
         val priorHour = sessionDebitPort.sumDebitsLastHour(cmd.tenantId, cmd.agentContext.apiKeyPrefix)
@@ -54,17 +58,29 @@ class ExecuteWorkflowService(
                 priorHourlyDebitTotal = priorHour,
             )
 
+        val now = Instant.now()
+        val planId = WorkflowPlanId.generate()
+
         val rules = policyRepository.findEffective(cmd.tenantId, cmd.agentContext.apiKeyPrefix)
         // Default deny-all: if a tenant has no configured rules every agent debit is blocked
         // until an admin explicitly sets a permissive rule via POST /api/v1/admin/policy-rules.
         val effectiveRules = rules.ifEmpty { listOf(PolicyRule.MaxDebitPerSession(MonetaryAmount.ZERO)) }
         val policyResult = PolicyGuard.evaluate(cmd.agentContext, ledgerIntent, effectiveRules)
         if (policyResult is PolicyEvaluationResult.Denied) {
+            // Record the denied attempt durably (separate transaction) — throwing rolls back
+            // the business transaction, so an in-transaction write would leave no audit trail
+            // of the blocked agent action.
+            val violationSummary = policyResult.violations.joinToString("; ") { it.message }
+            recordDurable(
+                AgentAuditEvent.failed(
+                    workflowPlanId = planId,
+                    tenantId = cmd.tenantId,
+                    agentContext = cmd.agentContext,
+                    outcome = "Policy denied: $violationSummary",
+                ),
+            )
             throw PolicyViolationException(policyResult.violations)
         }
-
-        val now = Instant.now()
-        val planId = WorkflowPlanId.generate()
 
         var plan =
             WorkflowPlan.create(
@@ -76,7 +92,8 @@ class ExecuteWorkflowService(
             )
         workflowPlanRepository.insert(plan)
 
-        agentAuditRepository.save(
+        // Durable "attempt started" record — survives a later rollback of the business tx.
+        recordDurable(
             AgentAuditEvent.pending(
                 workflowPlanId = planId,
                 tenantId = cmd.tenantId,
@@ -107,7 +124,9 @@ class ExecuteWorkflowService(
                     plan = plan.withStepFailed(index).withStatus(WorkflowStatus.FAILED)
                     workflowPlanRepository.updateStep(planId, cmd.tenantId, plan.steps[index])
                     workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowStatus.FAILED)
-                    agentAuditRepository.save(
+                    // Durable failure record — the throw below rolls back the business tx
+                    // (plan + committed steps), so this must commit in its own transaction.
+                    recordDurable(
                         AgentAuditEvent.failed(
                             workflowPlanId = planId,
                             tenantId = cmd.tenantId,
@@ -139,5 +158,15 @@ class ExecuteWorkflowService(
         webhookOutboxRepository.save(WebhookOutboxEntry.workflowCommitted(committedPlan))
 
         return Result.success(planId)
+    }
+
+    /**
+     * Writes an audit event in its own committed transaction via [AgentAuditRecorder].
+     * A failure to persist the audit event is logged but never masks the original outcome
+     * (denial/failure) that the caller is about to propagate.
+     */
+    private fun recordDurable(event: AgentAuditEvent) {
+        runCatching { agentAuditRecorder.recordDurable(event) }
+            .onFailure { log.error("Failed to write durable agent audit event for plan {}", event.workflowPlanId.value, it) }
     }
 }
