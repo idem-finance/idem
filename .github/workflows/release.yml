@@ -46,6 +46,9 @@ jobs:
             **/target/*.jar
             **/target/*.jar.asc
           if-no-files-found: error
+          # Intra-run handoff to publish-central/create-release only — not a deliverable.
+          # Short retention prevents multi-GB accumulation that exhausts the storage quota.
+          retention-days: 1
 
   publish-central:
     needs: sign-artifacts
@@ -287,6 +290,9 @@ jobs:
           name: native-binary
           path: idem-native-linux-amd64
           if-no-files-found: error
+          # Intra-run handoff to create-release only — not a deliverable.
+          # Short retention prevents multi-GB accumulation that exhausts the storage quota.
+          retention-days: 1
 
       - name: Build and push native image
         id: push
