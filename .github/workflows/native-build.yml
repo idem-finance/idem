@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: read
+  # Required to delete stale artifacts of the same name before uploading the new one.
+  actions: write
 
 jobs:
   native-build:
@@ -32,9 +34,26 @@ jobs:
       - name: Rename artifact
         run: mv app/target/idem idem-native-linux-amd64
 
+      # The native binary is a rolling "latest main" convenience artifact. Without pruning,
+      # a new copy is retained on every push to main and the account artifact-storage quota
+      # is eventually exhausted (which fails the Upload step). Delete previous copies of the
+      # same name so at most one native binary is stored at a time.
+      - name: Prune previous native artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --paginate "repos/${{ github.repository }}/actions/artifacts" \
+            --jq '.artifacts[] | select(.name == "idem-native-linux-amd64") | .id' \
+          | while read -r id; do
+              echo "Deleting stale artifact $id"
+              gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id" || true
+            done
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: idem-native-linux-amd64
           path: idem-native-linux-amd64
           if-no-files-found: error
+          # Backstop against unbounded accumulation between prunes.
+          retention-days: 7
