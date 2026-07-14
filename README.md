@@ -202,6 +202,8 @@ sdk-kotlin  (standalone HTTP client, no internal module deps)
 
 All side effects (audit log, webhook outbox) are written in the **same `@Transactional`** as the primary operation. No event bus. Webhook delivery runs via a `@Scheduled` outbox poller with exponential backoff (5s → 30s → 2m → 10m → 1h, max 5 attempts).
 
+**New to Idem?** Start with the end-to-end walkthrough — [`docs/architecture-overview.md`](docs/architecture-overview.md) — which follows a transaction from input through double-entry validation, chain ingestion, reconciliation, webhooks, and queries, with diagrams.
+
 Technical documentation for individual components lives in [`docs/`](docs/).
 
 ---
