@@ -69,8 +69,9 @@ Think of Idem as a house with three doors, and every door leads to the same note
 
 1. **Your application** calls `POST /api/v1/transactions` (REST, or the Kotlin SDK's
    `IdemClient`) with the journal lines it wants recorded and an `Idempotency-Key`
-   header — a "don't write this twice" ticket. Send the same ticket twice and you get
-   the same `TransactionId` back; the ledger never double-executes.
+   header — a "don't write this twice" ticket. Send the same ticket twice and, once
+   the first attempt has committed, you get the same `TransactionId` back; the ledger
+   never double-executes.
 2. **Blockchains push events to Idem** — Idem does not sit refreshing the page.
    - **EVM** (Ethereum, Base, Polygon): Alchemy sends address-activity webhooks to
      `POST /internal/webhooks/alchemy` ([`evm-webhook-receiver.md`](evm-webhook-receiver.md)).
@@ -89,8 +90,8 @@ Think of Idem as a house with three doors, and every door leads to the same note
 Whichever door a transfer enters through, it becomes the **same kind of ledger write**,
 handled by the same engine (`PostTransactionUseCase`). Chain-detected transfers carry a
 deterministic idempotency key (`{chainKey}:{txHash}:{logIndex}` on EVM,
-`SOLANA:{signature}`, `TRON:{txHash}`), so re-scanning a block can never create
-duplicate entries.
+`SOLANA:{signature}:{accountIndex}`, `TRON:{txHash}`), so re-scanning a block can
+never create duplicate entries.
 
 ## Step 2 — The wristband check (authentication)
 
@@ -154,8 +155,9 @@ in order:
    silently miss its notification.
 4. **Reconciliation attempt** — if the transaction contains on-chain lines, Idem
    immediately tries to match them against your expectations (Step 5).
-5. **Travel Rule check** — on-chain entries above the threshold are checked for
-   IVMS 101 originator/beneficiary data (Step 9).
+5. **Travel Rule check** — every on-chain entry is validated: entries above the
+   threshold must carry IVMS 101 originator/beneficiary data; below-threshold
+   entries are exempt (Step 9).
 
 One commit. Either all five happen, or none do. There is **no event bus** — no Kafka,
 no in-process event publisher — which means there is no window where the ledger says
@@ -175,7 +177,7 @@ sequenceDiagram
     API->>S: PostTransactionCommand
     S->>DB: seen this Idempotency-Key before?
     alt duplicate key
-        DB-->>C: cached TransactionId (no re-execution)
+        S-->>C: cached TransactionId (no re-execution)
     else new key
         S->>S: Transaction.create() → validate()<br/>≥2 lines, debits == credits per currency
         rect rgb(235, 244, 255)

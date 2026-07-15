@@ -101,7 +101,7 @@ sequenceDiagram
     end
 
     loop for each DetectedTransfer
-        Orchestrator->>PS: execute(PostTransactionCommand, idempotencyKey="SOLANA:{txHash}")
+        Orchestrator->>PS: execute(PostTransactionCommand, idempotencyKey="SOLANA:{signature}:{accountIndex}")
         PS->>DB: save Transaction + AuditEntry + WebhookOutbox (one @Transactional)
     end
 
@@ -121,10 +121,10 @@ A customer sends 100 USDC on Solana to your watched address `Abc...xyz`. The tra
 7. Sorts the 12 signatures oldest-first (ascending by slot).
 8. For each signature, calls `getTransaction(sig)` and runs `decodeTransfer(...)`.
 9. The transaction at slot `265,001,500` has `postTokenBalances`: `owner = Abc...xyz`, mint = USDC, delta = `100,000,000 × 10⁻⁶ = 100.000000 USDC`.
-10. Emits `DetectedTransfer` with key `SOLANA:5eR7...txhash`. The pending entry is now settled.
+10. Emits `DetectedTransfer` with key `SOLANA:5eR7...sig:2` — the signature plus the credited token account's index within the transaction. The pending entry is now settled.
 11. Checkpoint advances to `265,001,500`.
 
-The idempotency key (`SOLANA:{txHash}`) guards against duplicates on re-scan.
+The idempotency key (`SOLANA:{signature}:{accountIndex}`) guards against duplicates on re-scan — the account index matters because a single Solana transaction can credit more than one watched token account.
 
 ---
 
@@ -226,9 +226,9 @@ Any other token on a watched address is logged at ERROR and skipped. To add a ne
 
 ## Idempotency
 
-Key format: `SOLANA:{txHash}`
+Key format: `SOLANA:{signature}:{accountIndex}`
 
-A Solana transaction hash is unique per transaction — only one `postTokenBalances` result per hash. On re-scan, `PostTransactionService` returns the cached result without re-executing.
+The signature alone is not enough: a single Solana transaction can credit more than one watched token account, each appearing as its own `postTokenBalances` entry. Appending the credited token account's index keeps those transfers distinct while still deduplicating re-scans — `PostTransactionService` returns the cached result without re-executing.
 
 ---
 

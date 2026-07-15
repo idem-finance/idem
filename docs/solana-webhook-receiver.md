@@ -178,7 +178,7 @@ The checkpoint is advanced to `max(existingSlot, payload.slot)` for **every payl
 
 ## Idempotency
 
-Key format: `SOLANA:{signature}` — identical to `SolanaChainReader`. If the webhook re-delivers and the fallback reader also processes the same slot on the next restart, `PostTransactionUseCase` returns the cached `TransactionId` without re-executing.
+Key format: `SOLANA:{signature}:{accountIndex}` — identical to `SolanaChainReader`, whose `decodeTransfer` builds the key for both paths. If the webhook re-delivers and the fallback reader also processes the same slot on the next restart, `PostTransactionUseCase` returns the cached `TransactionId` without re-executing.
 
 ---
 
