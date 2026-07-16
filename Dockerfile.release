@@ -1,0 +1,12 @@
+# Runtime-only image for the release pipeline. Consumes the GPG-signed boot jar
+# already built and uploaded by the sign-artifacts job (as the `signed-jars`
+# artifact) instead of rebuilding every Maven module from source. The workflow
+# copies the repackaged app boot jar to ./app.jar before building this image, so
+# the published image contains the byte-identical signed artifact.
+#
+# The from-source Dockerfile is kept for local/from-source builds; this file is
+# used only by release.yml's JVM image jobs.
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY app.jar app.jar
+ENTRYPOINT ["java", "-jar", "app.jar"]
