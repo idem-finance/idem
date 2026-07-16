@@ -16,6 +16,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # The tagged commit is only ever cut from a main commit that already passed
+      # the full CI verify (tests + JaCoCo). Require that green run so we can skip
+      # re-testing here; fail loudly if the tag points at an untested commit.
+      - name: Require green CI on the tagged commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          conclusion=$(gh run list --repo "${{ github.repository }}" \
+            --commit "$GITHUB_SHA" --workflow CI --json conclusion --jq '.[0].conclusion')
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::Tagged commit $GITHUB_SHA has no successful CI run (got: '${conclusion:-none}'). Tag a commit that passed CI on main."
+            exit 1
+          fi
+
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
@@ -34,8 +48,9 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
+      # Tests already ran on this commit in CI (guarded above); package + sign only.
       - name: Build and sign artifacts
-        run: ./mvnw --no-transfer-progress -P release clean verify
+        run: ./mvnw --no-transfer-progress -P release verify -DskipTests
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
@@ -103,17 +118,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
+      - name: Download signed jars
+        uses: actions/download-artifact@v6
         with:
-          java-version: '21'
-          distribution: temurin
-          cache: maven
+          name: signed-jars
+          path: signed-jars
 
-      - name: Set release version from tag
+      - name: Stage the signed boot jar
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          jar=$(ls signed-jars/app/target/app-*.jar)
+          [ -f "$jar" ] || { echo "::error::signed boot jar not found under signed-jars/app/target"; exit 1; }
+          cp "$jar" app.jar
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -140,11 +155,17 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile.release
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=jvm-image
-          cache-to: type=gha,mode=max,scope=jvm-image
+
+      - name: Smoke test image
+        run: |
+          ref="ghcr.io/idem-finance/idem@${{ steps.push.outputs.digest }}"
+          timeout 90 docker run --rm "$ref" > boot.log 2>&1 || true
+          grep -q "Starting IdemApplication" boot.log \
+            || { echo "::error::published image did not reach Spring Boot startup"; cat boot.log; exit 1; }
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
@@ -173,17 +194,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
+      - name: Download signed jars
+        uses: actions/download-artifact@v6
         with:
-          java-version: '21'
-          distribution: temurin
-          cache: maven
+          name: signed-jars
+          path: signed-jars
 
-      - name: Set release version from tag
+      - name: Stage the signed boot jar
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          jar=$(ls signed-jars/app/target/app-*.jar)
+          [ -f "$jar" ] || { echo "::error::signed boot jar not found under signed-jars/app/target"; exit 1; }
+          cp "$jar" app.jar
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -209,12 +230,17 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile
+          file: Dockerfile.release
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=jvm-image
-          cache-to: type=gha,mode=max,scope=jvm-image
+
+      - name: Smoke test image
+        run: |
+          ref="id3mfin4nc3/idem@${{ steps.push.outputs.digest }}"
+          timeout 90 docker run --rm "$ref" > boot.log 2>&1 || true
+          grep -q "Starting IdemApplication" boot.log \
+            || { echo "::error::published image did not reach Spring Boot startup"; cat boot.log; exit 1; }
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
