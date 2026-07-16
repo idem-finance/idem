@@ -3,15 +3,32 @@ name: Native Build
 on:
   push:
     branches: [main]
+    # The native binary only changes when buildable code changes — skip docs/sdk-only pushes.
+    paths:
+      - 'pom.xml'
+      - 'core/**'
+      - 'application/**'
+      - 'infrastructure/**'
+      - 'api/**'
+      - 'mcp/**'
+      - 'app/**'
+      - '.github/workflows/native-build.yml'
+  workflow_dispatch: {}
 
 permissions:
   contents: read
   # Required to delete stale artifacts of the same name before uploading the new one.
   actions: write
 
+# The artifact is a rolling "latest main" convenience — only the newest push matters.
+concurrency:
+  group: native-build-main
+  cancel-in-progress: true
+
 jobs:
   native-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -24,6 +41,7 @@ jobs:
           distribution: 'graalvm-community'
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-musl: 'true'
+          cache: 'maven'
 
       - name: Install dependency modules
         run: ./mvnw install -pl app -am -DskipTests --no-transfer-progress
