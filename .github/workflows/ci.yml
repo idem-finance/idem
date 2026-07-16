@@ -3,15 +3,31 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
 
 permissions:
   contents: read
 
+# Cancel superseded runs on PR branches; never cancel main builds.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -24,13 +40,7 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: ktlint check
-        run: ./mvnw test-compile antrun:run@ktlint-check --no-transfer-progress
-        continue-on-error: true
-
-      - name: Detekt check
-        run: ./mvnw test-compile antrun:run@detekt-check --no-transfer-progress
-        continue-on-error: true
-
-      - name: Build and test
+      # ktlint + detekt are bound to the verify phase (failonerror=true), so this
+      # single invocation builds, lints, tests, and enforces coverage.
+      - name: Build, lint, test, coverage
         run: ./mvnw verify --no-transfer-progress
