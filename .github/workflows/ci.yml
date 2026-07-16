@@ -40,11 +40,7 @@ jobs:
           distribution: temurin
           cache: maven
 
-      # Fast-fail lint before the full build. Source-only checks — no compilation
-      # needed; `initialize` stages the ktlint/detekt CLI jars into target/tools.
-      # Both checks also run (and are enforced) again as part of `verify`.
-      - name: Lint (fast fail)
-        run: ./mvnw initialize antrun:run@ktlint-check antrun:run@detekt-check --no-transfer-progress
-
+      # ktlint + detekt are bound to the verify phase (failonerror=true), so this
+      # single invocation builds, lints, tests, and enforces coverage.
       - name: Build, lint, test, coverage
         run: ./mvnw verify --no-transfer-progress
