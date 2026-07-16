@@ -54,12 +54,14 @@ class ApiKeyService(
             deserializeFromCache(json)?.let { return it }
         }
 
-        val apiKey = apiKeyRepository.findByPrefix(prefix) ?: return null
-        if (apiKey.isRevoked) return null
-        if (!passwordEncoder.matches(rawKey, apiKey.keyHash)) {
-            log.warn("Hash mismatch for prefix={}***", prefix.take(6))
-            return null
-        }
+        // The prefix is not unique (only ~65k values, non-unique index), so several
+        // keys can share it — bcrypt-match the raw key against each live candidate.
+        val candidates = apiKeyRepository.findAllByPrefix(prefix).filterNot { it.isRevoked }
+        val apiKey =
+            candidates.firstOrNull { passwordEncoder.matches(rawKey, it.keyHash) } ?: run {
+                if (candidates.isNotEmpty()) log.warn("Hash mismatch for prefix={}***", prefix.take(6))
+                return null
+            }
 
         val validated = ValidatedApiKey(apiKey.tenantId, apiKey.scopes)
         redisTemplate.opsForValue().set(cacheKey, serializeForCache(validated), cacheTtl)

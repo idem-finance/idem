@@ -19,7 +19,7 @@ class ApiKeyRepositoryAdapter(
     }
 
     @Transactional(readOnly = true)
-    override fun findByPrefix(prefix: String): ApiKey? = jpaRepository.findByPrefix(prefix)?.toDomain()
+    override fun findAllByPrefix(prefix: String): List<ApiKey> = jpaRepository.findAllByPrefix(prefix).map { it.toDomain() }
 
     @Transactional(readOnly = true)
     override fun findById(

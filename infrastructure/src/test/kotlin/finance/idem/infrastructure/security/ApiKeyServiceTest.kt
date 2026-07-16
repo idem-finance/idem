@@ -75,17 +75,17 @@ class ApiKeyServiceTest {
     @Test
     fun `validate returns null when prefix not in cache and not in DB`() {
         whenever(opsForValue.get(any())).thenReturn(null)
-        whenever(apiKeyRepository.findByPrefix(any())).thenReturn(null)
+        whenever(apiKeyRepository.findAllByPrefix(any())).thenReturn(emptyList())
 
         assertNull(service.validate("sk_live_testabcd1234"))
-        verify(apiKeyRepository).findByPrefix("sk_live_test")
+        verify(apiKeyRepository).findAllByPrefix("sk_live_test")
     }
 
     @Test
     fun `validate returns null for revoked key without checking hash`() {
         val revokedKey = apiKey().copy(revokedAt = Instant.now())
         whenever(opsForValue.get(any())).thenReturn(null)
-        whenever(apiKeyRepository.findByPrefix(any())).thenReturn(revokedKey)
+        whenever(apiKeyRepository.findAllByPrefix(any())).thenReturn(listOf(revokedKey))
 
         assertNull(service.validate("sk_live_testabcd1234"))
         verify(passwordEncoder, never()).matches(any(), any())
@@ -94,7 +94,7 @@ class ApiKeyServiceTest {
     @Test
     fun `validate returns null when hash does not match`() {
         whenever(opsForValue.get(any())).thenReturn(null)
-        whenever(apiKeyRepository.findByPrefix(any())).thenReturn(apiKey())
+        whenever(apiKeyRepository.findAllByPrefix(any())).thenReturn(listOf(apiKey()))
         whenever(passwordEncoder.matches(any(), any())).thenReturn(false)
 
         assertNull(service.validate("sk_live_testabcd1234"))
@@ -110,14 +110,14 @@ class ApiKeyServiceTest {
         assertNotNull(result)
         assertEquals(tenantId, result.tenantId)
         assertTrue(result.scopes.contains(ApiScope.TRANSACTIONS_READ))
-        verify(apiKeyRepository, never()).findByPrefix(any())
+        verify(apiKeyRepository, never()).findAllByPrefix(any())
     }
 
     @Test
     fun `validate caches result and returns ValidatedApiKey from DB`() {
         val key = apiKey()
         whenever(opsForValue.get(any())).thenReturn(null)
-        whenever(apiKeyRepository.findByPrefix(any())).thenReturn(key)
+        whenever(apiKeyRepository.findAllByPrefix(any())).thenReturn(listOf(key))
         whenever(passwordEncoder.matches(any(), any())).thenReturn(true)
 
         val result = service.validate("sk_live_testabcd1234")
@@ -125,6 +125,22 @@ class ApiKeyServiceTest {
         assertNotNull(result)
         assertEquals(tenantId, result.tenantId)
         verify(opsForValue).set(eq("apikey:sk_live_test"), any(), eq(Duration.ofMinutes(5)))
+    }
+
+    @Test
+    fun `validate disambiguates by hash when several keys share a prefix`() {
+        val other = apiKey().copy(id = ApiKeyId.generate(), keyHash = "\$2a\$12\$otherhash")
+        val matching = apiKey()
+        whenever(opsForValue.get(any())).thenReturn(null)
+        whenever(apiKeyRepository.findAllByPrefix(any())).thenReturn(listOf(other, matching))
+        // Only the second candidate's hash matches the presented raw key.
+        whenever(passwordEncoder.matches(any(), eq("\$2a\$12\$otherhash"))).thenReturn(false)
+        whenever(passwordEncoder.matches(any(), eq("\$2a\$12\$fakehash"))).thenReturn(true)
+
+        val result = service.validate("sk_live_testabcd1234")
+
+        assertNotNull(result)
+        assertEquals(matching.tenantId, result.tenantId)
     }
 
     @Test
