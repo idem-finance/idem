@@ -4,7 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import java.util.UUID
 
 interface ApiKeyJpaRepository : JpaRepository<ApiKeyDataModel, UUID> {
-    fun findByPrefix(prefix: String): ApiKeyDataModel?
+    fun findAllByPrefix(prefix: String): List<ApiKeyDataModel>
 
     fun findByIdAndTenantId(
         id: UUID,

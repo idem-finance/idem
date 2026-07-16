@@ -4,16 +4,12 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.chain.FailedChainTransfer
+import finance.idem.infrastructure.SharedPostgresTestBase
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -22,26 +18,8 @@ import kotlin.test.assertTrue
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(FailedChainTransferRepositoryAdapter::class)
-class FailedChainTransferRepositoryAdapterTest {
-    companion object {
-        @Container
-        val postgres =
-            PostgreSQLContainer("postgres:16")
-                .withDatabaseName("idem_test")
-                .withUsername("idem")
-                .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
-
+class FailedChainTransferRepositoryAdapterTest : SharedPostgresTestBase() {
     @Autowired lateinit var adapter: FailedChainTransferRepositoryAdapter
 
     @Autowired lateinit var jpaRepository: FailedChainTransferJpaRepository

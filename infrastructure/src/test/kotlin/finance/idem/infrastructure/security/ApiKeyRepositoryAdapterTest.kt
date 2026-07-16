@@ -4,16 +4,12 @@ import finance.idem.core.TenantId
 import finance.idem.core.security.ApiKey
 import finance.idem.core.security.ApiKeyId
 import finance.idem.core.security.ApiScope
+import finance.idem.infrastructure.SharedPostgresTestBase
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
@@ -23,26 +19,10 @@ import kotlin.test.assertTrue
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(ApiKeyRepositoryAdapter::class)
-class ApiKeyRepositoryAdapterTest {
+class ApiKeyRepositoryAdapterTest : SharedPostgresTestBase() {
     companion object {
         private val prefixSeq = AtomicInteger(0)
-
-        @Container
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16")
-                .withDatabaseName("idem_test")
-                .withUsername("idem")
-                .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
     }
 
     @Autowired
@@ -52,13 +32,12 @@ class ApiKeyRepositoryAdapterTest {
     private val now = Instant.now()
 
     @Test
-    fun `save and findByPrefix round-trip preserves all fields`() {
+    fun `save and findAllByPrefix round-trip preserves all fields`() {
         val key = apiKey(prefix = "sk_live_aabb")
         adapter.save(key)
 
-        val found = adapter.findByPrefix("sk_live_aabb")
+        val found = adapter.findAllByPrefix("sk_live_aabb").single()
 
-        assertNotNull(found)
         assertEquals(key.id, found.id)
         assertEquals(key.tenantId, found.tenantId)
         assertEquals(key.keyHash, found.keyHash)
@@ -69,8 +48,20 @@ class ApiKeyRepositoryAdapterTest {
     }
 
     @Test
-    fun `findByPrefix returns null for unknown prefix`() {
-        assertNull(adapter.findByPrefix("sk_live_none"))
+    fun `findAllByPrefix returns empty for unknown prefix`() {
+        assertTrue(adapter.findAllByPrefix("sk_live_none").isEmpty())
+    }
+
+    @Test
+    fun `findAllByPrefix returns every key sharing a prefix`() {
+        val first = apiKey(prefix = "sk_live_coll")
+        val second = apiKey(prefix = "sk_live_coll").copy(id = ApiKeyId.generate())
+        adapter.save(first)
+        adapter.save(second)
+
+        val found = adapter.findAllByPrefix("sk_live_coll")
+
+        assertEquals(setOf(first.id, second.id), found.map { it.id }.toSet())
     }
 
     @Test
@@ -79,8 +70,7 @@ class ApiKeyRepositoryAdapterTest {
         val key = apiKey().copy(revokedAt = revokedAt)
         adapter.save(key)
 
-        val found = adapter.findByPrefix(key.prefix)
-        assertNotNull(found)
+        val found = adapter.findAllByPrefix(key.prefix).single()
         assertTrue(found.isRevoked)
         assertEquals(revokedAt.epochSecond, found.revokedAt!!.epochSecond)
     }
@@ -110,8 +100,7 @@ class ApiKeyRepositoryAdapterTest {
         val key = apiKey(scopes = scopes)
         adapter.save(key)
 
-        val found = adapter.findByPrefix(key.prefix)
-        assertNotNull(found)
+        val found = adapter.findAllByPrefix(key.prefix).single()
         assertEquals(scopes, found.scopes)
     }
 
@@ -120,8 +109,7 @@ class ApiKeyRepositoryAdapterTest {
         val key = apiKey(scopes = emptySet())
         adapter.save(key)
 
-        val found = adapter.findByPrefix(key.prefix)
-        assertNotNull(found)
+        val found = adapter.findAllByPrefix(key.prefix).single()
         assertTrue(found.scopes.isEmpty())
     }
 
