@@ -9,11 +9,23 @@ import org.testcontainers.utility.DockerImageName
 
 @TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
+    companion object {
+        // JVM-wide singletons: every @SpringBootTest context that imports this
+        // configuration shares one Postgres + Redis pair instead of booting its
+        // own. Held here (not as context-managed lifecycle) so a context close
+        // never stops the containers; Ryuk reaps them at JVM exit.
+        private val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer(DockerImageName.parse("postgres:16")).also { it.start() }
+
+        private val redis: GenericContainer<*> =
+            GenericContainer(DockerImageName.parse("redis:7")).withExposedPorts(6379).also { it.start() }
+    }
+
     @Bean
     @ServiceConnection
-    fun postgresContainer(): PostgreSQLContainer<*> = PostgreSQLContainer(DockerImageName.parse("postgres:16"))
+    fun postgresContainer(): PostgreSQLContainer<*> = postgres
 
     @Bean
     @ServiceConnection(name = "redis")
-    fun redisContainer(): GenericContainer<*> = GenericContainer(DockerImageName.parse("redis:7")).withExposedPorts(6379)
+    fun redisContainer(): GenericContainer<*> = redis
 }

@@ -1,17 +1,13 @@
 package finance.idem.infrastructure.compliance
 
 import finance.idem.core.TenantId
+import finance.idem.infrastructure.SharedPostgresTestBase
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.ZoneOffset
@@ -23,26 +19,8 @@ import kotlin.test.assertNull
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(LgpdRetentionRepositoryAdapter::class, LgpdRetentionService::class, PersistenceTestConfig::class)
-class LgpdRetentionServiceTest {
-    companion object {
-        @Container
-        val postgres =
-            PostgreSQLContainer("postgres:16")
-                .withDatabaseName("idem_test")
-                .withUsername("idem")
-                .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
-
+class LgpdRetentionServiceTest : SharedPostgresTestBase() {
     @Autowired lateinit var adapter: LgpdRetentionRepositoryAdapter
 
     @Autowired lateinit var service: LgpdRetentionService

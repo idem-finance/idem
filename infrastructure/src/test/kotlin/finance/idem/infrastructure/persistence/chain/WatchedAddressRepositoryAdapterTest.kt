@@ -1,6 +1,7 @@
 package finance.idem.infrastructure.persistence.chain
 
 import finance.idem.core.StablecoinToken
+import finance.idem.infrastructure.SharedPostgresTestBase
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -10,36 +11,13 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.UUID
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(WatchedAddressRepositoryAdapter::class)
-class WatchedAddressRepositoryAdapterTest {
-    companion object {
-        @Container
-        val postgres =
-            PostgreSQLContainer("postgres:16")
-                .withDatabaseName("idem_test")
-                .withUsername("idem")
-                .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
-
+class WatchedAddressRepositoryAdapterTest : SharedPostgresTestBase() {
     @Autowired lateinit var jpaRepository: WatchedAddressJpaRepository
 
     @Autowired lateinit var adapter: WatchedAddressRepositoryAdapter

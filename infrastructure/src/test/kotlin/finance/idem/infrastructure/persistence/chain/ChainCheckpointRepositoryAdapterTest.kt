@@ -1,41 +1,19 @@
 package finance.idem.infrastructure.persistence.chain
 
+import finance.idem.infrastructure.SharedPostgresTestBase
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(ChainCheckpointRepositoryAdapter::class)
-class ChainCheckpointRepositoryAdapterTest {
-    companion object {
-        @Container
-        val postgres =
-            PostgreSQLContainer("postgres:16")
-                .withDatabaseName("idem_test")
-                .withUsername("idem")
-                .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
-
+class ChainCheckpointRepositoryAdapterTest : SharedPostgresTestBase() {
     @Autowired lateinit var adapter: ChainCheckpointRepositoryAdapter
 
     @Test

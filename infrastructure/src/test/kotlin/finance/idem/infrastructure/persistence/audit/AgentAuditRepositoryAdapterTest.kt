@@ -5,7 +5,9 @@ import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.AgentAuditStatus
 import finance.idem.core.agentic.AgentContext
+import finance.idem.infrastructure.SharedPostgresTestBase
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
+import finance.idem.infrastructure.service.PostgresTestContainers
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -13,11 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.DriverManager
 import java.sql.SQLException
 import java.time.Instant
@@ -28,27 +25,13 @@ import kotlin.test.assertTrue
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(AgentAuditRepositoryAdapter::class, AuditConfig::class, PersistenceTestConfig::class)
-class AgentAuditRepositoryAdapterTest {
+class AgentAuditRepositoryAdapterTest : SharedPostgresTestBase() {
     companion object {
         private const val APP_ROLE = "idem_app_role"
         private const val APP_ROLE_PASSWORD = "app_role_pass"
 
-        @Container
-        val postgres =
-            PostgreSQLContainer("postgres:16")
-                .withDatabaseName("idem_test")
-                .withUsername("idem")
-                .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
+        private val postgres get() = PostgresTestContainers.postgres
 
         fun ensureRestrictedRole() {
             DriverManager.getConnection(postgres.jdbcUrl, "idem", "idem").use { conn ->

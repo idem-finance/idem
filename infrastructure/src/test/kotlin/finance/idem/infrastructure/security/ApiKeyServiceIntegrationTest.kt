@@ -2,13 +2,13 @@ package finance.idem.infrastructure.security
 
 import finance.idem.core.TenantId
 import finance.idem.core.security.ApiScope
+import finance.idem.infrastructure.SharedPostgresTestBase
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import kotlin.test.assertFalse
@@ -18,15 +18,9 @@ import kotlin.test.assertTrue
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
-class ApiKeyServiceIntegrationTest {
+class ApiKeyServiceIntegrationTest : SharedPostgresTestBase() {
     companion object {
-        @Container
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16")
-                .withDatabaseName("idem_test")
-                .withUsername("idem")
-                .withPassword("idem")
-
+        // Redis has no module-wide singleton — this is the only infra test that needs it.
         @Container
         val redis: GenericContainer<*> =
             GenericContainer("redis:7")
@@ -35,9 +29,6 @@ class ApiKeyServiceIntegrationTest {
         @DynamicPropertySource
         @JvmStatic
         fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
             registry.add("spring.data.redis.host", redis::getHost)
             registry.add("spring.data.redis.port") { redis.getMappedPort(6379) }
         }

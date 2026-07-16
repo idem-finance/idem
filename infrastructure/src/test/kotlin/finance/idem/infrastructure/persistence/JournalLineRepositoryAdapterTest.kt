@@ -12,17 +12,13 @@ import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.monetary.FiatEntry
+import finance.idem.infrastructure.SharedPostgresTestBase
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -32,31 +28,13 @@ import kotlin.test.assertTrue
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(
     JournalLineRepositoryAdapter::class,
     TransactionRepositoryAdapter::class,
     AccountRepositoryAdapter::class,
     PersistenceTestConfig::class,
 )
-class JournalLineRepositoryAdapterTest {
-    companion object {
-        @Container
-        val postgres =
-            PostgreSQLContainer("postgres:16")
-                .withDatabaseName("idem_test")
-                .withUsername("idem")
-                .withPassword("idem")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
-
+class JournalLineRepositoryAdapterTest : SharedPostgresTestBase() {
     @Autowired lateinit var journalLineAdapter: JournalLineRepositoryAdapter
 
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
