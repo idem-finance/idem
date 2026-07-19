@@ -318,15 +318,20 @@ to the database and re-populates the cache.
 ```kotlin
 interface ApiKeyRepository {
     fun save(apiKey: ApiKey): ApiKey
-    fun findByPrefix(prefix: String): ApiKey?
+    fun findAllByPrefix(prefix: String): List<ApiKey>
     fun findById(id: ApiKeyId, tenantId: TenantId): ApiKey?
     fun findAllByTenantId(tenantId: TenantId): List<ApiKey>
 }
 ```
 
-`findByPrefix` takes no `tenantId` — the auth filter must read the table before the tenant
+`findAllByPrefix` takes no `tenantId` — the auth filter must read the table before the tenant
 context is established. The bcrypt hash is the security boundary, not row-level isolation.
 The `api_keys` table therefore carries no RLS policy.
+
+The prefix (`rawKey.take(12)` — `sk_live_` + 4 hex chars, ~65k possible values) is **not**
+unique by design; its index is non-unique. `findAllByPrefix` returns every candidate sharing
+the prefix, and `ApiKeyService.validate()` bcrypt-matches the raw key against each non-revoked
+candidate to disambiguate.
 
 `findAllByTenantId` returns all keys for a tenant (active and revoked) for use in key
 management listings. Used by `ListApiKeysUseCase` / `GET /api/v1/api-keys` (requires `ADMIN`
