@@ -326,4 +326,4 @@ If you build a product on Idem and make it available to others, include an ackno
 
 - Website: [idem.finance](https://idem.finance)
 - X: [@idem_finance](https://x.com/idem_finance)
-- Documentation: coming soon
+- Documentation: [docs.idem.finance](https://docs.idem.finance)
