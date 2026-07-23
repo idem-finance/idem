@@ -12,6 +12,14 @@ Idem is an API-first, event-sourced double-entry ledger built for fintechs and P
 
 ---
 
+## Demo
+
+[![Idem demo: agentic execution via MCP](https://img.youtube.com/vi/My_QOeOsFqg/maxresdefault.jpg)](https://youtu.be/My_QOeOsFqg)
+
+Claude Code driving `reconcile_batch`, `rollback_workflow`, and `get_agent_audit_log` end-to-end through Idem's MCP server.
+
+---
+
 ## Why Idem
 
 - **Fiat and on-chain in one double-entry model.** A single transaction can contain a PIX debit and a USDC credit on Base. No separate reconciliation step between your fiat ledger and a blockchain indexer.
@@ -326,4 +334,4 @@ If you build a product on Idem and make it available to others, include an ackno
 
 - Website: [idem.finance](https://idem.finance)
 - X: [@idem_finance](https://x.com/idem_finance)
-- Documentation: coming soon
+- Documentation: [docs.idem.finance](https://docs.idem.finance)
