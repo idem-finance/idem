@@ -9,6 +9,11 @@
 
 The MCP server is Idem's primary agentic distribution surface. It wraps the core ledger use cases behind the [Model Context Protocol](https://modelcontextprotocol.io/) so any MCP-compatible AI agent can post transactions, query balances, list entries, and inspect account metadata — without writing custom API integrations.
 
+> **Using Claude?** [`docs/skills/idem-ledger/SKILL.md`](skills/idem-ledger/SKILL.md) is the fast
+> path — a lean, on-demand-loaded cheat sheet (connection snippet, tool/scope table, common call
+> sequences). Install it instead of reading this whole doc if you just want to get an agent
+> talking to Idem. Come back here for field-level schemas and the auth internals.
+
 Every tool call goes through the same auth and domain-layer stack as a REST request:
 
 ```

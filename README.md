@@ -171,7 +171,7 @@ Plug Idem directly into Claude Desktop, Claude Code, or any MCP-compatible agent
 }
 ```
 
-Available tools: `post_transaction`, `get_balance`, `list_entries`, `describe_account`, `reconcile_batch` (require `AGENTS_EXECUTE` scope), `rollback_workflow` (requires `AGENTS_ROLLBACK` scope), and `get_agent_audit_log` (requires `AGENTS_AUDIT_READ` scope). Full connection guide: [`docs/mcp-server.md`](docs/mcp-server.md).
+Available tools: `post_transaction`, `get_balance`, `list_entries`, `describe_account`, `reconcile_batch` (require `AGENTS_EXECUTE` scope), `rollback_workflow` (requires `AGENTS_ROLLBACK` scope), and `get_agent_audit_log` (requires `AGENTS_AUDIT_READ` scope). Full connection guide: [`docs/mcp-server.md`](docs/mcp-server.md). Using Claude? Install [`docs/skills/idem-ledger/SKILL.md`](docs/skills/idem-ledger/SKILL.md) for a lean, on-demand-loaded cheat sheet instead.
 
 ---
 
