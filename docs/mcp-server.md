@@ -60,25 +60,25 @@ spring:
 
 ## Implemented tools
 
-Seven tools are exposed. Most require `AGENTS_EXECUTE`; `rollback_workflow` requires the
-separate `AGENTS_ROLLBACK` scope, and `get_agent_audit_log` requires `AGENTS_AUDIT_READ`.
+Seven tools are exposed. Most require `AGENTS_EXECUTE`; `rollbackWorkflow` requires the
+separate `AGENTS_ROLLBACK` scope, and `getAgentAuditLog` requires `AGENTS_AUDIT_READ`.
 
 | Tool | Required scope |
 |---|---|
-| `post_transaction` | `AGENTS_EXECUTE` |
-| `get_balance` | `AGENTS_EXECUTE` |
-| `list_entries` | `AGENTS_EXECUTE` |
-| `describe_account` | `AGENTS_EXECUTE` |
-| `reconcile_batch` | `AGENTS_EXECUTE` |
-| `rollback_workflow` | `AGENTS_ROLLBACK` |
-| `get_agent_audit_log` | `AGENTS_AUDIT_READ` |
+| `postTransaction` | `AGENTS_EXECUTE` |
+| `getBalance` | `AGENTS_EXECUTE` |
+| `listEntries` | `AGENTS_EXECUTE` |
+| `describeAccount` | `AGENTS_EXECUTE` |
+| `reconcileBatch` | `AGENTS_EXECUTE` |
+| `rollbackWorkflow` | `AGENTS_ROLLBACK` |
+| `getAgentAuditLog` | `AGENTS_AUDIT_READ` |
 
-### `post_transaction`
+### `postTransaction`
 
 Posts a balanced double-entry transaction as an AI agent. Delegates to `ExecuteWorkflowUseCase`.
 
 ```
-post_transaction(
+postTransaction(
     entries: List<McpJournalLineInput>,   // journal lines — see below
     idempotencyKey: String,               // 24h deduplicated; duplicate → cached result
     intentDescription: String?,           // human-readable intent for audit log
@@ -111,12 +111,12 @@ post_transaction(
 
 ---
 
-### `get_balance`
+### `getBalance`
 
 Returns the current balance for an account. Accepts an optional ISO-8601 instant for point-in-time queries.
 
 ```
-get_balance(
+getBalance(
     accountId: String,   // account UUID
     asOf: String?,       // optional ISO-8601 instant, e.g. "2025-12-31T23:59:59Z"
 ) → BalanceResult(accountId, currency, amount, computedAt)
@@ -124,12 +124,12 @@ get_balance(
 
 ---
 
-### `list_entries`
+### `listEntries`
 
 Lists journal entries for an account, newest first. Supports time-range filtering and cursor-based pagination.
 
 ```
-list_entries(
+listEntries(
     accountId: String,   // account UUID
     from: String?,       // ISO-8601 lower bound (inclusive)
     to: String?,         // ISO-8601 upper bound (inclusive)
@@ -142,12 +142,12 @@ list_entries(
 
 ---
 
-### `describe_account`
+### `describeAccount`
 
 Returns account metadata and current balance in a single call.
 
 ```
-describe_account(
+describeAccount(
     accountId: String,   // account UUID
 ) → AccountDescriptionResult(
       accountId, name, description?, currency,
@@ -158,7 +158,7 @@ describe_account(
 
 ---
 
-### `rollback_workflow`
+### `rollbackWorkflow`
 
 Rolls back a committed or executing workflow via compensating transactions (saga pattern):
 each executed step is reversed in reverse order. Delegates to `RollbackWorkflowUseCase`.
@@ -166,7 +166,7 @@ Requires the `AGENTS_ROLLBACK` scope, deliberately separate from `AGENTS_EXECUTE
 authorized to commit transactions cannot roll them back unless explicitly granted this scope.
 
 ```
-rollback_workflow(
+rollbackWorkflow(
     workflowPlanId: String,   // WorkflowPlan UUID to roll back
     reason: String,           // human-readable reason, recorded in the audit log
     agentId: String,          // agent identity
@@ -182,14 +182,14 @@ plan transitions to a terminal `ROLLED_BACK` status on success.
 
 ---
 
-### `reconcile_batch`
+### `reconcileBatch`
 
 Runs a reconciliation sweep over on-chain settlements within a time window, matching
 `UNMATCHED` chain entries against `PENDING` journal lines by amount. Delegates to
 `ReconcileEntriesUseCase`.
 
 ```
-reconcile_batch(
+reconcileBatch(
     accountId: String?,          // optional account UUID to scope the sweep
     from: String,                // ISO-8601 lower bound on settlement timestamp
     to: String,                  // ISO-8601 upper bound on settlement timestamp
@@ -204,13 +204,13 @@ Entries with no matching `PENDING` candidate within tolerance surface in `except
 
 ---
 
-### `get_agent_audit_log`
+### `getAgentAuditLog`
 
 Retrieves HMAC-signed audit events for agent actions, filterable by session and time range.
 Delegates to `GetAgentAuditLogUseCase`. Requires the separate `AGENTS_AUDIT_READ` scope.
 
 ```
-get_agent_audit_log(
+getAgentAuditLog(
     sessionId: String?,   // optional session identifier filter
     from: String?,        // optional ISO-8601 lower bound
     to: String?,          // optional ISO-8601 upper bound

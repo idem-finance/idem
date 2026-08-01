@@ -35,8 +35,8 @@ Add to your MCP client config (`claude_desktop_config.json`, or `claude mcp add`
 }
 ```
 
-The API key needs at least the `AGENTS_EXECUTE` scope; `rollback_workflow` additionally needs
-`AGENTS_ROLLBACK`, and `get_agent_audit_log` needs `AGENTS_AUDIT_READ` — these are deliberately
+The API key needs at least the `AGENTS_EXECUTE` scope; `rollbackWorkflow` additionally needs
+`AGENTS_ROLLBACK`, and `getAgentAuditLog` needs `AGENTS_AUDIT_READ` — these are deliberately
 separate from `AGENTS_EXECUTE` (an agent that can commit transactions cannot roll them back or
 read the audit log unless explicitly granted). For the full walkthrough (ngrok tunneling, creating
 an agent-scoped API key, Claude Desktop vs. Claude Code setup) see
@@ -49,37 +49,38 @@ an agent-scoped API key, Claude Desktop vs. Claude Code setup) see
 
 | Tool | Scope | Purpose | Gotcha |
 |---|---|---|---|
-| `post_transaction` | `AGENTS_EXECUTE` | Post a balanced double-entry transaction | Requires `idempotencyKey` — duplicate calls with the same key return the cached result, not a new transaction. Fails with `PolicyViolationException` if no policy rule permits the debit — a fresh tenant with zero configured rules denies everything by default. |
-| `get_balance` | `AGENTS_EXECUTE` | Current or point-in-time account balance | `asOf` is optional and must be ISO-8601 if passed |
-| `list_entries` | `AGENTS_EXECUTE` | Paginated journal entry history, newest first | Pagination is cursor-based (`nextCursor` from the previous page), not offset-based |
-| `describe_account` | `AGENTS_EXECUTE` | Account metadata + current balance in one call | Cheapest way to sanity-check an `accountId` before posting against it |
-| `reconcile_batch` | `AGENTS_EXECUTE` | Match on-chain settlements to pending journal lines by amount, within a time window | Matching is exact by default; pass `tolerancePercent` to allow a bounded amount difference |
-| `rollback_workflow` | `AGENTS_ROLLBACK` | Reverse a workflow via compensating transactions (saga pattern), most-recent step first | Separate scope from `AGENTS_EXECUTE` on purpose. Compensating transactions bypass `PolicyGuard` by design — a rollback is corrective, not a new agent-initiated debit |
-| `get_agent_audit_log` | `AGENTS_AUDIT_READ` | Retrieve HMAC-signed audit events, filterable by session/time | Every mutating tool call writes a `PENDING` event before execution and a `COMPLETED`/`FAILED` event after — use this to confirm a `post_transaction` or `rollback_workflow` call actually landed |
+| `postTransaction` | `AGENTS_EXECUTE` | Post a balanced double-entry transaction | Requires `idempotencyKey` — duplicate calls with the same key return the cached result, not a new transaction. Fails with `PolicyViolationException` if no policy rule permits the debit — a fresh tenant with zero configured rules denies everything by default. |
+| `getBalance` | `AGENTS_EXECUTE` | Current or point-in-time account balance | `asOf` is optional and must be ISO-8601 if passed |
+| `listEntries` | `AGENTS_EXECUTE` | Paginated journal entry history, newest first | Pagination is cursor-based (`nextCursor` from the previous page), not offset-based |
+| `describeAccount` | `AGENTS_EXECUTE` | Account metadata + current balance in one call | Cheapest way to sanity-check an `accountId` before posting against it |
+| `reconcileBatch` | `AGENTS_EXECUTE` | Match on-chain settlements to pending journal lines by amount, within a time window | Matching is exact by default; pass `tolerancePercent` to allow a bounded amount difference. `exceptions` reference **settlement** records (settlementId/txHash), not ledger journal lines |
+| `rollbackWorkflow` | `AGENTS_ROLLBACK` | Reverse a workflow via compensating transactions (saga pattern), most-recent step first | Separate scope from `AGENTS_EXECUTE` on purpose. Compensating transactions bypass `PolicyGuard` by design — a rollback is corrective, not a new agent-initiated debit |
+| `getAgentAuditLog` | `AGENTS_AUDIT_READ` | Retrieve HMAC-signed audit events, filterable by session/time | Event `status` is only `PENDING`/`COMPLETED`/`FAILED` — it does not carry workflow-level outcomes like `ROLLED_BACK`. Use it to confirm a mutating call was recorded, not to read the outcome itself |
 
 ## Common Workflows
 
 **Post, then confirm it landed:**
 ```
-post_transaction(entries=[...], idempotencyKey="<uuid>", agentId="...", sessionId="...")
-  → workflowPlanId
-get_agent_audit_log(sessionId="...")
+postTransaction(entries=[...], idempotencyKey="<uuid>", agentId="...", sessionId="...")
+  → workflowPlanId, status="COMMITTED"
+getAgentAuditLog(sessionId="...")
   → confirm a COMPLETED event for that workflowPlanId
 ```
 
 **Reconcile a settlement window, then investigate exceptions:**
 ```
-reconcile_batch(from="...", to="...")
-  → { matched, unmatched, exceptions }
-list_entries(accountId="...")  // inspect any PENDING lines left in `exceptions`
+reconcileBatch(from="...", to="...")
+  → { matched, unmatched, exceptions: ["<settlementId/txHash>: <reason>", ...] }
 ```
+`exceptions` reference settlement records, not journal lines — MCP doesn't expose a
+settlement-inspection tool. To look one up, use the REST API directly:
+`GET /api/v1/settlements?status=UNMATCHED` (requires `TRANSACTIONS_READ` scope).
 
 **Undo a bad transaction:**
 ```
-rollback_workflow(workflowPlanId="...", reason="...", agentId="...", sessionId="...")
-  → compensatedSteps
-get_agent_audit_log(sessionId="...")
-  → confirm ROLLED_BACK
+rollbackWorkflow(workflowPlanId="...", reason="...", agentId="...", sessionId="...")
+  → compensatedSteps, status="ROLLED_BACK"   // this IS the confirmation
+getAgentAuditLog(sessionId="...")            // optional: confirm a COMPLETED event was recorded
 ```
 
 ## Full Reference
