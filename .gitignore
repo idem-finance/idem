@@ -41,3 +41,10 @@ build/
 
 ### Docker ###
 compose.override.yaml
+
+### Claude Code tool state ###
+.claude/
+.agents/
+skills-lock.json
+*.diff
+build.log
