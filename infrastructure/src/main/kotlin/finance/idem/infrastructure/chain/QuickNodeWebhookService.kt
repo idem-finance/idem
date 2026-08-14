@@ -97,7 +97,9 @@ class QuickNodeWebhookService(
             }
         }
 
-        // Always advance checkpoint regardless of whether any transfer matched.
+        // Always advance checkpoint regardless of whether any transfer matched — but only
+        // once a SolanaChainReader is available to verify the slot (see the reader != null
+        // check above; without a reader this method returns early and the checkpoint stays put).
         // Prevents SolanaChainReader from re-scanning already-delivered slots on restart.
         val newCheckpoint = maxOf(existingCheckpoint, payload.slot)
         if (newCheckpoint > existingCheckpoint) {
