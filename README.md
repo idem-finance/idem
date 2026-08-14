@@ -53,6 +53,28 @@ The API is available at `http://localhost:8081`. Interactive OpenAPI docs: `http
 
 > **Production:** API keys are created via `POST /api/v1/api-keys` using your ADMIN key. The raw value is returned once at creation and never stored.
 
+### Create accounts
+
+Accounts are chart-of-accounts buckets, not wallets — the transaction example below needs two of them. `type` drives the account's normal balance side (`DEBIT` for `ASSET`/`EXPENSE`, `CREDIT` for `LIABILITY`/`EQUITY`/`REVENUE`).
+
+```bash
+curl -X POST http://localhost:8081/api/v1/accounts \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $IDEM_API_KEY" \
+  -d '{"name": "Nostro USD", "currency": "USD", "type": "ASSET"}'
+
+curl -X POST http://localhost:8081/api/v1/accounts \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $IDEM_API_KEY" \
+  -d '{"name": "Customer Revenue", "currency": "USD", "type": "REVENUE"}'
+```
+
+```json
+{ "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "name": "Nostro USD", "description": null, "currency": "USD", "type": "ASSET", "normalBalance": "DEBIT", "createdAt": "2025-01-01T00:00:00Z" }
+```
+
+`name`, `currency` (ISO 4217), and `type` are required; `description` is optional. Copy the `id` from each response into the debit/credit `accountId` fields below.
+
 ### Post a transaction
 
 ```bash
@@ -85,6 +107,8 @@ curl -X POST http://localhost:8081/api/v1/transactions \
     ]
   }'
 ```
+
+`<debit-account-uuid>` / `<credit-account-uuid>` are the `id` values from the two accounts created above.
 
 ```json
 { "transactionId": "3fa85f64-5717-4562-b3fc-2c963f66afa6" }
@@ -179,6 +203,7 @@ Available tools: `postTransaction`, `getBalance`, `listEntries`, `describeAccoun
 
 | Method | Path | Scope required | Description |
 |--------|------|---------------|-------------|
+| `POST` | `/api/v1/accounts` | `ACCOUNTS_WRITE` | Create an account |
 | `POST` | `/api/v1/transactions` | `TRANSACTIONS_WRITE` | Post a balanced double-entry transaction |
 | `GET` | `/api/v1/accounts/{id}/balance` | `ACCOUNTS_READ` | Current or point-in-time balance |
 | `GET` | `/api/v1/accounts/{id}/entries` | `ACCOUNTS_READ` | Paginated reverse-chronological entry timeline |
