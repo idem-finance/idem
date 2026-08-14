@@ -10,4 +10,5 @@ data class BalanceResponse(
     val amount: BigDecimal,
     val normalBalance: EntryType,
     val computedAt: Instant,
+    val onChainBalances: List<OnChainBalanceResponse> = emptyList(),
 )

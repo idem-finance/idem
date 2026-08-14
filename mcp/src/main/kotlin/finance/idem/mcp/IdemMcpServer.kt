@@ -103,7 +103,8 @@ class IdemMcpServer(
     @Tool(
         description =
             "Get the current balance for an account. Optionally pass asOf (ISO-8601 instant) " +
-                "to compute a historical balance. Requires AGENTS_EXECUTE scope.",
+                "to compute a historical balance. Also returns a per-token on-chain balance breakdown " +
+                "(never combined with the fiat amount). Requires AGENTS_EXECUTE scope.",
     )
     fun getBalance(
         @ToolParam(description = "Account UUID") accountId: String,
@@ -122,6 +123,10 @@ class IdemMcpServer(
                     currency = balance.currency.name,
                     amount = balance.amount.value.toPlainString(),
                     computedAt = balance.computedAt.toString(),
+                    onChainBalances =
+                        balance.onChainBalances.map {
+                            OnChainTokenBalance(token = it.token.name, amount = it.amount.value.toPlainString())
+                        },
                 )
             },
             onFailure = { handleFailure(it) },

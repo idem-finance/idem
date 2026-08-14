@@ -20,11 +20,13 @@ import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
+import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.JournalLine
+import finance.idem.core.ledger.OnChainBalance
 import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -82,14 +84,17 @@ class AccountControllerTest {
             createdBy = "test-key",
         )
 
-    private fun balanceFor(accountId: UUID) =
-        Balance(
-            accountId = AccountId(accountId),
-            currency = FiatCurrency.BRL,
-            amount = MonetaryAmount.of("350.00"),
-            normalBalance = EntryType.DEBIT,
-            computedAt = Instant.parse("2026-05-28T12:00:00Z"),
-        )
+    private fun balanceFor(
+        accountId: UUID,
+        onChainBalances: List<OnChainBalance> = emptyList(),
+    ) = Balance(
+        accountId = AccountId(accountId),
+        currency = FiatCurrency.BRL,
+        amount = MonetaryAmount.of("350.00"),
+        normalBalance = EntryType.DEBIT,
+        computedAt = Instant.parse("2026-05-28T12:00:00Z"),
+        onChainBalances = onChainBalances,
+    )
 
     private fun lineFor(
         accountId: UUID,
@@ -140,6 +145,23 @@ class AccountControllerTest {
                 jsonPath("$.currency") { value("BRL") }
                 jsonPath("$.amount") { value(350.00) }
                 jsonPath("$.normalBalance") { value("DEBIT") }
+                jsonPath("$.onChainBalances") { isEmpty() }
+            }
+    }
+
+    @Test
+    fun `balance with on-chain entries returns per-token breakdown`() {
+        val onChainBalances = listOf(OnChainBalance(StablecoinToken.USDC, MonetaryAmount.of("2.50")))
+        whenever(getBalanceUseCase.execute(any())).thenReturn(Result.success(balanceFor(accountId, onChainBalances)))
+
+        mockMvc
+            .get("/api/v1/accounts/$accountId/balance") {
+                with(SecurityMockMvcRequestPostProcessors.authentication(mockAuth("ACCOUNTS_READ")))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.amount") { value(350.00) }
+                jsonPath("$.onChainBalances[0].token") { value("USDC") }
+                jsonPath("$.onChainBalances[0].amount") { value(2.50) }
             }
     }
 

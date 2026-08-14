@@ -116,7 +116,22 @@ curl http://localhost:8081/api/v1/accounts/<account-uuid>/balance \
   -H "X-API-Key: sk_test_devkey00000000000000000000"
 ```
 
+```json
+{
+  "accountId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "currency": "USD",
+  "amount": 1000.00,
+  "normalBalance": "DEBIT",
+  "computedAt": "2025-01-01T00:00:00Z",
+  "onChainBalances": [
+    { "token": "USDC", "amount": 2.50 }
+  ]
+}
+```
+
 Point-in-time balance: append `?asOf=2025-01-01T00:00:00Z`.
+
+`amount` is the fiat balance in the account's declared currency — it only sums `FiatEntry` lines. On-chain (stablecoin) entries posted to the same account are reported separately in `onChainBalances`, one entry per token net across all chains, and are never combined with the fiat `amount`: a token amount and a fiat amount are not fungible units. An account only receiving fiat entries returns `onChainBalances: []`.
 
 ### Kotlin SDK
 

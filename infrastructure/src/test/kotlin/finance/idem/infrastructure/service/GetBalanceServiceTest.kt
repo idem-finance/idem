@@ -3,16 +3,19 @@ package finance.idem.infrastructure.service
 import finance.idem.application.ledger.BalanceAccountNotFound
 import finance.idem.application.ledger.GetBalanceQuery
 import finance.idem.core.AccountId
+import finance.idem.core.ChainId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.PaymentRail
+import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountRepository
 import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.JournalLine
+import finance.idem.core.ledger.OnChainBalance
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.monetary.FiatEntry
@@ -207,13 +210,13 @@ class GetBalanceServiceTest {
     }
 
     @Test
-    fun `on-chain entries are excluded from fiat balance`() {
+    fun `on-chain entries are excluded from fiat balance but reported in onChainBalances`() {
         val other = otherAccountId()
         val onChainEntry =
             OnChainEntry(
                 amount = MonetaryAmount.of("180.00"),
-                token = finance.idem.core.StablecoinToken.USDC,
-                chainId = finance.idem.core.ChainId.EVM,
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
                 txHash = "0xabc",
                 blockNumber = 19_000_000L,
                 walletAddress = "0xWallet",
@@ -230,13 +233,24 @@ class GetBalanceServiceTest {
                 }),
             ),
         )
-        assertTrue(
-            service
-                .execute(GetBalanceQuery(accountId, tenantId))
-                .getOrThrow()
-                .amount
-                .isZero(),
+        val balance = service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow()
+        assertTrue(balance.amount.isZero())
+        assertEquals(
+            listOf(OnChainBalance(StablecoinToken.USDC, MonetaryAmount.of("180.00"))),
+            balance.onChainBalances,
         )
+    }
+
+    @Test
+    fun `account with only fiat entries has empty onChainBalances`() {
+        val other = otherAccountId()
+        whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx({ id -> listOf(line(id, EntryType.DEBIT, "1000", accountId), line(id, EntryType.CREDIT, "1000", other)) }),
+            ),
+        )
+        assertEquals(emptyList(), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().onChainBalances)
     }
 
     @Test

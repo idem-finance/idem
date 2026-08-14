@@ -60,15 +60,28 @@ class BalanceCalculatorTest {
             rail = PaymentRail.WIRE,
         )
 
-    private fun usdcOnChain(amount: String) =
+    private fun usdcOnChain(
+        amount: String,
+        chainId: ChainId = ChainId.EVM,
+    ) = OnChainEntry(
+        amount = MonetaryAmount.of(amount),
+        token = StablecoinToken.USDC,
+        chainId = chainId,
+        txHash = "0xabc",
+        blockNumber = 19_000_000L,
+        walletAddress = "0xWallet",
+        tokenContract = "0xContract",
+    )
+
+    private fun usdtOnChain(amount: String) =
         OnChainEntry(
             amount = MonetaryAmount.of(amount),
-            token = StablecoinToken.USDC,
-            chainId = ChainId.EVM,
-            txHash = "0xabc",
-            blockNumber = 19_000_000L,
-            walletAddress = "0xWallet",
-            tokenContract = "0xContract",
+            token = StablecoinToken.USDT,
+            chainId = ChainId.TRON,
+            txHash = "0xdef",
+            blockNumber = 19_000_001L,
+            walletAddress = "TWallet",
+            tokenContract = "TContract",
         )
 
     private fun line(
@@ -143,5 +156,97 @@ class BalanceCalculatorTest {
             )
 
         assertTrue(BalanceCalculator.compute(assetAccount(), transactions).isZero())
+    }
+
+    // -- computeOnChain --
+
+    @Test
+    fun `computeOnChain returns empty list when there are no on-chain entries`() {
+        val transactions =
+            listOf(tx(listOf(line(EntryType.DEBIT, brlFiat("1000")), line(EntryType.CREDIT, brlFiat("1000"), otherAccountId))))
+
+        assertTrue(BalanceCalculator.computeOnChain(assetAccount(), transactions).isEmpty())
+    }
+
+    @Test
+    fun `computeOnChain nets debits minus credits per token for a debit-normal account`() {
+        val transactions =
+            listOf(
+                tx(listOf(line(EntryType.DEBIT, usdcOnChain("500")), line(EntryType.CREDIT, usdcOnChain("500"), otherAccountId))),
+                tx(listOf(line(EntryType.CREDIT, usdcOnChain("120")), line(EntryType.DEBIT, usdcOnChain("120"), otherAccountId))),
+            )
+
+        val result = BalanceCalculator.computeOnChain(assetAccount(), transactions)
+
+        assertEquals(listOf(OnChainBalance(StablecoinToken.USDC, MonetaryAmount.of("380"))), result)
+    }
+
+    @Test
+    fun `computeOnChain sums the same token across different chains`() {
+        val transactions =
+            listOf(
+                tx(
+                    listOf(
+                        line(EntryType.DEBIT, usdcOnChain("100", ChainId.EVM)),
+                        line(EntryType.CREDIT, usdcOnChain("100", ChainId.EVM), otherAccountId),
+                    ),
+                ),
+                tx(
+                    listOf(
+                        line(EntryType.DEBIT, usdcOnChain("50", ChainId.SOLANA)),
+                        line(EntryType.CREDIT, usdcOnChain("50", ChainId.SOLANA), otherAccountId),
+                    ),
+                ),
+            )
+
+        val result = BalanceCalculator.computeOnChain(assetAccount(), transactions)
+
+        assertEquals(listOf(OnChainBalance(StablecoinToken.USDC, MonetaryAmount.of("150"))), result)
+    }
+
+    @Test
+    fun `computeOnChain returns separate lines for different tokens, sorted by name`() {
+        val transactions =
+            listOf(
+                tx(listOf(line(EntryType.DEBIT, usdtOnChain("75")), line(EntryType.CREDIT, usdtOnChain("75"), otherAccountId))),
+                tx(listOf(line(EntryType.DEBIT, usdcOnChain("25")), line(EntryType.CREDIT, usdcOnChain("25"), otherAccountId))),
+            )
+
+        val result = BalanceCalculator.computeOnChain(assetAccount(), transactions)
+
+        assertEquals(
+            listOf(
+                OnChainBalance(StablecoinToken.USDC, MonetaryAmount.of("25")),
+                OnChainBalance(StablecoinToken.USDT, MonetaryAmount.of("75")),
+            ),
+            result,
+        )
+    }
+
+    @Test
+    fun `computeOnChain nets credits minus debits for a credit-normal account`() {
+        val transactions =
+            listOf(tx(listOf(line(EntryType.CREDIT, usdcOnChain("300")), line(EntryType.DEBIT, usdcOnChain("300"), otherAccountId))))
+
+        val result = BalanceCalculator.computeOnChain(liabilityAccount(), transactions)
+
+        assertEquals(listOf(OnChainBalance(StablecoinToken.USDC, MonetaryAmount.of("300"))), result)
+    }
+
+    @Test
+    fun `computeOnChain excludes fiat entries and lines for other accounts`() {
+        val transactions =
+            listOf(
+                tx(
+                    listOf(
+                        line(EntryType.DEBIT, brlFiat("1000")),
+                        line(EntryType.CREDIT, brlFiat("1000"), otherAccountId),
+                        line(EntryType.DEBIT, usdcOnChain("40"), otherAccountId),
+                        line(EntryType.CREDIT, usdcOnChain("40"), otherAccountId),
+                    ),
+                ),
+            )
+
+        assertTrue(BalanceCalculator.computeOnChain(assetAccount(), transactions).isEmpty())
     }
 }

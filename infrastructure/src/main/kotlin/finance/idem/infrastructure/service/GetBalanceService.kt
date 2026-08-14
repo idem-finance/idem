@@ -33,6 +33,7 @@ class GetBalanceService(
                 }
 
         val net = BalanceCalculator.compute(account, transactions)
+        val onChain = BalanceCalculator.computeOnChain(account, transactions)
 
         return Result.success(
             Balance(
@@ -41,6 +42,7 @@ class GetBalanceService(
                 amount = net,
                 normalBalance = account.normalBalance,
                 computedAt = Instant.now(clock),
+                onChainBalances = onChain,
             ),
         )
     }

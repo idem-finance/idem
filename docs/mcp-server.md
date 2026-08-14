@@ -119,8 +119,10 @@ Returns the current balance for an account. Accepts an optional ISO-8601 instant
 getBalance(
     accountId: String,   // account UUID
     asOf: String?,       // optional ISO-8601 instant, e.g. "2025-12-31T23:59:59Z"
-) → BalanceResult(accountId, currency, amount, computedAt)
+) → BalanceResult(accountId, currency, amount, computedAt, onChainBalances)
 ```
+
+`onChainBalances` is a per-token breakdown (`[{token, amount}]`) of any on-chain entries posted to the account, net across all chains for that token. It is never combined with the fiat `amount` above — a token amount and a fiat amount are not fungible units.
 
 ---
 

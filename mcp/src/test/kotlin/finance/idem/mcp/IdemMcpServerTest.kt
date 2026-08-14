@@ -34,6 +34,7 @@ import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.ledger.JournalLine
+import finance.idem.core.ledger.OnChainBalance
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
 import org.junit.jupiter.api.AfterEach
@@ -201,11 +202,32 @@ class IdemMcpServerTest {
         assertEquals(accountId.value.toString(), result.accountId)
         assertEquals("USD", result.currency)
         assertEquals("500.00", result.amount)
+        assertEquals(emptyList(), result.onChainBalances)
 
         val captor = argumentCaptor<GetBalanceQuery>()
         verify(getBalanceUseCase).execute(captor.capture())
         assertEquals(accountId, captor.firstValue.accountId)
         assertEquals(tenantId, captor.firstValue.tenantId)
+    }
+
+    @Test
+    fun `getBalance maps on-chain balance breakdown`() {
+        val balance =
+            Balance(
+                accountId = accountId,
+                currency = FiatCurrency.USD,
+                amount = MonetaryAmount.of("0"),
+                normalBalance = EntryType.DEBIT,
+                computedAt = Instant.now(),
+                onChainBalances = listOf(OnChainBalance(StablecoinToken.USDC, MonetaryAmount.of("2.50"))),
+            )
+        whenever(getBalanceUseCase.execute(any())).thenReturn(Result.success(balance))
+
+        val result = server.getBalance(accountId = accountId.value.toString(), asOf = null)
+
+        assertEquals(1, result.onChainBalances.size)
+        assertEquals("USDC", result.onChainBalances[0].token)
+        assertEquals("2.50", result.onChainBalances[0].amount)
     }
 
     @Test

@@ -431,7 +431,32 @@ class IdemClientTest {
 
             assertEquals(accountId, response.accountId)
             assertEquals(BigDecimal("100.00"), response.amount)
+            assertEquals(emptyList(), response.onChainBalances)
             assertNull(captured!!.url.parameters["asOf"])
+        }
+
+    @Test
+    fun `getBalance deserializes onChainBalances when present`() =
+        runTest {
+            val accountId = UUID.randomUUID()
+            val client =
+                clientWith {
+                    respond(
+                        content =
+                            ByteReadChannel(
+                                """{"accountId":"$accountId","currency":"USD","amount":0,"normalBalance":"DEBIT",""" +
+                                    """"computedAt":"2024-01-01T00:00:00Z","onChainBalances":[{"token":"USDC","amount":2.50}]}""",
+                            ),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val response = client.getBalance(accountId.toString())
+
+            assertEquals(1, response.onChainBalances.size)
+            assertEquals(StablecoinToken.USDC, response.onChainBalances[0].token)
+            assertEquals(BigDecimal("2.50"), response.onChainBalances[0].amount)
         }
 
     @Test
