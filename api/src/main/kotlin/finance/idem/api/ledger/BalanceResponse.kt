@@ -19,6 +19,8 @@ data class BalanceResponse(
     val normalBalance: EntryType,
     @Schema(description = "Timestamp when the balance was computed")
     val computedAt: Instant,
+    @Schema(description = "Net on-chain balance per stablecoin token, summed across all chains — never combined with the fiat amount above")
+    val onChainBalances: List<OnChainBalanceResponse> = emptyList(),
 ) {
     companion object {
         fun from(balance: Balance) =
@@ -28,6 +30,7 @@ data class BalanceResponse(
                 amount = balance.amount.value,
                 normalBalance = balance.normalBalance,
                 computedAt = balance.computedAt,
+                onChainBalances = balance.onChainBalances.map(OnChainBalanceResponse::from),
             )
     }
 }

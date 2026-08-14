@@ -4,7 +4,9 @@ import finance.idem.core.AccountId
 import finance.idem.core.EntryType
 import finance.idem.core.FiatCurrency
 import finance.idem.core.MonetaryAmount
+import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
+import finance.idem.core.ledger.OnChainBalance
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -32,13 +34,21 @@ class GetBalanceModelsTest {
 
     @Test
     fun `Balance holds all fields`() {
-        val balance = Balance(accountId, FiatCurrency.BRL, MonetaryAmount.of("500"), EntryType.DEBIT, now)
+        val onChainBalances = listOf(OnChainBalance(StablecoinToken.USDC, MonetaryAmount.of("125")))
+        val balance = Balance(accountId, FiatCurrency.BRL, MonetaryAmount.of("500"), EntryType.DEBIT, now, onChainBalances)
         assertEquals(accountId, balance.accountId)
         assertEquals(FiatCurrency.BRL, balance.currency)
         assertEquals(MonetaryAmount.of("500"), balance.amount)
         assertEquals(EntryType.DEBIT, balance.normalBalance)
         assertEquals(now, balance.computedAt)
+        assertEquals(onChainBalances, balance.onChainBalances)
         assertEquals(balance, balance.copy())
+    }
+
+    @Test
+    fun `Balance onChainBalances defaults to empty list`() {
+        val balance = Balance(accountId, FiatCurrency.BRL, MonetaryAmount.of("500"), EntryType.DEBIT, now)
+        assertEquals(emptyList(), balance.onChainBalances)
     }
 
     @Test
