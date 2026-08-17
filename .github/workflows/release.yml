@@ -99,8 +99,22 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           ./mvnw --no-transfer-progress versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
-      - name: Publish idem-core and idem-sdk-kotlin to Maven Central
-        run: ./mvnw --no-transfer-progress -P release deploy -pl core,sdk-kotlin -DskipTests
+      # Deployed as two separate reactors, not one combined `-pl core,sdk-kotlin` run.
+      # central-publishing-maven-plugin (extensions=true) rebinds the deploy phase and
+      # shares one central-staging dir across all reactor projects that carry it; in a
+      # combined multi-module run, only the last project's bundle actually gets uploaded
+      # as its own Central component (idem-sdk-kotlin silently never landed on Central
+      # this way). One module per invocation gives each its own isolated staging dir,
+      # bundle, and deployment.
+      - name: Publish idem-core to Maven Central
+        run: ./mvnw --no-transfer-progress -P release deploy -pl core -DskipTests
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Publish idem-sdk-kotlin to Maven Central
+        run: ./mvnw --no-transfer-progress -P release deploy -pl sdk-kotlin -DskipTests
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
