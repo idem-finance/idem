@@ -192,6 +192,8 @@ val tx = client.postTransaction(
 )
 ```
 
+More end-to-end examples (settlement lifecycle, reconciliation, MCP agent workflows) live in [`idem-examples`](https://github.com/idem-finance/idem-examples) — a separate, MIT-licensed repo meant for copying straight into your own project.
+
 ### MCP server (AI agent integration)
 
 Plug Idem directly into Claude Desktop, Claude Code, or any MCP-compatible agent runtime:
@@ -375,3 +377,4 @@ If you build a product on Idem and make it available to others, include an ackno
 - Website: [idem.finance](https://idem.finance)
 - X: [@idem_finance](https://x.com/idem_finance)
 - Documentation: [docs.idem.finance](https://docs.idem.finance)
+- Examples: [idem-examples](https://github.com/idem-finance/idem-examples)
