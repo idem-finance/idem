@@ -256,6 +256,36 @@ pages drift under concurrent inserts, causing skipped or duplicated rows.
 
 ---
 
+## Balance domain — OnChainBalance
+
+**Package:** `finance.idem.core.ledger`
+
+Same "no stored balance" rule as `Account` above, extended to on-chain entries. `BalanceCalculator.compute()`
+nets `FiatEntry` amounts into a single `MonetaryAmount`; `BalanceCalculator.computeOnChain()` nets
+`OnChainEntry` amounts **per token**, since a token amount and a fiat amount are not fungible
+units and are never combined into one total.
+
+```
+OnChainBalance(token: StablecoinToken, amount: MonetaryAmount)
+```
+
+```kotlin
+object BalanceCalculator {
+    fun compute(account: Account, transactions: List<Transaction>): MonetaryAmount
+    fun computeOnChain(account: Account, transactions: List<Transaction>): List<OnChainBalance>
+}
+```
+
+`computeOnChain` sums debits and credits per `StablecoinToken`, across every `chainId` that
+token was posted on, then nets by the account's `normalBalance` — the same DEBIT/CREDIT
+convention as `compute()`. Results are sorted by token name and include only tokens the
+account has `OnChainEntry` lines for; an account with only fiat entries returns an empty list.
+
+Surfaced via `GET /api/v1/accounts/{id}/balance` (`onChainBalances`, alongside the existing
+fiat `amount`) and the `getBalance` MCP tool — see `docs/mcp-server.md`.
+
+---
+
 ## Security domain — API keys
 
 **Package:** `finance.idem.core.security`
