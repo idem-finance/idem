@@ -27,7 +27,7 @@ make seed
 ./mvnw spring-boot:run -pl app -Dspring-boot.run.profiles=dev
 ```
 
-The API is served at `http://localhost:8081` (`/swagger-ui.html` for interactive docs).
+The API is served at `http://localhost:8081` (`/swagger-ui` for interactive docs).
 
 ---
 
