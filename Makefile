@@ -17,7 +17,7 @@ up:
 down:
 	docker compose down
 
-seed:
+seed: build
 	@$(BASH) -c "chmod +x scripts/bootstrap.sh && ./scripts/bootstrap.sh"
 
 build:
