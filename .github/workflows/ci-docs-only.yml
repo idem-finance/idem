@@ -1,0 +1,34 @@
+name: CI (docs-only)
+
+# ci.yml's `build` job is a required status check on main (see repo ruleset), but
+# ci.yml skips itself via paths-ignore when a PR/push touches only **.md, docs/**,
+# LICENSE, or .gitignore — so the required "build" context would never be reported
+# and the PR could never merge (#276). This workflow is the exact inverse path
+# filter: it fires only when ci.yml would otherwise be skipped, and reports the
+# same "build" check name as an immediate success. See:
+# https://docs.github.com/en/actions/using-workflows/skipping-workflow-runs
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo "Docs-only change — no build required, reporting the required check as passed."
