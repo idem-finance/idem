@@ -47,7 +47,7 @@ make seed
 ./mvnw spring-boot:run -pl app -Dspring-boot.run.profiles=dev
 ```
 
-The API is available at `http://localhost:8081`. Interactive OpenAPI docs: `http://localhost:8081/swagger-ui.html`.
+The API is available at `http://localhost:8081`. Interactive OpenAPI docs: `http://localhost:8081/swagger-ui`.
 
 `make seed` creates a dev tenant (idempotent) and generates a fresh ADMIN-scoped API key printed to stdout. Copy the `IDEM_API_KEY=sk_live_...` value — it is shown exactly once.
 
