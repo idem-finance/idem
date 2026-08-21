@@ -26,6 +26,14 @@ class SettlementDataModel(
     @Column(name = "expected_from_address") val expectedFromAddress: String?,
     @Column(name = "created_at", nullable = false, updatable = false) val createdAt: Instant,
     @Column(name = "created_by", nullable = false, updatable = false) val createdBy: String,
+    @Column(name = "chain_key") val chainKey: String?,
+    @Column(name = "log_index") val logIndex: Int?,
+    @Column(name = "observed_block_height") val observedBlockHeight: Long?,
+    @Column(name = "confirmation_source") val confirmationSource: String?,
+    @Column(name = "confirmations_required") val confirmationsRequired: Long?,
+    @Column(name = "finality_policy_version") val finalityPolicyVersion: Int?,
+    @Column(name = "reversal_transaction_id") val reversalTransactionId: UUID?,
+    @Column(name = "reorged_at") val reorgedAt: Instant?,
 ) {
     protected constructor() : this(
         UUID.randomUUID(),
@@ -43,5 +51,13 @@ class SettlementDataModel(
         null,
         Instant.now(),
         "",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
     )
 }

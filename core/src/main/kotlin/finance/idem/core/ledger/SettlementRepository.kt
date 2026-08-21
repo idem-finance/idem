@@ -47,4 +47,25 @@ interface SettlementRepository {
         afterId: UUID?,
         limit: Int,
     ): List<Settlement>
+
+    /** Most recent settlement matched to a posted transaction for this exact
+     * (txHash, logIndex) — WATCHING/SETTLED/UNMATCHED all qualify (all three have a real
+     * posted ledger Transaction that must be compensated on reorg). Excludes rows already
+     * REORGED, so re-delivery of the same removed:true webhook is a no-op. Null if no match. */
+    fun findReversibleByTxHashAndLogIndex(
+        tenantId: TenantId,
+        txHash: String,
+        logIndex: Int,
+    ): Settlement?
+
+    /** WATCHING rows for tenant+chainKey with blockNumber <= upToBlock — candidates for the
+     * finality-promotion sweep. Tenant-scoped (not a cross-tenant query): `settlements` keeps
+     * FORCE ROW LEVEL SECURITY, unlike webhook_outbox, so the poller derives its tenant set
+     * from WatchedAddressRepository.findByChainKey (already cross-tenant, no RLS) and calls
+     * this once per tenant. */
+    fun findWatchingByChainKey(
+        tenantId: TenantId,
+        chainKey: String,
+        upToBlock: Long,
+    ): List<Settlement>
 }

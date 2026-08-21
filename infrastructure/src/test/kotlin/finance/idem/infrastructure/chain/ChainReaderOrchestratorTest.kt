@@ -97,6 +97,7 @@ class ChainReaderOrchestratorTest {
                     tokenContract = watchedAddress.tokenContract,
                 ),
             watchedAddress = watchedAddress,
+            chainKey = chainKey,
         )
     }
 

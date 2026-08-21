@@ -130,6 +130,18 @@ class ReconcileEntriesServiceUnitTest {
                 afterId: UUID?,
                 limit: Int,
             ) = emptyList<Settlement>()
+
+            override fun findReversibleByTxHashAndLogIndex(
+                tenantId: TenantId,
+                txHash: String,
+                logIndex: Int,
+            ): Settlement? = null
+
+            override fun findWatchingByChainKey(
+                tenantId: TenantId,
+                chainKey: String,
+                upToBlock: Long,
+            ) = emptyList<Settlement>()
         }
 
     @Test
@@ -196,6 +208,18 @@ class ReconcileEntriesServiceUnitTest {
                     afterCreatedAt: Instant?,
                     afterId: UUID?,
                     limit: Int,
+                ) = emptyList<Settlement>()
+
+                override fun findReversibleByTxHashAndLogIndex(
+                    tenantId: TenantId,
+                    txHash: String,
+                    logIndex: Int,
+                ): Settlement? = null
+
+                override fun findWatchingByChainKey(
+                    tenantId: TenantId,
+                    chainKey: String,
+                    upToBlock: Long,
                 ) = emptyList<Settlement>()
             }
 

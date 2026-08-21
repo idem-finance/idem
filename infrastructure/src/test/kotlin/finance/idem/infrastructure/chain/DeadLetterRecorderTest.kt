@@ -42,6 +42,7 @@ class DeadLetterRecorderTest {
                     debitAccountId = debitAccountId,
                     creditAccountId = creditAccountId,
                 ),
+            chainKey = "EVM_1",
         )
 
     @Test

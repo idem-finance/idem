@@ -99,6 +99,31 @@ class SettlementRepositoryAdapter(
                 limit,
             ).map { it.toDomain() }
     }
+
+    @Transactional(readOnly = true)
+    override fun findReversibleByTxHashAndLogIndex(
+        tenantId: TenantId,
+        txHash: String,
+        logIndex: Int,
+    ): Settlement? {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository
+            .findReversibleByTxHashAndLogIndex(tenantId.value, txHash, logIndex)
+            .firstOrNull()
+            ?.toDomain()
+    }
+
+    @Transactional(readOnly = true)
+    override fun findWatchingByChainKey(
+        tenantId: TenantId,
+        chainKey: String,
+        upToBlock: Long,
+    ): List<Settlement> {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository
+            .findWatchingByChainKey(tenantId.value, chainKey, upToBlock)
+            .map { it.toDomain() }
+    }
 }
 
 private fun Settlement.toEntity() =
@@ -118,6 +143,14 @@ private fun Settlement.toEntity() =
         expectedFromAddress = expectedFromAddress,
         createdAt = createdAt,
         createdBy = createdBy,
+        chainKey = chainKey,
+        logIndex = logIndex,
+        observedBlockHeight = observedBlockHeight,
+        confirmationSource = confirmationSource,
+        confirmationsRequired = confirmationsRequired,
+        finalityPolicyVersion = finalityPolicyVersion,
+        reversalTransactionId = reversalTransactionId?.value,
+        reorgedAt = reorgedAt,
     )
 
 private fun SettlementDataModel.toDomain() =
@@ -137,4 +170,12 @@ private fun SettlementDataModel.toDomain() =
         expectedFromAddress = expectedFromAddress,
         createdAt = createdAt,
         createdBy = createdBy,
+        chainKey = chainKey,
+        logIndex = logIndex,
+        observedBlockHeight = observedBlockHeight,
+        confirmationSource = confirmationSource,
+        confirmationsRequired = confirmationsRequired,
+        finalityPolicyVersion = finalityPolicyVersion,
+        reversalTransactionId = reversalTransactionId?.let { TransactionId(it) },
+        reorgedAt = reorgedAt,
     )

@@ -36,13 +36,15 @@ class SettlementTest {
         )
 
     @Test
-    fun `EntryStatus contains all four lifecycle values`() {
+    fun `EntryStatus contains all six lifecycle values`() {
         val values = EntryStatus.entries
-        assertEquals(4, values.size)
+        assertEquals(6, values.size)
         assertTrue(EntryStatus.PENDING in values)
+        assertTrue(EntryStatus.WATCHING in values)
         assertTrue(EntryStatus.SETTLED in values)
         assertTrue(EntryStatus.UNMATCHED in values)
         assertTrue(EntryStatus.CANCELLED in values)
+        assertTrue(EntryStatus.REORGED in values)
     }
 
     @Test
@@ -54,6 +56,69 @@ class SettlementTest {
         assertNull(settlement.txHash)
         assertNull(settlement.blockNumber)
         assertNull(settlement.confirmedAt)
+        assertNull(settlement.chainKey)
+        assertNull(settlement.logIndex)
+        assertNull(settlement.observedBlockHeight)
+        assertNull(settlement.confirmationSource)
+        assertNull(settlement.confirmationsRequired)
+        assertNull(settlement.finalityPolicyVersion)
+        assertNull(settlement.reversalTransactionId)
+        assertNull(settlement.reorgedAt)
+    }
+
+    @Test
+    fun `WATCHING settlement carries finality evidence without confirmedAt`() {
+        val matchedTransactionId = TransactionId.generate()
+
+        val settlement =
+            pendingSettlement().copy(
+                status = EntryStatus.WATCHING,
+                matchedTransactionId = matchedTransactionId,
+                txHash = "0xabc123",
+                blockNumber = 21_000_000L,
+                chainKey = "EVM_1",
+                logIndex = 3,
+            )
+
+        assertEquals(EntryStatus.WATCHING, settlement.status)
+        assertEquals("EVM_1", settlement.chainKey)
+        assertEquals(3, settlement.logIndex)
+        assertNull(settlement.confirmedAt)
+        assertNull(settlement.confirmationSource)
+        assertNull(settlement.reversalTransactionId)
+    }
+
+    @Test
+    fun `REORGED settlement is additive and preserves original evidence`() {
+        val matchedTransactionId = TransactionId.generate()
+        val reversalTransactionId = TransactionId.generate()
+        val reorgedAt = Instant.now()
+
+        val initiallySettled =
+            pendingSettlement().copy(
+                status = EntryStatus.SETTLED,
+                matchedTransactionId = matchedTransactionId,
+                txHash = "0xabc123",
+                blockNumber = 21_000_000L,
+                confirmedAt = now,
+                chainKey = "EVM_1",
+                logIndex = 3,
+                confirmationSource = "finalized_tag",
+            )
+        val settlement =
+            initiallySettled.copy(
+                status = EntryStatus.REORGED,
+                reversalTransactionId = reversalTransactionId,
+                reorgedAt = reorgedAt,
+            )
+
+        assertEquals(EntryStatus.REORGED, settlement.status)
+        assertEquals(reversalTransactionId, settlement.reversalTransactionId)
+        assertEquals(reorgedAt, settlement.reorgedAt)
+        // Original evidence is preserved, not wiped, by the additive marker.
+        assertEquals("0xabc123", settlement.txHash)
+        assertEquals(21_000_000L, settlement.blockNumber)
+        assertEquals("finalized_tag", settlement.confirmationSource)
     }
 
     @Test

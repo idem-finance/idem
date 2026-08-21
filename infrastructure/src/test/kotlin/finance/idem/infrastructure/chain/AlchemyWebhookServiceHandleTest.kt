@@ -4,7 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.reconciliation.ReorgReversalCommand
+import finance.idem.application.reconciliation.ReorgReversalResult
+import finance.idem.application.reconciliation.ReorgReversalUseCase
 import finance.idem.core.StablecoinToken
+import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
@@ -29,6 +33,7 @@ class AlchemyWebhookServiceHandleTest {
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var deadLetterRecorder: DeadLetterRecorder
+    private lateinit var reorgReversalUseCase: ReorgReversalUseCase
     private lateinit var service: AlchemyWebhookService
 
     private val signingKey = "test-webhook-signing-key"
@@ -58,6 +63,7 @@ class AlchemyWebhookServiceHandleTest {
         checkpointRepository = mock()
         postTransactionUseCase = mock()
         deadLetterRecorder = mock()
+        reorgReversalUseCase = mock()
         service =
             AlchemyWebhookService(
                 watchedAddressRepository = watchedAddressRepository,
@@ -66,6 +72,7 @@ class AlchemyWebhookServiceHandleTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(alchemyWebhookSigningKey = signingKey),
                 deadLetterRecorder = deadLetterRecorder,
+                reorgReversalUseCase = reorgReversalUseCase,
             )
     }
 
@@ -95,6 +102,7 @@ class AlchemyWebhookServiceHandleTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(alchemyWebhookSigningKey = ""),
                 deadLetterRecorder = deadLetterRecorder,
+                reorgReversalUseCase = reorgReversalUseCase,
             )
         whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(emptyList())
 
@@ -209,6 +217,58 @@ class AlchemyWebhookServiceHandleTest {
         verify(checkpointRepository).save("EVM_1", 19_531_250L)
     }
 
+    // -- removed:true (reorg) handling --
+
+    @Test
+    fun `removed log for a watched address invokes ReorgReversalUseCase and never posts a new transaction`() {
+        val body = buildPayload(txHash, watchedWallet, usdcContract, blockNum = "0x12a05f2", logIndex = "0x2", removed = true)
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(ChainCheckpoint("EVM_1", 19_000_000L, Instant.now()))
+        whenever(reorgReversalUseCase.execute(any())).thenReturn(Result.success(ReorgReversalResult.NoMatchingSettlement))
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase, never()).execute(any())
+        val cmdCaptor = argumentCaptor<ReorgReversalCommand>()
+        verify(reorgReversalUseCase).execute(cmdCaptor.capture())
+        val cmd = cmdCaptor.firstValue
+        assertEquals(TenantId(UUID.fromString(tenantId)), cmd.tenantId)
+        assertEquals(txHash, cmd.txHash)
+        assertEquals(2, cmd.logIndex)
+        assertEquals("EVM_1", cmd.chainKey)
+    }
+
+    @Test
+    fun `removed log for an unwatched address does not invoke ReorgReversalUseCase`() {
+        val body =
+            buildPayload(
+                txHash,
+                "0xffffffffffffffffffffffffffffffffffffffff",
+                usdcContract,
+                removed = true,
+            )
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(null)
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(reorgReversalUseCase, never()).execute(any())
+    }
+
+    @Test
+    fun `ReorgReversalUseCase failure is logged and does not fail the webhook`() {
+        val body = buildPayload(txHash, watchedWallet, usdcContract, removed = true)
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(null)
+        whenever(reorgReversalUseCase.execute(any())).thenReturn(Result.failure(RuntimeException("db down")))
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+    }
+
     private fun buildPayload(
         txHash: String,
         toAddress: String,
@@ -217,6 +277,7 @@ class AlchemyWebhookServiceHandleTest {
         blockNum: String = "0x12a05f2",
         logIndex: String = "0x0",
         network: String = "ETH_MAINNET",
+        removed: Boolean = false,
     ): String =
         """
         {
@@ -247,7 +308,7 @@ class AlchemyWebhookServiceHandleTest {
                   "address": "$contract",
                   "data": "$rawValue",
                   "topics": [],
-                  "removed": false
+                  "removed": $removed
                 }
               }
             ]

@@ -123,6 +123,7 @@ class ChainReaderOrchestratorIntegrationTest {
                     debitAccountId = debitAccountId.value.toString(),
                     creditAccountId = creditAccountId.value.toString(),
                 ),
+            chainKey = chainKey,
         )
 
         @PostConstruct

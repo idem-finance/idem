@@ -47,6 +47,20 @@ data class WebhookOutboxEntry(
                 occurredAt = settlement.confirmedAt ?: Instant.now(),
             )
 
+        /** Emitted by ReorgReversalService when a chain reorg reverses a previously
+         * matched/settled entry via a compensating transaction. */
+        fun settlementReorged(settlement: Settlement): WebhookOutboxEntry =
+            WebhookOutboxEntry(
+                id = UUID.randomUUID(),
+                tenantId = settlement.tenantId,
+                eventType = "settlement.reorged",
+                transactionId =
+                    requireNotNull(settlement.reversalTransactionId) {
+                        "REORGED settlement ${settlement.id} must have reversalTransactionId"
+                    },
+                occurredAt = settlement.reorgedAt ?: Instant.now(),
+            )
+
         fun reconciliationUnmatched(tx: Transaction): WebhookOutboxEntry =
             WebhookOutboxEntry(
                 id = UUID.randomUUID(),

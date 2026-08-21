@@ -20,6 +20,7 @@ import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionStatus
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.infrastructure.chain.FinalityPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -72,13 +73,17 @@ class BasicReconciliationServiceTest {
         fromAddress = fromAddress,
     )
 
-    private fun onChainTransaction(entry: OnChainEntry = onChainEntry()): Transaction {
+    private fun onChainTransaction(
+        entry: OnChainEntry = onChainEntry(),
+        createdBy: String = "system",
+        metadata: Map<String, String> = emptyMap(),
+    ): Transaction {
         val txId = TransactionId.generate()
         val now = Instant.now()
         val lines =
             listOf(
-                JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantId, EntryType.DEBIT, entry, null, now, "system"),
-                JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantId, EntryType.CREDIT, entry, null, now, "system"),
+                JournalLine(UUID.randomUUID(), txId, debitAccountId, tenantId, EntryType.DEBIT, entry, null, now, createdBy),
+                JournalLine(UUID.randomUUID(), txId, creditAccountId, tenantId, EntryType.CREDIT, entry, null, now, createdBy),
             )
         return Transaction.create(
             id = txId,
@@ -87,7 +92,8 @@ class BasicReconciliationServiceTest {
             lines = lines,
             occurredAt = now,
             createdAt = now,
-            createdBy = "system",
+            createdBy = createdBy,
+            metadata = metadata,
         )
     }
 
@@ -174,6 +180,78 @@ class BasicReconciliationServiceTest {
         val webhookCaptor = argumentCaptor<WebhookOutboxEntry>()
         verify(webhookOutboxRepository).save(webhookCaptor.capture())
         assertEquals("transaction.settled", webhookCaptor.firstValue.eventType)
+    }
+
+    @Test
+    fun `webhook-sourced match goes to WATCHING, not SETTLED, and defers the outbox write`() {
+        val tx =
+            onChainTransaction(
+                createdBy = FinalityPolicy.WEBHOOK_SOURCE,
+                metadata = mapOf("chain_key" to "EVM_1", "log_index" to "2"),
+            )
+        val candidate = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60))
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(listOf(candidate))
+
+        val result = service().reconcile(tx)
+
+        assertTrue(result is ReconciliationResult.Settled)
+        val settled = (result as ReconciliationResult.Settled).settlement
+        assertEquals(EntryStatus.WATCHING, settled.status)
+        assertEquals(tx.id, settled.matchedTransactionId)
+        assertEquals(txHash, settled.txHash)
+        assertEquals(250_000_000L, settled.blockNumber)
+        assertEquals("EVM_1", settled.chainKey)
+        assertEquals(2, settled.logIndex)
+        assertEquals(null, settled.confirmedAt)
+
+        verify(webhookOutboxRepository, never()).save(any())
+    }
+
+    @Test
+    fun `webhook-sourced match with no metadata leaves chainKey and logIndex null`() {
+        val tx = onChainTransaction(createdBy = FinalityPolicy.WEBHOOK_SOURCE)
+        val candidate = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60))
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(listOf(candidate))
+
+        val result = service().reconcile(tx)
+
+        val settled = (result as ReconciliationResult.Settled).settlement
+        assertEquals(null, settled.chainKey)
+        assertEquals(null, settled.logIndex)
+    }
+
+    @Test
+    fun `recovery-sourced match (chain-recovery) settles immediately, unaffected by the webhook gate`() {
+        val tx = onChainTransaction(createdBy = "chain-recovery")
+        val candidate = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(60))
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(listOf(candidate))
+
+        val result = service().reconcile(tx)
+
+        val settled = (result as ReconciliationResult.Settled).settlement
+        assertEquals(EntryStatus.SETTLED, settled.status)
+        assertNotNull(settled.confirmedAt)
+        verify(webhookOutboxRepository).save(any())
+    }
+
+    @Test
+    fun `UNMATCHED settlement carries chainKey and logIndex from transaction metadata`() {
+        val tx =
+            onChainTransaction(
+                createdBy = FinalityPolicy.WEBHOOK_SOURCE,
+                metadata = mapOf("chain_key" to "EVM_8453", "log_index" to "1"),
+            )
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(emptyList())
+
+        val result = service().reconcile(tx)
+
+        val unmatched = (result as ReconciliationResult.Unmatched).settlement
+        assertEquals("EVM_8453", unmatched.chainKey)
+        assertEquals(1, unmatched.logIndex)
     }
 
     @Test

@@ -417,6 +417,7 @@ class QuickNodeWebhookServiceTest {
                     tokenContract = usdcMint,
                 ),
             watchedAddress = watchedAddress,
+            chainKey = "SOLANA",
         )
 
     private fun computeHmac(

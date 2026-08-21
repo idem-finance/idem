@@ -22,13 +22,37 @@ class EvmChainReaderFactory(
         readers =
             buildList {
                 if (config.evm.rpcUrl.isNotBlank()) {
-                    add(EvmChainReader("EVM_1", buildWeb3j(config.evm.rpcUrl), watchedAddressRepository))
+                    add(
+                        EvmChainReader(
+                            "EVM_1",
+                            buildWeb3j(config.evm.rpcUrl),
+                            watchedAddressRepository,
+                            config.evm.useFinalizedTag,
+                            config.evm.confirmations,
+                        ),
+                    )
                 }
                 if (config.evmBase.rpcUrl.isNotBlank()) {
-                    add(EvmChainReader("EVM_8453", buildWeb3j(config.evmBase.rpcUrl), watchedAddressRepository))
+                    add(
+                        EvmChainReader(
+                            "EVM_8453",
+                            buildWeb3j(config.evmBase.rpcUrl),
+                            watchedAddressRepository,
+                            config.evmBase.useFinalizedTag,
+                            config.evmBase.confirmations,
+                        ),
+                    )
                 }
                 if (config.evmPolygon.rpcUrl.isNotBlank()) {
-                    add(EvmChainReader("EVM_137", buildWeb3j(config.evmPolygon.rpcUrl), watchedAddressRepository))
+                    add(
+                        EvmChainReader(
+                            "EVM_137",
+                            buildWeb3j(config.evmPolygon.rpcUrl),
+                            watchedAddressRepository,
+                            config.evmPolygon.useFinalizedTag,
+                            config.evmPolygon.confirmations,
+                        ),
+                    )
                 }
                 if (config.solana.rpcUrl.isNotBlank()) {
                     add(SolanaChainReader(config.solana.rpcUrl, watchedAddressRepository, transactionBatchSize = config.solana.batchSize))

@@ -65,6 +65,7 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
     private var accountA2: AccountId = AccountId.generate()
     private var accountA3: AccountId = AccountId.generate()
     private var accountB: AccountId = AccountId.generate()
+    private var accountB2: AccountId = AccountId.generate()
 
     @BeforeEach
     fun createAccounts() {
@@ -72,11 +73,13 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
         accountA2 = AccountId.generate()
         accountA3 = AccountId.generate()
         accountB = AccountId.generate()
+        accountB2 = AccountId.generate()
         accountAdapter.save(Account.create(accountA, tenantA, "Custody", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
         accountAdapter.save(Account.create(accountA2, tenantA, "Customer", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
         accountAdapter.save(Account.create(accountA3, tenantA, "Other", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
         accountAdapter.save(Account.create(accountB, tenantB, "Custody-B", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
-        // Flush so accountB is physically present before any raw-JDBC insertSettlement()
+        accountAdapter.save(Account.create(accountB2, tenantB, "Customer-B", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
+        // Flush so accountB/accountB2 are physically present before any raw-JDBC insertSettlement()
         // call (which bypasses Hibernate's auto-flush) checks the fk_settlements_account FK.
         entityManager.flush()
     }
@@ -114,6 +117,11 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
         walletAddress: String = watchedWallet,
         status: EntryStatus = EntryStatus.PENDING,
         createdAtExpr: String = "now()",
+        matchedTransactionId: TransactionId? = null,
+        txHash: String? = null,
+        logIndex: Int? = null,
+        blockNumber: Long? = null,
+        chainKey: String? = null,
     ): UUID {
         val id = UUID.randomUUID()
         val session = entityManager.unwrap(org.hibernate.Session::class.java)
@@ -122,8 +130,9 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
             conn
                 .prepareStatement(
                     "INSERT INTO settlements " +
-                        "(id, tenant_id, account_id, amount, token, chain_id, wallet_address, status, created_by, created_at) " +
-                        "VALUES (?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?, ?, 'test', $createdAtExpr)",
+                        "(id, tenant_id, account_id, amount, token, chain_id, wallet_address, status, created_by, " +
+                        "created_at, matched_transaction_id, tx_hash, log_index, block_number, chain_key) " +
+                        "VALUES (?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?, ?, 'test', $createdAtExpr, ?::uuid, ?, ?, ?, ?)",
                 ).use { stmt ->
                     stmt.setString(1, id.toString())
                     stmt.setString(2, tenantId.value.toString())
@@ -133,6 +142,11 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
                     stmt.setString(6, chainId.name)
                     stmt.setString(7, walletAddress)
                     stmt.setString(8, status.name)
+                    stmt.setString(9, matchedTransactionId?.value?.toString())
+                    stmt.setString(10, txHash)
+                    if (logIndex != null) stmt.setInt(11, logIndex) else stmt.setNull(11, java.sql.Types.INTEGER)
+                    if (blockNumber != null) stmt.setLong(12, blockNumber) else stmt.setNull(12, java.sql.Types.BIGINT)
+                    stmt.setString(13, chainKey)
                     stmt.executeUpdate()
                 }
         }
@@ -140,7 +154,10 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
         return id
     }
 
-    private fun onChainTx(tenantId: TenantId = tenantA): Transaction {
+    private fun onChainTx(
+        tenantId: TenantId = tenantA,
+        idempotencyKey: String = "SOLANA:tx-hash-1:0",
+    ): Transaction {
         val txId = TransactionId.generate()
         val entry =
             OnChainEntry(
@@ -152,21 +169,25 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
                 walletAddress = watchedWallet,
                 tokenContract = usdcMint,
             )
+        val (debitAccount, creditAccount) = if (tenantId == tenantB) accountB to accountB2 else accountA to accountA2
         val tx =
             Transaction.create(
                 id = txId,
                 tenantId = tenantId,
-                idempotencyKey = "SOLANA:tx-hash-1:0",
+                idempotencyKey = idempotencyKey,
                 lines =
                     listOf(
-                        JournalLine(UUID.randomUUID(), txId, accountA, tenantId, EntryType.DEBIT, entry, null, now, "test"),
-                        JournalLine(UUID.randomUUID(), txId, accountA2, tenantId, EntryType.CREDIT, entry, null, now, "test"),
+                        JournalLine(UUID.randomUUID(), txId, debitAccount, tenantId, EntryType.DEBIT, entry, null, now, "test"),
+                        JournalLine(UUID.randomUUID(), txId, creditAccount, tenantId, EntryType.CREDIT, entry, null, now, "test"),
                     ),
                 occurredAt = now,
                 createdAt = now,
                 createdBy = "test",
             )
         transactionAdapter.save(tx)
+        // Flush so the transaction row is physically present before any raw-JDBC
+        // insertSettlement() call referencing tx.id checks fk_settlements_transaction.
+        entityManager.flush()
         return tx
     }
 
@@ -249,6 +270,76 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
                     .singleResult as Number
             ).toLong()
         assertEquals(1L, count)
+    }
+
+    @Test
+    fun `save and findById round-trip preserves finality evidence fields`() {
+        val settlement = adapter.save(pendingSettlement())
+        val tx = onChainTx()
+
+        val updated =
+            adapter.save(
+                settlement.copy(
+                    status = EntryStatus.WATCHING,
+                    matchedTransactionId = tx.id,
+                    txHash = "tx-hash-1",
+                    blockNumber = 250_000_000L,
+                    chainKey = "EVM_1",
+                    logIndex = 2,
+                    confirmationSource = "finalized_tag",
+                    finalityPolicyVersion = 1,
+                ),
+            )
+
+        val found = adapter.findById(updated.id, tenantA)
+        assertNotNull(found)
+        assertEquals(EntryStatus.WATCHING, found.status)
+        assertEquals("EVM_1", found.chainKey)
+        assertEquals(2, found.logIndex)
+        assertEquals("finalized_tag", found.confirmationSource)
+        assertEquals(1, found.finalityPolicyVersion)
+        assertNull(found.confirmedAt)
+        assertNull(found.reversalTransactionId)
+        assertNull(found.reorgedAt)
+    }
+
+    @Test
+    fun `save and findById round-trip preserves REORGED reversal fields without wiping original evidence`() {
+        val settlement = adapter.save(pendingSettlement())
+        val tx = onChainTx()
+        val reversalTx = onChainTx(idempotencyKey = "reorg-reversal:${tx.id.value}")
+        val reorgedAt = Instant.now()
+
+        val settled =
+            adapter.save(
+                settlement.copy(
+                    status = EntryStatus.SETTLED,
+                    matchedTransactionId = tx.id,
+                    txHash = "tx-hash-1",
+                    blockNumber = 250_000_000L,
+                    confirmedAt = Instant.now(),
+                    chainKey = "EVM_1",
+                    logIndex = 2,
+                ),
+            )
+        val reversed =
+            adapter.save(
+                settled.copy(
+                    status = EntryStatus.REORGED,
+                    reversalTransactionId = reversalTx.id,
+                    reorgedAt = reorgedAt,
+                ),
+            )
+
+        val found = adapter.findById(reversed.id, tenantA)
+        assertNotNull(found)
+        assertEquals(EntryStatus.REORGED, found.status)
+        assertEquals(reversalTx.id, found.reversalTransactionId)
+        assertEquals(reorgedAt.epochSecond, found.reorgedAt?.epochSecond)
+        // Original evidence untouched by the additive reversal marker.
+        assertEquals("tx-hash-1", found.txHash)
+        assertEquals(250_000_000L, found.blockNumber)
+        assertEquals("EVM_1", found.chainKey)
     }
 
     @Test
@@ -606,5 +697,212 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
         val results = adapter.findPage(tenantA, null, null, null, null, null, 50)
 
         assertEquals(4, results.size)
+    }
+
+    // ── findReversibleByTxHashAndLogIndex ────────────────────────────────────
+
+    @Test
+    fun `findReversibleByTxHashAndLogIndex finds a WATCHING match`() {
+        val tx = onChainTx()
+        val id =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.WATCHING,
+                matchedTransactionId = tx.id,
+                txHash = "0xabc",
+                logIndex = 2,
+                blockNumber = 100L,
+                chainKey = "EVM_1",
+            )
+
+        val found = adapter.findReversibleByTxHashAndLogIndex(tenantA, "0xabc", 2)
+
+        assertNotNull(found)
+        assertEquals(id, found.id)
+    }
+
+    @Test
+    fun `findReversibleByTxHashAndLogIndex finds a SETTLED and an UNMATCHED match`() {
+        val tx = onChainTx()
+        val settledId =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.SETTLED,
+                matchedTransactionId = tx.id,
+                txHash = "0xsettled",
+                logIndex = 0,
+            )
+        val unmatchedTx = onChainTx(idempotencyKey = "unmatched-tx")
+        val unmatchedId =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.UNMATCHED,
+                matchedTransactionId = unmatchedTx.id,
+                txHash = "0xunmatched",
+                logIndex = 0,
+            )
+
+        assertEquals(settledId, adapter.findReversibleByTxHashAndLogIndex(tenantA, "0xsettled", 0)?.id)
+        assertEquals(unmatchedId, adapter.findReversibleByTxHashAndLogIndex(tenantA, "0xunmatched", 0)?.id)
+    }
+
+    @Test
+    fun `findReversibleByTxHashAndLogIndex returns null once already REORGED`() {
+        val tx = onChainTx()
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.REORGED,
+            matchedTransactionId = tx.id,
+            txHash = "0xabc",
+            logIndex = 2,
+        )
+
+        val found = adapter.findReversibleByTxHashAndLogIndex(tenantA, "0xabc", 2)
+
+        assertNull(found)
+    }
+
+    @Test
+    fun `findReversibleByTxHashAndLogIndex returns null when logIndex differs on same txHash`() {
+        val tx = onChainTx()
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.WATCHING,
+            matchedTransactionId = tx.id,
+            txHash = "0xabc",
+            logIndex = 2,
+        )
+
+        val found = adapter.findReversibleByTxHashAndLogIndex(tenantA, "0xabc", 3)
+
+        assertNull(found)
+    }
+
+    @Test
+    fun `findReversibleByTxHashAndLogIndex returns null when there is no matched transaction`() {
+        // Unmatched-by-nothing row: matched_transaction_id is null even though txHash/logIndex are set,
+        // which should never happen in practice but the query must not treat it as reversible.
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.PENDING,
+            txHash = "0xabc",
+            logIndex = 2,
+        )
+
+        val found = adapter.findReversibleByTxHashAndLogIndex(tenantA, "0xabc", 2)
+
+        assertNull(found)
+    }
+
+    @Test
+    fun `findReversibleByTxHashAndLogIndex is isolated by tenant (RLS)`() {
+        val txA = onChainTx(tenantId = tenantA)
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.WATCHING,
+            matchedTransactionId = txA.id,
+            txHash = "0xshared",
+            logIndex = 0,
+        )
+        val txB = onChainTx(tenantId = tenantB, idempotencyKey = "tenant-b-tx")
+        insertSettlement(
+            tenantId = tenantB,
+            accountId = accountB,
+            status = EntryStatus.WATCHING,
+            matchedTransactionId = txB.id,
+            txHash = "0xshared",
+            logIndex = 0,
+        )
+
+        assertNotNull(adapter.findReversibleByTxHashAndLogIndex(tenantA, "0xshared", 0))
+        assertNotNull(adapter.findReversibleByTxHashAndLogIndex(tenantB, "0xshared", 0))
+    }
+
+    // ── findWatchingByChainKey ────────────────────────────────────────────────
+
+    @Test
+    fun `findWatchingByChainKey returns WATCHING rows at or below upToBlock`() {
+        val tx = onChainTx()
+        val eligible =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.WATCHING,
+                matchedTransactionId = tx.id,
+                chainKey = "EVM_1",
+                blockNumber = 100L,
+            )
+        val tooRecentTx = onChainTx(idempotencyKey = "too-recent-tx")
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.WATCHING,
+            matchedTransactionId = tooRecentTx.id,
+            chainKey = "EVM_1",
+            blockNumber = 200L,
+        )
+
+        val results = adapter.findWatchingByChainKey(tenantA, "EVM_1", 150L)
+
+        assertEquals(1, results.size)
+        assertEquals(eligible, results[0].id)
+    }
+
+    @Test
+    fun `findWatchingByChainKey excludes non-WATCHING statuses and other chains`() {
+        val tx = onChainTx()
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.SETTLED,
+            matchedTransactionId = tx.id,
+            chainKey = "EVM_1",
+            blockNumber = 100L,
+        )
+        val otherChainTx = onChainTx(idempotencyKey = "other-chain-tx")
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.WATCHING,
+            matchedTransactionId = otherChainTx.id,
+            chainKey = "EVM_8453",
+            blockNumber = 100L,
+        )
+
+        val results = adapter.findWatchingByChainKey(tenantA, "EVM_1", 150L)
+
+        assertEquals(0, results.size)
+    }
+
+    @Test
+    fun `findWatchingByChainKey is isolated by tenant (RLS)`() {
+        val txA = onChainTx(tenantId = tenantA)
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.WATCHING,
+            matchedTransactionId = txA.id,
+            chainKey = "EVM_1",
+            blockNumber = 100L,
+        )
+        val txB = onChainTx(tenantId = tenantB, idempotencyKey = "tenant-b-watching-tx")
+        insertSettlement(
+            tenantId = tenantB,
+            accountId = accountB,
+            status = EntryStatus.WATCHING,
+            matchedTransactionId = txB.id,
+            chainKey = "EVM_1",
+            blockNumber = 100L,
+        )
+
+        assertEquals(1, adapter.findWatchingByChainKey(tenantA, "EVM_1", 150L).size)
+        assertEquals(1, adapter.findWatchingByChainKey(tenantB, "EVM_1", 150L).size)
     }
 }

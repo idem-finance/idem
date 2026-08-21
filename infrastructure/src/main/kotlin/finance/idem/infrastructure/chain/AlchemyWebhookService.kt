@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import finance.idem.application.chain.AlchemyWebhookUseCase
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.reconciliation.ReorgReversalCommand
+import finance.idem.application.reconciliation.ReorgReversalUseCase
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
+import finance.idem.core.TenantId
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
 import finance.idem.infrastructure.security.HmacSigner
@@ -23,6 +26,7 @@ class AlchemyWebhookService(
     private val objectMapper: ObjectMapper,
     private val config: ChainConfig,
     private val deadLetterRecorder: DeadLetterRecorder,
+    private val reorgReversalUseCase: ReorgReversalUseCase,
 ) : AlchemyWebhookUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -63,9 +67,13 @@ class AlchemyWebhookService(
                 .maxOrNull() ?: 0L
 
         for (activity in payload.event.activity) {
+            if (activity.category == "token" && activity.log?.removed == true) {
+                handleReorg(activity, chainKey, watched)
+                continue
+            }
             val transfer = decodeActivity(activity, chainKey, watched) ?: continue
-            postTransactionUseCase.execute(transfer.toCommand("alchemy-webhook")).onFailure { error ->
-                deadLetterRecorder.record(transfer, chainKey, "alchemy-webhook", error, logPrefix = "Alchemy webhook")
+            postTransactionUseCase.execute(transfer.toCommand(FinalityPolicy.WEBHOOK_SOURCE)).onFailure { error ->
+                deadLetterRecorder.record(transfer, chainKey, FinalityPolicy.WEBHOOK_SOURCE, error, logPrefix = "Alchemy webhook")
             }
         }
 
@@ -143,7 +151,48 @@ class AlchemyWebhookService(
                     fromAddress = activity.fromAddress.takeIf { it.isNotBlank() }?.lowercase(),
                 ),
             watchedAddress = watchedAddress,
+            chainKey = chainKey,
+            logIndex = logIndex,
         )
+    }
+
+    /**
+     * A `removed:true` activity means a previously-observed log has been reorged out. If it
+     * was ever matched/settled, reverse it via a compensating transaction (see
+     * [ReorgReversalService]). If it was never matched (e.g. the original post failed and was
+     * dead-lettered, or arrived out of order), [ReorgReversalUseCase] reports
+     * `NoMatchingSettlement` and this is a no-op — never throws out of webhook handling.
+     */
+    private fun handleReorg(
+        activity: AlchemyActivity,
+        chainKey: String,
+        watched: List<WatchedAddress>,
+    ) {
+        val toAddress = activity.toAddress.lowercase()
+        val contractAddress = activity.rawContract?.address?.lowercase() ?: return
+        val watchedAddress =
+            watched.firstOrNull {
+                it.walletAddress.lowercase() == toAddress && it.tokenContract.lowercase() == contractAddress
+            } ?: return
+        val logIndex =
+            activity.log
+                ?.logIndex
+                ?.removePrefix("0x")
+                ?.toLongOrNull(16)
+                ?.toInt() ?: 0
+        val tenantId = TenantId.of(watchedAddress.tenantId)
+
+        reorgReversalUseCase
+            .execute(ReorgReversalCommand(tenantId, activity.hash, logIndex, chainKey, "alchemy webhook: removed=true"))
+            .onFailure { error ->
+                log.error(
+                    "Alchemy webhook: reorg reversal failed txHash={} logIndex={} tenant={}",
+                    activity.hash,
+                    logIndex,
+                    tenantId.value,
+                    error,
+                )
+            }
     }
 
     companion object {

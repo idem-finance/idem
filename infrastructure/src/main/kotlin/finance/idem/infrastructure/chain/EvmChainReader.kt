@@ -7,6 +7,7 @@ import finance.idem.core.monetary.OnChainEntry
 import org.slf4j.LoggerFactory
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameter
+import org.web3j.protocol.core.DefaultBlockParameterName
 import org.web3j.protocol.core.methods.request.EthFilter
 import org.web3j.protocol.core.methods.response.EthLog
 import java.math.BigDecimal
@@ -16,6 +17,8 @@ class EvmChainReader(
     override val chainKey: String,
     private val web3j: Web3j,
     private val watchedAddressRepository: WatchedAddressRepository,
+    private val useFinalizedTag: Boolean = true,
+    private val confirmations: Long = 12L,
     private val maxBlockRange: Long = MAX_BLOCK_RANGE,
 ) : ChainReader {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -25,12 +28,8 @@ class EvmChainReader(
         if (relevant.isEmpty()) return emptyList()
 
         val contractAddresses = relevant.map { it.tokenContract }.distinct()
-        val latestBlock =
-            web3j
-                .ethBlockNumber()
-                .send()
-                .blockNumber
-                .toLong()
+        val latestBlock = resolveScanBound().blockNumber
+        if (latestBlock <= checkpoint) return emptyList()
 
         return generateSequence(checkpoint) { from ->
             val next = from + maxBlockRange
@@ -40,6 +39,63 @@ class EvmChainReader(
             pollRange(from, to, contractAddresses, relevant)
         }.flatten()
             .toList()
+    }
+
+    /**
+     * Prefers the RPC's actual post-merge `finalized` block tag — a real consensus-finality
+     * guarantee ("this block will not be reverted short of an ~impossible attack"), not a
+     * probabilistic block-depth heuristic. Falls back to `latestBlock - confirmations` only
+     * when the endpoint doesn't support the tag (older/self-hosted nodes, some testnets) —
+     * that fallback is explicitly weaker and must never be presented as equivalent. The
+     * mechanism used is reported in [EvmScanBound.source] so callers (`BasicReconciliationService`
+     * via `SettlementFinalityPoller`) can record which guarantee level applies to each entry.
+     */
+    internal fun resolveScanBound(): EvmScanBound {
+        if (useFinalizedTag) {
+            val finalized = runCatching { web3j.ethGetBlockByNumber(DefaultBlockParameterName.FINALIZED, false).send() }.getOrNull()
+            val finalizedBlockNumber =
+                finalized
+                    ?.takeUnless { it.hasError() }
+                    ?.block
+                    ?.number
+                    ?.toLong()
+            if (finalizedBlockNumber != null) {
+                return EvmScanBound(finalizedBlockNumber, ConfirmationSource.FINALIZED_TAG, confirmationsUsed = null)
+            }
+            log.warn(
+                "$chainKey: eth_getBlockByNumber('finalized') unsupported or failed" +
+                    (finalized?.error?.message?.let { " ($it)" } ?: "") +
+                    " -- falling back to a $confirmations-block depth heuristic (probabilistic, not a finality guarantee)",
+            )
+        }
+        val rawTip =
+            web3j
+                .ethBlockNumber()
+                .send()
+                .blockNumber
+                .toLong()
+        val bound = (rawTip - confirmations).coerceAtLeast(0L)
+        return EvmScanBound(bound, ConfirmationSource.BLOCK_DEPTH_HEURISTIC, confirmationsUsed = confirmations)
+    }
+
+    /**
+     * True if `txHash`'s log at `logIndex` is still present on-chain, in the exact block it
+     * was originally observed in — the active-verification check `SettlementFinalityPoller`
+     * runs before promoting a WATCHING entry to SETTLED, since a passive `removed:true`
+     * webhook delivery can be missed (network blip, provider outage). A reorg shows up here
+     * either as a missing receipt entirely, or a receipt whose block number has moved
+     * (the transaction was re-mined in a later block).
+     */
+    fun verifyLogStillPresent(
+        txHash: String,
+        logIndex: Int,
+        expectedBlockNumber: Long,
+    ): Boolean {
+        val response = runCatching { web3j.ethGetTransactionReceipt(txHash).send() }.getOrNull() ?: return false
+        if (response.hasError()) return false
+        val receipt = response.transactionReceipt.orElse(null) ?: return false
+        if (receipt.blockNumber.toLong() != expectedBlockNumber) return false
+        return receipt.logs.any { it.logIndex.toLong() == logIndex.toLong() }
     }
 
     private fun pollRange(
@@ -121,6 +177,8 @@ class EvmChainReader(
                     fromAddress = fromAddress,
                 ),
             watchedAddress = watched,
+            chainKey = chainKey,
+            logIndex = logIndex,
         )
     }
 
@@ -143,4 +201,15 @@ class EvmChainReader(
                 StablecoinToken.BRZ -> 18
             }
     }
+}
+
+internal data class EvmScanBound(
+    val blockNumber: Long,
+    val source: String,
+    val confirmationsUsed: Long?,
+)
+
+internal object ConfirmationSource {
+    const val FINALIZED_TAG = "finalized_tag"
+    const val BLOCK_DEPTH_HEURISTIC = "block_depth_heuristic"
 }

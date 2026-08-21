@@ -129,6 +129,61 @@ class EvmChainReaderIntegrationTest {
         assertEquals(emptyList<DetectedTransfer>(), result)
     }
 
+    @Test
+    fun `poll bounds eth_getLogs toBlock by the finalized tag, not the raw chain tip`() {
+        stubFinalizedBlock("0x1237160") // 19_100_000 -- deliberately lower than the raw tip below
+        stubBlockNumber("0x12a05f2") // 19_531_250 -- must NOT be used as the bound when the tag succeeds
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing(""""method":"eth_getLogs""""))
+                .withRequestBody(containing(""""toBlock":"0x1237160""""))
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(alchemyEthGetLogsResponse(txHash, watchedWallet, usdcContract)),
+                ),
+        )
+
+        val result = reader.poll(19_000_000L)
+
+        assertEquals(1, result.size)
+    }
+
+    @Test
+    fun `poll falls back to the depth heuristic when the finalized tag is unsupported`() {
+        stubFinalizedBlockError()
+        stubBlockNumber("0x12a05f2") // 19_531_250
+        val fallbackReader =
+            EvmChainReader(
+                chainKey = "EVM_1",
+                web3j = Web3j.build(HttpService("http://localhost:${wireMock.port()}")),
+                watchedAddressRepository =
+                    mock<WatchedAddressRepository>().also {
+                        whenever(it.findByChainKey("EVM_1")).thenReturn(listOf(watched))
+                    },
+                useFinalizedTag = true,
+                confirmations = 12L,
+                maxBlockRange = 1_000_000L,
+            )
+        // 19_531_250 - 12 = 19_531_238 = 0x12a05e6
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing(""""method":"eth_getLogs""""))
+                .withRequestBody(containing(""""toBlock":"0x12a05e6""""))
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(alchemyEthGetLogsResponse(txHash, watchedWallet, usdcContract)),
+                ),
+        )
+
+        val result = fallbackReader.poll(19_000_000L)
+
+        assertEquals(1, result.size)
+    }
+
     private fun stubBlockNumber(hex: String) {
         wireMock.stubFor(
             post(urlPathEqualTo("/"))
@@ -138,6 +193,42 @@ class EvmChainReaderIntegrationTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody("""{"jsonrpc":"2.0","id":1,"result":"$hex"}"""),
+                ),
+        )
+    }
+
+    private fun stubFinalizedBlock(hex: String) {
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing(""""method":"eth_getBlockByNumber""""))
+                .withRequestBody(containing(""""finalized""""))
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(
+                            """{"jsonrpc":"2.0","id":1,"result":{"number":"$hex",""" +
+                                """"hash":"0x0000000000000000000000000000000000000000000000000000000000000001",""" +
+                                """"parentHash":"0x0000000000000000000000000000000000000000000000000000000000000000",""" +
+                                """"transactions":[]}}""",
+                        ),
+                ),
+        )
+    }
+
+    private fun stubFinalizedBlockError() {
+        wireMock.stubFor(
+            post(urlPathEqualTo("/"))
+                .withRequestBody(containing(""""method":"eth_getBlockByNumber""""))
+                .withRequestBody(containing(""""finalized""""))
+                .willReturn(
+                    aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(
+                            """{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"the method """ +
+                                """eth_getBlockByNumber does not exist/is not available"}}""",
+                        ),
                 ),
         )
     }

@@ -153,10 +153,11 @@ class AlchemyWebhookIntegrationTest {
         assertThat(countUnmatchedSettlements(f.tenantId, f.wallet)).isEqualTo(1L)
     }
 
-    // ── Scenario 4: matching PENDING settlement -> SETTLED ──
+    // ── Scenario 4: matching PENDING settlement -> WATCHING (webhook-sourced matches are ──
+    // ── finality-gated; SettlementFinalityPoller promotes to SETTLED separately) ──
 
     @Test
-    fun `matching pending settlement transitions to settled`() {
+    fun `matching pending settlement transitions to WATCHING, not SETTLED, pending finality confirmation`() {
         val f = fixture(4)
         val txHash = txHashFor(4)
         val pending = seedPendingSettlement(f.tenantId, f.creditAccountId, "1.000000", f.wallet)
@@ -169,14 +170,18 @@ class AlchemyWebhookIntegrationTest {
 
         val updated = settlementRepository.findById(pending.id, f.tenantId)
         assertThat(updated).isNotNull
-        assertThat(updated!!.status).isEqualTo(EntryStatus.SETTLED)
+        assertThat(updated!!.status).isEqualTo(EntryStatus.WATCHING)
         assertThat(updated.matchedTransactionId).isEqualTo(tx.id)
         assertThat(updated.txHash).isEqualTo(txHash)
         assertThat(updated.blockNumber).isEqualTo(19_531_250L)
-        assertThat(updated.confirmedAt).isNotNull
+        assertThat(updated.chainKey).isEqualTo("EVM_1")
+        assertThat(updated.logIndex).isEqualTo(0)
+        // Not yet finality-confirmed — confirmedAt/transaction.settled arrive only once
+        // SettlementFinalityPoller promotes this row (see SettlementPromotionServiceTest).
+        assertThat(updated.confirmedAt).isNull()
 
         val outboxEventTypes = webhookOutboxAdapter.findPendingOrFailed(f.tenantId).map { it.eventType }
-        assertThat(outboxEventTypes).contains("transaction.settled")
+        assertThat(outboxEventTypes).doesNotContain("transaction.settled")
         assertThat(outboxEventTypes).doesNotContain("reconciliation.unmatched")
 
         assertThat(findUnmatchedSettlement(f.tenantId, f.wallet)).isNull()

@@ -86,4 +86,38 @@ interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
         @Param("afterId") afterId: UUID?,
         @Param("limit") limit: Int,
     ): List<SettlementDataModel>
+
+    // Plain read, not PESSIMISTIC_WRITE: ReorgReversalService's whole reversal runs inside a
+    // single @Transactional, and the status <> 'REORGED' filter makes duplicate webhook
+    // delivery idempotent without needing a row lock beyond normal read-committed isolation.
+    @Query(
+        """
+        SELECT s FROM SettlementDataModel s
+        WHERE s.tenantId = :tenantId AND s.txHash = :txHash AND s.logIndex = :logIndex
+          AND s.matchedTransactionId IS NOT NULL AND s.status <> 'REORGED'
+        ORDER BY s.createdAt DESC
+        """,
+    )
+    fun findReversibleByTxHashAndLogIndex(
+        @Param("tenantId") tenantId: UUID,
+        @Param("txHash") txHash: String,
+        @Param("logIndex") logIndex: Int,
+    ): List<SettlementDataModel>
+
+    // Tenant-scoped: settlements keeps FORCE ROW LEVEL SECURITY, so the adapter calls this
+    // once per tenant (see SettlementRepositoryAdapter.findWatchingByChainKey) rather than
+    // reading cross-tenant.
+    @Query(
+        """
+        SELECT s FROM SettlementDataModel s
+        WHERE s.tenantId = :tenantId AND s.chainKey = :chainKey
+          AND s.status = 'WATCHING' AND s.blockNumber <= :upToBlock
+        ORDER BY s.createdAt ASC
+        """,
+    )
+    fun findWatchingByChainKey(
+        @Param("tenantId") tenantId: UUID,
+        @Param("chainKey") chainKey: String,
+        @Param("upToBlock") upToBlock: Long,
+    ): List<SettlementDataModel>
 }

@@ -106,6 +106,7 @@ class TronChainReader(
                     fromAddress = transfer.fromAddress.takeIf { it.isNotBlank() }?.lowercase(),
                 ),
             watchedAddress = watchedAddress,
+            chainKey = chainKey,
         )
     }
 
