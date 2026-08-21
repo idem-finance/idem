@@ -99,13 +99,17 @@ class AlchemyWebhookIntegrationTest {
             assertThat(entry.tokenContract).isEqualTo(f.contract)
         }
 
+        // Webhook-sourced UNMATCHED rows are also finality-gated (mirroring the WATCHING path):
+        // confirmedAt/reconciliation.unmatched arrive only once SettlementFinalityPoller confirms.
         val outboxEventTypes = webhookOutboxAdapter.findPendingOrFailed(f.tenantId).map { it.eventType }
-        assertThat(outboxEventTypes).contains("transaction.committed", "reconciliation.unmatched")
+        assertThat(outboxEventTypes).contains("transaction.committed")
+        assertThat(outboxEventTypes).doesNotContain("reconciliation.unmatched")
 
         val unmatched = findUnmatchedSettlement(f.tenantId, f.wallet)
         assertThat(unmatched).isNotNull
         assertThat(unmatched!!.accountId).isEqualTo(f.creditAccountId.value)
         assertThat(unmatched.amount).isEqualByComparingTo(BigDecimal("1.000000"))
+        assertThat(unmatched.confirmedAt).isNull()
     }
 
     // ── Scenario 2: invalid/missing HMAC -> 401, nothing posted ──
@@ -208,10 +212,12 @@ class AlchemyWebhookIntegrationTest {
         assertThat(unmatched.matchedTransactionId).isEqualTo(tx.id.value)
         assertThat(unmatched.txHash).isEqualTo(txHash)
         assertThat(unmatched.blockNumber).isEqualTo(19_531_250L)
-        assertThat(unmatched.confirmedAt).isNotNull
+        // Webhook-sourced UNMATCHED is finality-gated too (mirrors WATCHING): confirmedAt/
+        // reconciliation.unmatched arrive only once SettlementFinalityPoller confirms.
+        assertThat(unmatched.confirmedAt).isNull()
 
         val outboxEventTypes = webhookOutboxAdapter.findPendingOrFailed(f.tenantId).map { it.eventType }
-        assertThat(outboxEventTypes).contains("reconciliation.unmatched")
+        assertThat(outboxEventTypes).doesNotContain("reconciliation.unmatched")
         assertThat(outboxEventTypes).doesNotContain("transaction.settled")
     }
 
@@ -243,10 +249,12 @@ class AlchemyWebhookIntegrationTest {
         assertThat(unmatched.matchedTransactionId).isEqualTo(tx.id.value)
         assertThat(unmatched.txHash).isEqualTo(txHash)
         assertThat(unmatched.blockNumber).isEqualTo(19_531_250L)
-        assertThat(unmatched.confirmedAt).isNotNull
+        // Webhook-sourced UNMATCHED is finality-gated too (mirrors WATCHING): confirmedAt/
+        // reconciliation.unmatched arrive only once SettlementFinalityPoller confirms.
+        assertThat(unmatched.confirmedAt).isNull()
 
         val outboxEventTypes = webhookOutboxAdapter.findPendingOrFailed(f.tenantId).map { it.eventType }
-        assertThat(outboxEventTypes).contains("reconciliation.unmatched")
+        assertThat(outboxEventTypes).doesNotContain("reconciliation.unmatched")
         assertThat(outboxEventTypes).doesNotContain("transaction.settled")
     }
 
@@ -284,10 +292,12 @@ class AlchemyWebhookIntegrationTest {
         assertThat(unmatched.matchedTransactionId).isEqualTo(tx.id.value)
         assertThat(unmatched.txHash).isEqualTo(txHash)
         assertThat(unmatched.blockNumber).isEqualTo(19_531_250L)
-        assertThat(unmatched.confirmedAt).isNotNull
+        // Webhook-sourced UNMATCHED is finality-gated too (mirrors WATCHING): confirmedAt/
+        // reconciliation.unmatched arrive only once SettlementFinalityPoller confirms.
+        assertThat(unmatched.confirmedAt).isNull()
 
         val outboxEventTypes = webhookOutboxAdapter.findPendingOrFailed(f.tenantId).map { it.eventType }
-        assertThat(outboxEventTypes).contains("reconciliation.unmatched")
+        assertThat(outboxEventTypes).doesNotContain("reconciliation.unmatched")
     }
 
     // ── Fixtures & helpers ──────────────────────────────────────────────────────────

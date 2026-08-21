@@ -34,7 +34,6 @@ data class Settlement(
     val observedBlockHeight: Long? = null,
     val confirmationSource: String? = null,
     val confirmationsRequired: Long? = null,
-    val finalityPolicyVersion: Int? = null,
     // Reorg-reversal marker — additive only. Set when a chain reorg invalidates a previously
     // matched/settled entry; the fields above (txHash/blockNumber/confirmedAt/etc.) are never
     // rewritten, preserving the original evidence for audit purposes.

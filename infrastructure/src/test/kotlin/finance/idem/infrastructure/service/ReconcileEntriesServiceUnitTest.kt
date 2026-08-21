@@ -137,11 +137,24 @@ class ReconcileEntriesServiceUnitTest {
                 logIndex: Int,
             ): Settlement? = null
 
-            override fun findWatchingByChainKey(
+            override fun findReorgedByTxHashAndLogIndex(
+                tenantId: TenantId,
+                txHash: String,
+                logIndex: Int,
+            ): Settlement? = null
+
+            override fun findPendingFinalitySweep(
                 tenantId: TenantId,
                 chainKey: String,
                 upToBlock: Long,
             ) = emptyList<Settlement>()
+
+            override fun markReorged(
+                id: UUID,
+                tenantId: TenantId,
+                reversalTransactionId: TransactionId,
+                reorgedAt: Instant,
+            ): Boolean = false
         }
 
     @Test
@@ -216,11 +229,24 @@ class ReconcileEntriesServiceUnitTest {
                     logIndex: Int,
                 ): Settlement? = null
 
-                override fun findWatchingByChainKey(
+                override fun findReorgedByTxHashAndLogIndex(
+                    tenantId: TenantId,
+                    txHash: String,
+                    logIndex: Int,
+                ): Settlement? = null
+
+                override fun findPendingFinalitySweep(
                     tenantId: TenantId,
                     chainKey: String,
                     upToBlock: Long,
                 ) = emptyList<Settlement>()
+
+                override fun markReorged(
+                    id: UUID,
+                    tenantId: TenantId,
+                    reversalTransactionId: TransactionId,
+                    reorgedAt: Instant,
+                ): Boolean = false
             }
 
         val service = ReconcileEntriesService(repo, outboxRepo, txManager, BigDecimal.ZERO)

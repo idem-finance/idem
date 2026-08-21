@@ -287,7 +287,6 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
                     chainKey = "EVM_1",
                     logIndex = 2,
                     confirmationSource = "finalized_tag",
-                    finalityPolicyVersion = 1,
                 ),
             )
 
@@ -297,7 +296,6 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
         assertEquals("EVM_1", found.chainKey)
         assertEquals(2, found.logIndex)
         assertEquals("finalized_tag", found.confirmationSource)
-        assertEquals(1, found.finalityPolicyVersion)
         assertNull(found.confirmedAt)
         assertNull(found.reversalTransactionId)
         assertNull(found.reorgedAt)
@@ -825,17 +823,48 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
         assertNotNull(adapter.findReversibleByTxHashAndLogIndex(tenantB, "0xshared", 0))
     }
 
-    // ── findWatchingByChainKey ────────────────────────────────────────────────
+    // ── findReorgedByTxHashAndLogIndex ────────────────────────────────────────
 
     @Test
-    fun `findWatchingByChainKey returns WATCHING rows at or below upToBlock`() {
+    fun `findReorgedByTxHashAndLogIndex finds a REORGED row and returns null when there is none`() {
         val tx = onChainTx()
-        val eligible =
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.REORGED,
+            matchedTransactionId = tx.id,
+            txHash = "0xreorged",
+            logIndex = 0,
+            blockNumber = 100L,
+        )
+
+        val found = adapter.findReorgedByTxHashAndLogIndex(tenantA, "0xreorged", 0)
+        assertNotNull(found)
+        assertEquals(100L, found.blockNumber)
+        assertNull(adapter.findReorgedByTxHashAndLogIndex(tenantA, "0xneverreorged", 0))
+    }
+
+    // ── findPendingFinalitySweep ─────────────────────────────────────────────
+
+    @Test
+    fun `findPendingFinalitySweep returns WATCHING and UNMATCHED rows at or below upToBlock`() {
+        val tx = onChainTx()
+        val eligibleWatching =
             insertSettlement(
                 tenantId = tenantA,
                 accountId = accountA,
                 status = EntryStatus.WATCHING,
                 matchedTransactionId = tx.id,
+                chainKey = "EVM_1",
+                blockNumber = 100L,
+            )
+        val unmatchedTx = onChainTx(idempotencyKey = "unmatched-sweep-tx")
+        val eligibleUnmatched =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.UNMATCHED,
+                matchedTransactionId = unmatchedTx.id,
                 chainKey = "EVM_1",
                 blockNumber = 100L,
             )
@@ -849,20 +878,28 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
             blockNumber = 200L,
         )
 
-        val results = adapter.findWatchingByChainKey(tenantA, "EVM_1", 150L)
+        val results = adapter.findPendingFinalitySweep(tenantA, "EVM_1", 150L).map { it.id }.toSet()
 
-        assertEquals(1, results.size)
-        assertEquals(eligible, results[0].id)
+        assertEquals(setOf(eligibleWatching, eligibleUnmatched), results)
     }
 
     @Test
-    fun `findWatchingByChainKey excludes non-WATCHING statuses and other chains`() {
+    fun `findPendingFinalitySweep excludes SETTLED, REORGED, and other chains`() {
         val tx = onChainTx()
         insertSettlement(
             tenantId = tenantA,
             accountId = accountA,
             status = EntryStatus.SETTLED,
             matchedTransactionId = tx.id,
+            chainKey = "EVM_1",
+            blockNumber = 100L,
+        )
+        val reorgedTx = onChainTx(idempotencyKey = "reorged-sweep-tx")
+        insertSettlement(
+            tenantId = tenantA,
+            accountId = accountA,
+            status = EntryStatus.REORGED,
+            matchedTransactionId = reorgedTx.id,
             chainKey = "EVM_1",
             blockNumber = 100L,
         )
@@ -876,13 +913,13 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
             blockNumber = 100L,
         )
 
-        val results = adapter.findWatchingByChainKey(tenantA, "EVM_1", 150L)
+        val results = adapter.findPendingFinalitySweep(tenantA, "EVM_1", 150L)
 
         assertEquals(0, results.size)
     }
 
     @Test
-    fun `findWatchingByChainKey is isolated by tenant (RLS)`() {
+    fun `findPendingFinalitySweep is isolated by tenant (RLS)`() {
         val txA = onChainTx(tenantId = tenantA)
         insertSettlement(
             tenantId = tenantA,
@@ -902,7 +939,59 @@ class SettlementRepositoryAdapterTest : SharedPostgresTestBase() {
             blockNumber = 100L,
         )
 
-        assertEquals(1, adapter.findWatchingByChainKey(tenantA, "EVM_1", 150L).size)
-        assertEquals(1, adapter.findWatchingByChainKey(tenantB, "EVM_1", 150L).size)
+        assertEquals(1, adapter.findPendingFinalitySweep(tenantA, "EVM_1", 150L).size)
+        assertEquals(1, adapter.findPendingFinalitySweep(tenantB, "EVM_1", 150L).size)
+    }
+
+    // ── markReorged ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `markReorged transitions a non-REORGED settlement and returns true`() {
+        val tx = onChainTx()
+        val id =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.WATCHING,
+                matchedTransactionId = tx.id,
+                txHash = "0xabc",
+                logIndex = 2,
+            )
+        val reversalTxId = onChainTx(idempotencyKey = "reversal-tx").id
+        val reorgedAt = Instant.now()
+
+        val result = adapter.markReorged(id, tenantA, reversalTxId, reorgedAt)
+
+        assertEquals(true, result)
+        val found = adapter.findById(id, tenantA)
+        assertNotNull(found)
+        assertEquals(EntryStatus.REORGED, found.status)
+        assertEquals(reversalTxId, found.reversalTransactionId)
+    }
+
+    @Test
+    fun `markReorged returns false and does not overwrite when already REORGED`() {
+        val tx = onChainTx()
+        val firstReversalTxId = onChainTx(idempotencyKey = "first-reversal-tx").id
+        val id =
+            insertSettlement(
+                tenantId = tenantA,
+                accountId = accountA,
+                status = EntryStatus.REORGED,
+                matchedTransactionId = tx.id,
+                txHash = "0xabc",
+                logIndex = 2,
+            )
+        adapter.save(
+            adapter.findById(id, tenantA)!!.copy(reversalTransactionId = firstReversalTxId, reorgedAt = Instant.now()),
+        )
+        val secondReversalTxId = onChainTx(idempotencyKey = "second-reversal-tx").id
+
+        val result = adapter.markReorged(id, tenantA, secondReversalTxId, Instant.now())
+
+        assertEquals(false, result)
+        val found = adapter.findById(id, tenantA)
+        assertNotNull(found)
+        assertEquals(firstReversalTxId, found.reversalTransactionId)
     }
 }

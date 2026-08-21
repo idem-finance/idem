@@ -131,7 +131,7 @@ class ReorgReversalServiceTest {
 
         assertEquals(ReorgReversalResult.NoMatchingSettlement, result)
         verify(postTransactionUseCase, never()).execute(any())
-        verify(settlementRepository, never()).save(any())
+        verify(settlementRepository, never()).markReorged(any(), any(), any(), any())
         verify(idempotencyStore, never()).release(any(), any())
     }
 
@@ -145,7 +145,7 @@ class ReorgReversalServiceTest {
 
         assertEquals(ReorgReversalResult.AlreadyReorged, result)
         verify(postTransactionUseCase, never()).execute(any())
-        verify(settlementRepository, never()).save(any())
+        verify(settlementRepository, never()).markReorged(any(), any(), any(), any())
     }
 
     @Test
@@ -171,12 +171,15 @@ class ReorgReversalServiceTest {
         whenever(settlementRepository.findReversibleByTxHashAndLogIndex(tenantId, txHash, 2)).thenReturn(settlement)
         whenever(transactionRepository.findById(originalTxId, tenantId)).thenReturn(tx)
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(compensatingTxId))
-        whenever(settlementRepository.save(any())).thenAnswer { it.getArgument(0) }
+        whenever(settlementRepository.markReorged(any(), any(), any(), any())).thenReturn(true)
 
         val result = service.execute(cmd()).getOrThrow()
 
         assertIs<ReorgReversalResult.Reversed>(result)
         assertEquals(compensatingTxId, result.reversalTransactionId)
+        assertEquals(EntryStatus.REORGED, result.settlement.status)
+        assertEquals(txHash, result.settlement.txHash) // original evidence untouched
+        assertEquals(100L, result.settlement.blockNumber)
 
         val cmdCaptor = argumentCaptor<PostTransactionCommand>()
         verify(postTransactionUseCase).execute(cmdCaptor.capture())
@@ -187,19 +190,31 @@ class ReorgReversalServiceTest {
         assertEquals(EntryType.CREDIT, compensatingCmd.lines.first { it.accountId == debitAccountId }.entryType)
         assertEquals(EntryType.DEBIT, compensatingCmd.lines.first { it.accountId == creditAccountId }.entryType)
 
-        val savedCaptor = argumentCaptor<Settlement>()
-        verify(settlementRepository).save(savedCaptor.capture())
-        val saved = savedCaptor.firstValue
-        assertEquals(EntryStatus.REORGED, saved.status)
-        assertEquals(compensatingTxId, saved.reversalTransactionId)
-        assertEquals(txHash, saved.txHash) // original evidence untouched
-        assertEquals(100L, saved.blockNumber)
-
+        verify(settlementRepository).markReorged(any(), any(), any(), any())
         verify(idempotencyStore).release("EVM_1:$txHash:2", tenantId)
 
         val outboxCaptor = argumentCaptor<WebhookOutboxEntry>()
         verify(webhookOutboxRepository).save(outboxCaptor.capture())
         assertEquals("settlement.reorged", outboxCaptor.firstValue.eventType)
+    }
+
+    @Test
+    fun `markReorged returning false (lost the race to a concurrent reversal) reports AlreadyReorged and skips the outbox write`() {
+        val originalTxId = TransactionId.generate()
+        val settlement = reversibleSettlement(originalTxId)
+        val tx = originalTx(originalTxId)
+        val compensatingTxId = TransactionId.generate()
+
+        whenever(settlementRepository.findReversibleByTxHashAndLogIndex(tenantId, txHash, 2)).thenReturn(settlement)
+        whenever(transactionRepository.findById(originalTxId, tenantId)).thenReturn(tx)
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(compensatingTxId))
+        whenever(settlementRepository.markReorged(any(), any(), any(), any())).thenReturn(false)
+
+        val result = service.execute(cmd()).getOrThrow()
+
+        assertEquals(ReorgReversalResult.AlreadyReorged, result)
+        verify(idempotencyStore, never()).release(any(), any())
+        verify(webhookOutboxRepository, never()).save(any())
     }
 
     @Test
@@ -215,7 +230,7 @@ class ReorgReversalServiceTest {
         val result = service.execute(cmd())
 
         assertTrue(result.isFailure)
-        verify(settlementRepository, never()).save(any())
+        verify(settlementRepository, never()).markReorged(any(), any(), any(), any())
         verify(idempotencyStore, never()).release(any(), any())
         verify(webhookOutboxRepository, never()).save(any())
     }

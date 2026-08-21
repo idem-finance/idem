@@ -71,7 +71,6 @@ class SettlementPromotionServiceTest {
         assertEquals(150L, result.observedBlockHeight)
         assertEquals(ConfirmationSource.FINALIZED_TAG, result.confirmationSource)
         assertEquals(null, result.confirmationsRequired)
-        assertEquals(FinalityPolicy.VERSION, result.finalityPolicyVersion)
         assertNotNull(result.confirmedAt)
 
         val savedCaptor = argumentCaptor<Settlement>()
@@ -93,5 +92,23 @@ class SettlementPromotionServiceTest {
 
         assertEquals(ConfirmationSource.BLOCK_DEPTH_HEURISTIC, result.confirmationSource)
         assertEquals(12L, result.confirmationsRequired)
+    }
+
+    @Test
+    fun `confirmUnmatched stamps finality evidence, keeps UNMATCHED, and writes deferred reconciliation-unmatched outbox entry`() {
+        val settlement = watchingSettlement().copy(status = EntryStatus.UNMATCHED)
+        val bound = EvmScanBound(150L, ConfirmationSource.FINALIZED_TAG, confirmationsUsed = null)
+        whenever(settlementRepository.save(any())).thenAnswer { it.getArgument(0) }
+
+        val result = service.confirmUnmatched(settlement, bound)
+
+        assertEquals(EntryStatus.UNMATCHED, result.status)
+        assertEquals(150L, result.observedBlockHeight)
+        assertEquals(ConfirmationSource.FINALIZED_TAG, result.confirmationSource)
+        assertNotNull(result.confirmedAt)
+
+        val outboxCaptor = argumentCaptor<WebhookOutboxEntry>()
+        verify(webhookOutboxRepository).save(outboxCaptor.capture())
+        assertEquals("reconciliation.unmatched", outboxCaptor.firstValue.eventType)
     }
 }

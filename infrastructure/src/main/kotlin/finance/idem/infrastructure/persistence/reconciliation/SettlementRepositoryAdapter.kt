@@ -114,15 +114,39 @@ class SettlementRepositoryAdapter(
     }
 
     @Transactional(readOnly = true)
-    override fun findWatchingByChainKey(
+    override fun findReorgedByTxHashAndLogIndex(
+        tenantId: TenantId,
+        txHash: String,
+        logIndex: Int,
+    ): Settlement? {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository
+            .findReorgedByTxHashAndLogIndex(tenantId.value, txHash, logIndex)
+            .firstOrNull()
+            ?.toDomain()
+    }
+
+    @Transactional(readOnly = true)
+    override fun findPendingFinalitySweep(
         tenantId: TenantId,
         chainKey: String,
         upToBlock: Long,
     ): List<Settlement> {
         entityManager.setRlsTenantId(tenantId)
         return jpaRepository
-            .findWatchingByChainKey(tenantId.value, chainKey, upToBlock)
+            .findPendingFinalitySweep(tenantId.value, chainKey, upToBlock)
             .map { it.toDomain() }
+    }
+
+    @Transactional
+    override fun markReorged(
+        id: UUID,
+        tenantId: TenantId,
+        reversalTransactionId: TransactionId,
+        reorgedAt: Instant,
+    ): Boolean {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository.markReorged(id, tenantId.value, reversalTransactionId.value, reorgedAt) == 1
     }
 }
 
@@ -148,7 +172,6 @@ private fun Settlement.toEntity() =
         observedBlockHeight = observedBlockHeight,
         confirmationSource = confirmationSource,
         confirmationsRequired = confirmationsRequired,
-        finalityPolicyVersion = finalityPolicyVersion,
         reversalTransactionId = reversalTransactionId?.value,
         reorgedAt = reorgedAt,
     )
@@ -175,7 +198,6 @@ private fun SettlementDataModel.toDomain() =
         observedBlockHeight = observedBlockHeight,
         confirmationSource = confirmationSource,
         confirmationsRequired = confirmationsRequired,
-        finalityPolicyVersion = finalityPolicyVersion,
         reversalTransactionId = reversalTransactionId?.let { TransactionId(it) },
         reorgedAt = reorgedAt,
     )

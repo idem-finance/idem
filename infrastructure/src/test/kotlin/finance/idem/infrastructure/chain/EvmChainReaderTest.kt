@@ -346,59 +346,63 @@ class EvmChainReaderTest {
     }
 
     @Test
-    fun `verifyLogStillPresent returns true when the receipt exists at the expected block with a matching log index`() {
+    fun `verifyLogStillPresent returns Present when the receipt exists at the expected block with a matching log index`() {
         val web3j = mock<Web3j>()
         mockTransactionReceipt(web3j, blockNumber = 100L, logIndexes = listOf(0L, 2L))
         val reader = EvmChainReader("EVM_1", web3j, mockRepo)
 
-        assertTrue(reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+        assertEquals(LogVerification.Present, reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
     }
 
     @Test
-    fun `verifyLogStillPresent returns false when the receipt is missing entirely (reorged out)`() {
+    fun `verifyLogStillPresent returns Absent when the receipt is missing entirely (reorged out)`() {
         val web3j = mock<Web3j>()
         mockTransactionReceipt(web3j, blockNumber = null)
         val reader = EvmChainReader("EVM_1", web3j, mockRepo)
 
-        assertFalse(reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+        assertEquals(LogVerification.Absent, reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
     }
 
     @Test
-    fun `verifyLogStillPresent returns false when the receipt has moved to a different block (re-mined)`() {
+    fun `verifyLogStillPresent returns Absent when the receipt has moved to a different block (re-mined)`() {
         val web3j = mock<Web3j>()
         mockTransactionReceipt(web3j, blockNumber = 105L, logIndexes = listOf(2L))
         val reader = EvmChainReader("EVM_1", web3j, mockRepo)
 
-        assertFalse(reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+        assertEquals(LogVerification.Absent, reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
     }
 
     @Test
-    fun `verifyLogStillPresent returns false when the log index is no longer present in the receipt`() {
+    fun `verifyLogStillPresent returns Absent when the log index is no longer present in the receipt`() {
         val web3j = mock<Web3j>()
         mockTransactionReceipt(web3j, blockNumber = 100L, logIndexes = listOf(0L, 1L))
         val reader = EvmChainReader("EVM_1", web3j, mockRepo)
 
-        assertFalse(reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+        assertEquals(LogVerification.Absent, reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
     }
 
     @Test
-    fun `verifyLogStillPresent returns false on RPC error`() {
+    fun `verifyLogStillPresent returns VerificationFailed (not Absent) on RPC error`() {
         val web3j = mock<Web3j>()
         mockTransactionReceipt(web3j, blockNumber = 100L, hasError = true)
         val reader = EvmChainReader("EVM_1", web3j, mockRepo)
 
-        assertFalse(reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+        val result = reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L)
+
+        assertTrue(result is LogVerification.VerificationFailed)
     }
 
     @Test
-    fun `verifyLogStillPresent returns false when the RPC call throws`() {
+    fun `verifyLogStillPresent returns VerificationFailed (not Absent) when the RPC call throws`() {
         val web3j = mock<Web3j>()
         val request = mock<Request<*, EthGetTransactionReceipt>>()
         whenever(web3j.ethGetTransactionReceipt(any())).thenReturn(request)
         whenever(request.send()).thenThrow(IOException("connection reset"))
         val reader = EvmChainReader("EVM_1", web3j, mockRepo)
 
-        assertFalse(reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+        val result = reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L)
+
+        assertTrue(result is LogVerification.VerificationFailed)
     }
 
     @Test

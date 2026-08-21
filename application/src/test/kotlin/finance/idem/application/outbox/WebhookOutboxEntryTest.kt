@@ -195,6 +195,76 @@ class WebhookOutboxEntryTest {
     }
 
     @Test
+    fun `reconciliationUnmatched from Settlement creates entry with matched transactionId`() {
+        val matchedTxId = TransactionId(UUID.randomUUID())
+        val settlement =
+            Settlement(
+                id = UUID.randomUUID(),
+                tenantId = tenantId,
+                accountId = AccountId.generate(),
+                amount = MonetaryAmount.of("50"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                walletAddress = "0xabc",
+                status = EntryStatus.UNMATCHED,
+                matchedTransactionId = matchedTxId,
+                confirmedAt = now,
+                createdAt = now,
+                createdBy = "test",
+            )
+        val entry = WebhookOutboxEntry.reconciliationUnmatched(settlement)
+
+        assertEquals("reconciliation.unmatched", entry.eventType)
+        assertEquals(tenantId, entry.tenantId)
+        assertEquals(matchedTxId, entry.transactionId)
+        assertEquals(now, entry.occurredAt)
+    }
+
+    @Test
+    fun `reconciliationUnmatched from Settlement falls back to Instant now when confirmedAt is null`() {
+        val matchedTxId = TransactionId(UUID.randomUUID())
+        val settlement =
+            Settlement(
+                id = UUID.randomUUID(),
+                tenantId = tenantId,
+                accountId = AccountId.generate(),
+                amount = MonetaryAmount.of("50"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                walletAddress = "0xabc",
+                status = EntryStatus.UNMATCHED,
+                matchedTransactionId = matchedTxId,
+                confirmedAt = null,
+                createdAt = now,
+                createdBy = "test",
+            )
+        val entry = WebhookOutboxEntry.reconciliationUnmatched(settlement)
+
+        assertNotNull(entry.occurredAt)
+    }
+
+    @Test
+    fun `reconciliationUnmatched from Settlement throws when matchedTransactionId is null`() {
+        val settlement =
+            Settlement(
+                id = UUID.randomUUID(),
+                tenantId = tenantId,
+                accountId = AccountId.generate(),
+                amount = MonetaryAmount.of("50"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                walletAddress = "0xabc",
+                status = EntryStatus.UNMATCHED,
+                matchedTransactionId = null,
+                createdAt = now,
+                createdBy = "test",
+            )
+        assertFailsWith<IllegalArgumentException> {
+            WebhookOutboxEntry.reconciliationUnmatched(settlement)
+        }
+    }
+
+    @Test
     fun `reconciliationException creates entry with exception eventType`() {
         val matchedTxId = TransactionId(UUID.randomUUID())
         val settlement =

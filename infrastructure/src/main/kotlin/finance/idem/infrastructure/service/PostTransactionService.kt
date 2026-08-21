@@ -116,7 +116,13 @@ class PostTransactionService(
         auditRepository.save(AuditEntry.from(transaction, cmd.agentContext, cmd.createdBy))
         transactionRepository.save(transaction)
         webhookOutboxRepository.save(WebhookOutboxEntry.transactionCommitted(transaction))
-        reconciliationService.reconcile(transaction)
+        // System-generated compensating transactions (RollbackWorkflowService, ReorgReversalService)
+        // carry the original OnChainEntry unchanged (only entryType swapped), so running them back
+        // through reconciliation would falsely match/create a settlement for a purely internal
+        // correction. compensating_for is the shared signal both services set for this reason.
+        if (!cmd.metadata.containsKey("compensating_for")) {
+            reconciliationService.reconcile(transaction)
+        }
 
         val flaggedItems =
             lines.mapNotNull { line ->

@@ -61,7 +61,6 @@ class SettlementTest {
         assertNull(settlement.observedBlockHeight)
         assertNull(settlement.confirmationSource)
         assertNull(settlement.confirmationsRequired)
-        assertNull(settlement.finalityPolicyVersion)
         assertNull(settlement.reversalTransactionId)
         assertNull(settlement.reorgedAt)
     }

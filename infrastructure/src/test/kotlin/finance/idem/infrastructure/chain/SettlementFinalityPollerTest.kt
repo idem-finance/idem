@@ -100,8 +100,8 @@ class SettlementFinalityPollerTest {
     fun `promotes a settlement whose log is still present on-chain`() {
         val settlement = watchingSettlement()
         whenever(reader.resolveScanBound()).thenReturn(EvmScanBound(150L, ConfirmationSource.FINALIZED_TAG, null))
-        whenever(settlementRepository.findWatchingByChainKey(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
-        whenever(reader.verifyLogStillPresent(txHash, 2, 100L)).thenReturn(true)
+        whenever(settlementRepository.findPendingFinalitySweep(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
+        whenever(reader.verifyLogStillPresent(txHash, 2, 100L)).thenReturn(LogVerification.Present)
 
         poller.poll()
 
@@ -112,11 +112,40 @@ class SettlementFinalityPollerTest {
     }
 
     @Test
+    fun `confirms an UNMATCHED settlement without promoting it to SETTLED`() {
+        val settlement = watchingSettlement().copy(status = EntryStatus.UNMATCHED)
+        whenever(reader.resolveScanBound()).thenReturn(EvmScanBound(150L, ConfirmationSource.FINALIZED_TAG, null))
+        whenever(settlementRepository.findPendingFinalitySweep(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
+        whenever(reader.verifyLogStillPresent(txHash, 2, 100L)).thenReturn(LogVerification.Present)
+
+        poller.poll()
+
+        verify(settlementPromotionService, never()).promote(any(), any())
+        verify(settlementPromotionService).confirmUnmatched(eq(settlement), any())
+        verify(reorgReversalUseCase, never()).execute(any())
+    }
+
+    @Test
+    fun `an RPC verification failure leaves the settlement pending instead of reversing it`() {
+        val settlement = watchingSettlement()
+        whenever(reader.resolveScanBound()).thenReturn(EvmScanBound(150L, ConfirmationSource.FINALIZED_TAG, null))
+        whenever(settlementRepository.findPendingFinalitySweep(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
+        whenever(reader.verifyLogStillPresent(txHash, 2, 100L))
+            .thenReturn(LogVerification.VerificationFailed(RuntimeException("Alchemy timeout")))
+
+        poller.poll()
+
+        verify(settlementPromotionService, never()).promote(any(), any())
+        verify(settlementPromotionService, never()).confirmUnmatched(any(), any())
+        verify(reorgReversalUseCase, never()).execute(any())
+    }
+
+    @Test
     fun `routes to ReorgReversalUseCase when the log is no longer present (missed webhook backstop)`() {
         val settlement = watchingSettlement()
         whenever(reader.resolveScanBound()).thenReturn(EvmScanBound(150L, ConfirmationSource.FINALIZED_TAG, null))
-        whenever(settlementRepository.findWatchingByChainKey(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
-        whenever(reader.verifyLogStillPresent(txHash, 2, 100L)).thenReturn(false)
+        whenever(settlementRepository.findPendingFinalitySweep(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
+        whenever(reader.verifyLogStillPresent(txHash, 2, 100L)).thenReturn(LogVerification.Absent)
         whenever(reorgReversalUseCase.execute(any())).thenReturn(Result.success(ReorgReversalResult.NoMatchingSettlement))
 
         poller.poll()
@@ -133,7 +162,7 @@ class SettlementFinalityPollerTest {
     fun `skips a WATCHING row with a null logIndex without throwing`() {
         val settlement = watchingSettlement(logIndex = null)
         whenever(reader.resolveScanBound()).thenReturn(EvmScanBound(150L, ConfirmationSource.FINALIZED_TAG, null))
-        whenever(settlementRepository.findWatchingByChainKey(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
+        whenever(settlementRepository.findPendingFinalitySweep(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
 
         poller.poll()
 
@@ -147,9 +176,9 @@ class SettlementFinalityPollerTest {
         val failing = watchingSettlement()
         val healthy = watchingSettlement().copy(id = UUID.randomUUID(), txHash = "0xdef456")
         whenever(reader.resolveScanBound()).thenReturn(EvmScanBound(150L, ConfirmationSource.FINALIZED_TAG, null))
-        whenever(settlementRepository.findWatchingByChainKey(tenantId, "EVM_1", 150L)).thenReturn(listOf(failing, healthy))
+        whenever(settlementRepository.findPendingFinalitySweep(tenantId, "EVM_1", 150L)).thenReturn(listOf(failing, healthy))
         whenever(reader.verifyLogStillPresent(txHash, 2, 100L)).thenThrow(RuntimeException("RPC blew up"))
-        whenever(reader.verifyLogStillPresent("0xdef456", 2, 100L)).thenReturn(true)
+        whenever(reader.verifyLogStillPresent("0xdef456", 2, 100L)).thenReturn(LogVerification.Present)
 
         poller.poll()
 
@@ -182,12 +211,12 @@ class SettlementFinalityPollerTest {
     fun `promotion sweep is scoped per tenant derived from watched addresses`() {
         val settlement = watchingSettlement()
         whenever(reader.resolveScanBound()).thenReturn(EvmScanBound(150L, ConfirmationSource.FINALIZED_TAG, null))
-        whenever(settlementRepository.findWatchingByChainKey(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
-        whenever(reader.verifyLogStillPresent(any(), any(), any())).thenReturn(true)
+        whenever(settlementRepository.findPendingFinalitySweep(tenantId, "EVM_1", 150L)).thenReturn(listOf(settlement))
+        whenever(reader.verifyLogStillPresent(any(), any(), any())).thenReturn(LogVerification.Present)
 
         poller.poll()
 
-        verify(settlementRepository).findWatchingByChainKey(tenantId, "EVM_1", 150L)
+        verify(settlementRepository).findPendingFinalitySweep(tenantId, "EVM_1", 150L)
     }
 
     @Test
@@ -204,6 +233,6 @@ class SettlementFinalityPollerTest {
 
         onlyTronPoller.poll()
 
-        verify(settlementRepository, never()).findWatchingByChainKey(any(), any(), any())
+        verify(settlementRepository, never()).findPendingFinalitySweep(any(), any(), any())
     }
 }

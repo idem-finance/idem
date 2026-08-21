@@ -13,6 +13,7 @@ import finance.idem.core.EntryType
 import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.ledger.SettlementRepository
 import finance.idem.core.ledger.TransactionRepository
+import finance.idem.infrastructure.chain.ChainIdempotencyKey
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -100,19 +101,22 @@ class ReorgReversalService(
             }
 
         val reorgedAt = Instant.now()
-        val reversed =
-            settlementRepository.save(
-                settlement.copy(
-                    status = EntryStatus.REORGED,
-                    reversalTransactionId = compensatingTxId,
-                    reorgedAt = reorgedAt,
-                ),
-            )
+        // Conditional update, not a plain save: the webhook fast path and the poller backstop
+        // can both reach this point for the same settlement before either commits. Only the
+        // caller that actually performs the REORGED transition proceeds to write the outbox
+        // entry — the other treats it as AlreadyReorged, so exactly one settlement.reorged
+        // notification is ever emitted per reversal.
+        if (!settlementRepository.markReorged(settlement.id, cmd.tenantId, compensatingTxId, reorgedAt)) {
+            return Result.success(ReorgReversalResult.AlreadyReorged)
+        }
+        val reversed = settlement.copy(status = EntryStatus.REORGED, reversalTransactionId = compensatingTxId, reorgedAt = reorgedAt)
 
         // Release the original posting's idempotency key so a legitimate re-confirmation
         // (the transfer re-mined with the same hash+logIndex in a later block) is not silently
-        // swallowed as a "duplicate" of the transaction that was just reversed.
-        idempotencyStore.release("${cmd.chainKey}:${cmd.txHash}:${cmd.logIndex}", cmd.tenantId)
+        // swallowed as a "duplicate" of the transaction that was just reversed. A stale
+        // at-least-once webhook redelivery of the exact reversed evidence is separately guarded
+        // against in AlchemyWebhookService.isStaleReorgedReplay via the REORGED row's blockNumber.
+        idempotencyStore.release(ChainIdempotencyKey.of(cmd.chainKey, cmd.txHash, cmd.logIndex), cmd.tenantId)
 
         webhookOutboxRepository.save(WebhookOutboxEntry.settlementReorged(reversed))
 

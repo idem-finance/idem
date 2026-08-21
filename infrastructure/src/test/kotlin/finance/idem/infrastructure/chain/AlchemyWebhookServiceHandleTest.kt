@@ -7,11 +7,17 @@ import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.reconciliation.ReorgReversalCommand
 import finance.idem.application.reconciliation.ReorgReversalResult
 import finance.idem.application.reconciliation.ReorgReversalUseCase
+import finance.idem.core.AccountId
+import finance.idem.core.ChainId
+import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.ledger.EntryStatus
+import finance.idem.core.ledger.Settlement
+import finance.idem.core.ledger.SettlementRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -34,6 +40,7 @@ class AlchemyWebhookServiceHandleTest {
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var deadLetterRecorder: DeadLetterRecorder
     private lateinit var reorgReversalUseCase: ReorgReversalUseCase
+    private lateinit var settlementRepository: SettlementRepository
     private lateinit var service: AlchemyWebhookService
 
     private val signingKey = "test-webhook-signing-key"
@@ -64,6 +71,7 @@ class AlchemyWebhookServiceHandleTest {
         postTransactionUseCase = mock()
         deadLetterRecorder = mock()
         reorgReversalUseCase = mock()
+        settlementRepository = mock()
         service =
             AlchemyWebhookService(
                 watchedAddressRepository = watchedAddressRepository,
@@ -73,6 +81,7 @@ class AlchemyWebhookServiceHandleTest {
                 config = ChainConfig(alchemyWebhookSigningKey = signingKey),
                 deadLetterRecorder = deadLetterRecorder,
                 reorgReversalUseCase = reorgReversalUseCase,
+                settlementRepository = settlementRepository,
             )
     }
 
@@ -103,6 +112,7 @@ class AlchemyWebhookServiceHandleTest {
                 config = ChainConfig(alchemyWebhookSigningKey = ""),
                 deadLetterRecorder = deadLetterRecorder,
                 reorgReversalUseCase = reorgReversalUseCase,
+                settlementRepository = settlementRepository,
             )
         whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(emptyList())
 
@@ -267,6 +277,91 @@ class AlchemyWebhookServiceHandleTest {
         val result = service.handle(computeHmac(signingKey, body), body)
 
         assertTrue(result.isSuccess)
+    }
+
+    @Test
+    fun `removed log with unparseable logIndex aborts the fast-path reversal rather than guessing 0`() {
+        val body = buildPayload(txHash, watchedWallet, usdcContract, logIndex = "not-hex", removed = true)
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(null)
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(reorgReversalUseCase, never()).execute(any())
+    }
+
+    @Test
+    fun `new activity with unparseable logIndex is skipped rather than posted at a guessed index 0`() {
+        val body = buildPayload(txHash, watchedWallet, usdcContract, rawValue = "0x000f4240", logIndex = "not-hex")
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(ChainCheckpoint("EVM_1", 19_000_000L, Instant.now()))
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase, never()).execute(any())
+    }
+
+    // -- stale replay of reorged-out evidence --
+
+    @Test
+    fun `a redelivery replaying the exact reorged-out evidence is dropped without posting`() {
+        val body = buildPayload(txHash, watchedWallet, usdcContract, rawValue = "0x000f4240", blockNum = "0x12a05f2", logIndex = "0x0")
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(ChainCheckpoint("EVM_1", 19_000_000L, Instant.now()))
+        val reorgedSettlement =
+            Settlement(
+                id = UUID.randomUUID(),
+                tenantId = TenantId(UUID.fromString(tenantId)),
+                accountId = AccountId(UUID.fromString(debitAccountId)),
+                amount = MonetaryAmount.of("1.000000"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                walletAddress = watchedWallet,
+                status = EntryStatus.REORGED,
+                txHash = txHash,
+                blockNumber = 19_531_250L, // same block as the redelivered activity (0x12a05f2)
+                createdAt = Instant.now(),
+                createdBy = "system",
+            )
+        whenever(settlementRepository.findReorgedByTxHashAndLogIndex(TenantId(UUID.fromString(tenantId)), txHash, 0))
+            .thenReturn(reorgedSettlement)
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase, never()).execute(any())
+    }
+
+    @Test
+    fun `a genuine re-mine at a different block is posted normally despite a prior reorg on this key`() {
+        val body = buildPayload(txHash, watchedWallet, usdcContract, rawValue = "0x000f4240", blockNum = "0x12a05f2", logIndex = "0x0")
+        whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(checkpointRepository.findByChainKey("EVM_1")).thenReturn(ChainCheckpoint("EVM_1", 19_000_000L, Instant.now()))
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId(UUID.randomUUID())))
+        val reorgedSettlement =
+            Settlement(
+                id = UUID.randomUUID(),
+                tenantId = TenantId(UUID.fromString(tenantId)),
+                accountId = AccountId(UUID.fromString(debitAccountId)),
+                amount = MonetaryAmount.of("1.000000"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                walletAddress = watchedWallet,
+                status = EntryStatus.REORGED,
+                txHash = txHash,
+                blockNumber = 1L, // a different (earlier, reorged-out) block than this redelivery's 19_531_250
+                createdAt = Instant.now(),
+                createdBy = "system",
+            )
+        whenever(settlementRepository.findReorgedByTxHashAndLogIndex(TenantId(UUID.fromString(tenantId)), txHash, 0))
+            .thenReturn(reorgedSettlement)
+
+        val result = service.handle(computeHmac(signingKey, body), body)
+
+        assertTrue(result.isSuccess)
+        verify(postTransactionUseCase).execute(any())
     }
 
     private fun buildPayload(

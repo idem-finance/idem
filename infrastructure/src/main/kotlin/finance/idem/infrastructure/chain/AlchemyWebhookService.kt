@@ -11,6 +11,7 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.ledger.SettlementRepository
 import finance.idem.core.monetary.OnChainEntry
 import finance.idem.infrastructure.security.HmacSigner
 import org.slf4j.LoggerFactory
@@ -27,6 +28,7 @@ class AlchemyWebhookService(
     private val config: ChainConfig,
     private val deadLetterRecorder: DeadLetterRecorder,
     private val reorgReversalUseCase: ReorgReversalUseCase,
+    private val settlementRepository: SettlementRepository,
 ) : AlchemyWebhookUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -72,6 +74,15 @@ class AlchemyWebhookService(
                 continue
             }
             val transfer = decodeActivity(activity, chainKey, watched) ?: continue
+            if (isStaleReorgedReplay(transfer)) {
+                log.warn(
+                    "Alchemy webhook: dropping stale redelivery of reorged-out evidence txHash={} logIndex={} block={}",
+                    transfer.entry.txHash,
+                    transfer.logIndex,
+                    transfer.entry.blockNumber,
+                )
+                continue
+            }
             postTransactionUseCase.execute(transfer.toCommand(FinalityPolicy.WEBHOOK_SOURCE)).onFailure { error ->
                 deadLetterRecorder.record(transfer, chainKey, FinalityPolicy.WEBHOOK_SOURCE, error, logPrefix = "Alchemy webhook")
             }
@@ -115,7 +126,10 @@ class AlchemyWebhookService(
                 ?.logIndex
                 ?.removePrefix("0x")
                 ?.toLongOrNull(16)
-                ?.toInt() ?: 0
+                ?.toInt() ?: run {
+                log.warn("Alchemy webhook: missing/unparseable logIndex in tx=${activity.hash} — skipping")
+                return null
+            }
 
         val rawValueHex =
             rawContract.rawValue?.removePrefix("0x")?.takeIf { it.isNotBlank() } ?: run {
@@ -138,7 +152,7 @@ class AlchemyWebhookService(
         if (!amount.isPositive()) return null
 
         return DetectedTransfer(
-            idempotencyKey = "$chainKey:${activity.hash}:$logIndex",
+            idempotencyKey = ChainIdempotencyKey.of(chainKey, activity.hash, logIndex),
             entry =
                 OnChainEntry(
                     amount = amount,
@@ -157,6 +171,22 @@ class AlchemyWebhookService(
     }
 
     /**
+     * True if this detection replays the exact evidence (same txHash+logIndex+blockNumber) of a
+     * settlement already reversed via [ReorgReversalUseCase]. The idempotency key for a reversed
+     * posting is released so a *genuine* re-mine (a different blockNumber, once the original
+     * transfer's key is free) can post fresh — but Alchemy webhooks are at-least-once, so a
+     * stale redelivery of the original (now-reversed) activity would otherwise re-claim that
+     * same released key and re-post evidence that no longer exists on-chain. A different
+     * blockNumber means this is a real re-mine, not a replay, so it's allowed through normally.
+     */
+    private fun isStaleReorgedReplay(transfer: DetectedTransfer): Boolean {
+        val logIndex = transfer.logIndex ?: return false
+        val tenantId = TenantId.of(transfer.watchedAddress.tenantId)
+        val reorged = settlementRepository.findReorgedByTxHashAndLogIndex(tenantId, transfer.entry.txHash, logIndex)
+        return reorged != null && reorged.blockNumber == transfer.entry.blockNumber
+    }
+
+    /**
      * A `removed:true` activity means a previously-observed log has been reorged out. If it
      * was ever matched/settled, reverse it via a compensating transaction (see
      * [ReorgReversalService]). If it was never matched (e.g. the original post failed and was
@@ -169,17 +199,36 @@ class AlchemyWebhookService(
         watched: List<WatchedAddress>,
     ) {
         val toAddress = activity.toAddress.lowercase()
-        val contractAddress = activity.rawContract?.address?.lowercase() ?: return
+        val contractAddress =
+            activity.rawContract?.address?.lowercase() ?: run {
+                log.warn("Alchemy webhook: removed=true activity for tx=${activity.hash} has no rawContract.address — cannot reverse")
+                return
+            }
         val watchedAddress =
             watched.firstOrNull {
                 it.walletAddress.lowercase() == toAddress && it.tokenContract.lowercase() == contractAddress
-            } ?: return
+            } ?: run {
+                log.warn(
+                    "Alchemy webhook: removed=true activity for tx=${activity.hash} matches no watched address " +
+                        "(to=$toAddress, contract=$contractAddress) — cannot reverse",
+                )
+                return
+            }
+        // Never guess a logIndex here — reversing the wrong entry at a mis-defaulted index is
+        // worse than not firing the fast path at all. SettlementFinalityPoller's active
+        // re-verification is the reliable backstop for exactly this case.
         val logIndex =
             activity.log
                 ?.logIndex
                 ?.removePrefix("0x")
                 ?.toLongOrNull(16)
-                ?.toInt() ?: 0
+                ?.toInt() ?: run {
+                log.warn(
+                    "Alchemy webhook: removed=true activity for tx=${activity.hash} has missing/unparseable logIndex " +
+                        "— skipping fast-path reversal, deferring to SettlementFinalityPoller",
+                )
+                return
+            }
         val tenantId = TenantId.of(watchedAddress.tenantId)
 
         reorgReversalUseCase

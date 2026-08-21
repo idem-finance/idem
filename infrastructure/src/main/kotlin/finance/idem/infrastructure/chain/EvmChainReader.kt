@@ -79,23 +79,33 @@ class EvmChainReader(
     }
 
     /**
-     * True if `txHash`'s log at `logIndex` is still present on-chain, in the exact block it
+     * Whether `txHash`'s log at `logIndex` is still present on-chain, in the exact block it
      * was originally observed in — the active-verification check `SettlementFinalityPoller`
      * runs before promoting a WATCHING entry to SETTLED, since a passive `removed:true`
-     * webhook delivery can be missed (network blip, provider outage). A reorg shows up here
-     * either as a missing receipt entirely, or a receipt whose block number has moved
-     * (the transaction was re-mined in a later block).
+     * webhook delivery can be missed (network blip, provider outage). A reorg shows up as
+     * [LogVerification.Absent] — either a missing receipt entirely, or a receipt whose block
+     * number has moved (the transaction was re-mined in a later block). An RPC failure (timeout,
+     * error response) is reported separately as [LogVerification.VerificationFailed] rather than
+     * being conflated with [LogVerification.Absent] — infrastructure flakiness must never be
+     * treated as proof a log is gone.
      */
     fun verifyLogStillPresent(
         txHash: String,
         logIndex: Int,
         expectedBlockNumber: Long,
-    ): Boolean {
-        val response = runCatching { web3j.ethGetTransactionReceipt(txHash).send() }.getOrNull() ?: return false
-        if (response.hasError()) return false
-        val receipt = response.transactionReceipt.orElse(null) ?: return false
-        if (receipt.blockNumber.toLong() != expectedBlockNumber) return false
-        return receipt.logs.any { it.logIndex.toLong() == logIndex.toLong() }
+    ): LogVerification {
+        val result = runCatching { web3j.ethGetTransactionReceipt(txHash).send() }
+        val response = result.getOrElse { return LogVerification.VerificationFailed(it) }
+        if (response.hasError()) {
+            return LogVerification.VerificationFailed(RuntimeException(response.error?.message ?: "eth_getTransactionReceipt error"))
+        }
+        val receipt = response.transactionReceipt.orElse(null) ?: return LogVerification.Absent
+        if (receipt.blockNumber.toLong() != expectedBlockNumber) return LogVerification.Absent
+        return if (receipt.logs.any { it.logIndex.toLong() == logIndex.toLong() }) {
+            LogVerification.Present
+        } else {
+            LogVerification.Absent
+        }
     }
 
     private fun pollRange(
@@ -164,7 +174,7 @@ class EvmChainReader(
         val amount = MonetaryAmount.of(BigDecimal(rawAmount).movePointLeft(decimals))
 
         return DetectedTransfer(
-            idempotencyKey = "$chainKey:$txHash:$logIndex",
+            idempotencyKey = ChainIdempotencyKey.of(chainKey, txHash, logIndex),
             entry =
                 OnChainEntry(
                     amount = amount,
@@ -212,4 +222,16 @@ internal data class EvmScanBound(
 internal object ConfirmationSource {
     const val FINALIZED_TAG = "finalized_tag"
     const val BLOCK_DEPTH_HEURISTIC = "block_depth_heuristic"
+}
+
+/** Outcome of [EvmChainReader.verifyLogStillPresent] — see its doc comment for why this is a
+ * 3-state result rather than a Boolean. */
+sealed class LogVerification {
+    object Present : LogVerification()
+
+    object Absent : LogVerification()
+
+    data class VerificationFailed(
+        val cause: Throwable,
+    ) : LogVerification()
 }

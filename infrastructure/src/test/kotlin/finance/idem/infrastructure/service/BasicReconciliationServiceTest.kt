@@ -278,6 +278,37 @@ class BasicReconciliationServiceTest {
     }
 
     @Test
+    fun `webhook-sourced UNMATCHED defers confirmedAt and the reconciliation-unmatched webhook`() {
+        val tx =
+            onChainTransaction(
+                createdBy = FinalityPolicy.WEBHOOK_SOURCE,
+                metadata = mapOf("chain_key" to "EVM_1", "log_index" to "2"),
+            )
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(emptyList())
+
+        val result = service().reconcile(tx)
+
+        val unmatched = (result as ReconciliationResult.Unmatched).settlement
+        assertEquals(EntryStatus.UNMATCHED, unmatched.status)
+        assertEquals(null, unmatched.confirmedAt)
+        verify(webhookOutboxRepository, never()).save(any())
+    }
+
+    @Test
+    fun `recovery-sourced UNMATCHED settles confirmedAt immediately, unaffected by the webhook gate`() {
+        val tx = onChainTransaction(createdBy = "chain-recovery")
+        whenever(settlementRepository.findPendingCandidates(any(), any(), any(), any(), any(), any()))
+            .thenReturn(emptyList())
+
+        val result = service().reconcile(tx)
+
+        val unmatched = (result as ReconciliationResult.Unmatched).settlement
+        assertNotNull(unmatched.confirmedAt)
+        verify(webhookOutboxRepository).save(any())
+    }
+
+    @Test
     fun `multiple equal-amount candidates settle the oldest one`() {
         val tx = onChainTransaction()
         val older = pendingSettlement(MonetaryAmount.of("100.000000"), Instant.now().minusSeconds(7200))

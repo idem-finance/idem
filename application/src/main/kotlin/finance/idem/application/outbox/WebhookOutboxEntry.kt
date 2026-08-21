@@ -70,6 +70,21 @@ data class WebhookOutboxEntry(
                 occurredAt = tx.occurredAt,
             )
 
+        /** Emitted by SettlementFinalityPoller when a webhook-sourced UNMATCHED settlement's
+         * notification (deferred at match time, pending finality confirmation, mirroring how
+         * transactionSettled is deferred for WATCHING matches) is finally confirmed final. */
+        fun reconciliationUnmatched(settlement: Settlement): WebhookOutboxEntry =
+            WebhookOutboxEntry(
+                id = UUID.randomUUID(),
+                tenantId = settlement.tenantId,
+                eventType = "reconciliation.unmatched",
+                transactionId =
+                    requireNotNull(settlement.matchedTransactionId) {
+                        "UNMATCHED settlement ${settlement.id} must have matchedTransactionId"
+                    },
+                occurredAt = settlement.confirmedAt ?: Instant.now(),
+            )
+
         /** Emitted by ReconcileEntriesUseCase when a sweep attempt still finds no PENDING match. */
         fun reconciliationException(settlement: Settlement): WebhookOutboxEntry =
             WebhookOutboxEntry(

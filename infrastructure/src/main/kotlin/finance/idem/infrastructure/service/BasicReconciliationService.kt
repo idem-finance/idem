@@ -137,6 +137,11 @@ class BasicReconciliationService(
             )
             return ReconciliationResult.NotApplicable
         }
+        // Mirrors settle()'s isWebhookSourced branch: a webhook-sourced UNMATCHED row is not yet
+        // finality-confirmed either — SettlementFinalityPoller sweeps it the same way it sweeps
+        // WATCHING rows (see findPendingFinalitySweep), and fires the deferred
+        // reconciliation.unmatched webhook once it's verified past finality.
+        val isWebhookSourced = transaction.createdBy == FinalityPolicy.WEBHOOK_SOURCE
         val now = Instant.now()
         val saved =
             settlementRepository.save(
@@ -152,14 +157,16 @@ class BasicReconciliationService(
                     matchedTransactionId = transaction.id,
                     txHash = onChainEntry.txHash,
                     blockNumber = onChainEntry.blockNumber,
-                    confirmedAt = now,
+                    confirmedAt = if (isWebhookSourced) null else now,
                     createdAt = now,
                     createdBy = "system",
                     chainKey = transaction.metadata["chain_key"],
                     logIndex = transaction.metadata["log_index"]?.toIntOrNull(),
                 ),
             )
-        webhookOutboxRepository.save(WebhookOutboxEntry.reconciliationUnmatched(transaction))
+        if (!isWebhookSourced) {
+            webhookOutboxRepository.save(WebhookOutboxEntry.reconciliationUnmatched(transaction))
+        }
         log.warn(
             "Reconciliation: no PENDING match for tx={} tenant={} amount={} token={} chainId={} " +
                 "wallet={} txHash={} — flagged UNMATCHED (id={})",

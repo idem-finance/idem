@@ -31,7 +31,6 @@ class SettlementDataModel(
     @Column(name = "observed_block_height") val observedBlockHeight: Long?,
     @Column(name = "confirmation_source") val confirmationSource: String?,
     @Column(name = "confirmations_required") val confirmationsRequired: Long?,
-    @Column(name = "finality_policy_version") val finalityPolicyVersion: Int?,
     @Column(name = "reversal_transaction_id") val reversalTransactionId: UUID?,
     @Column(name = "reorged_at") val reorgedAt: Instant?,
 ) {
@@ -51,7 +50,6 @@ class SettlementDataModel(
         null,
         Instant.now(),
         "",
-        null,
         null,
         null,
         null,
