@@ -47,6 +47,20 @@ data class WebhookOutboxEntry(
                 occurredAt = settlement.confirmedAt ?: Instant.now(),
             )
 
+        /** Emitted by ReorgReversalService when a chain reorg reverses a previously
+         * matched/settled entry via a compensating transaction. */
+        fun settlementReorged(settlement: Settlement): WebhookOutboxEntry =
+            WebhookOutboxEntry(
+                id = UUID.randomUUID(),
+                tenantId = settlement.tenantId,
+                eventType = "settlement.reorged",
+                transactionId =
+                    requireNotNull(settlement.reversalTransactionId) {
+                        "REORGED settlement ${settlement.id} must have reversalTransactionId"
+                    },
+                occurredAt = settlement.reorgedAt ?: Instant.now(),
+            )
+
         fun reconciliationUnmatched(tx: Transaction): WebhookOutboxEntry =
             WebhookOutboxEntry(
                 id = UUID.randomUUID(),
@@ -54,6 +68,21 @@ data class WebhookOutboxEntry(
                 eventType = "reconciliation.unmatched",
                 transactionId = tx.id,
                 occurredAt = tx.occurredAt,
+            )
+
+        /** Emitted by SettlementFinalityPoller when a webhook-sourced UNMATCHED settlement's
+         * notification (deferred at match time, pending finality confirmation, mirroring how
+         * transactionSettled is deferred for WATCHING matches) is finally confirmed final. */
+        fun reconciliationUnmatched(settlement: Settlement): WebhookOutboxEntry =
+            WebhookOutboxEntry(
+                id = UUID.randomUUID(),
+                tenantId = settlement.tenantId,
+                eventType = "reconciliation.unmatched",
+                transactionId =
+                    requireNotNull(settlement.matchedTransactionId) {
+                        "UNMATCHED settlement ${settlement.id} must have matchedTransactionId"
+                    },
+                occurredAt = settlement.confirmedAt ?: Instant.now(),
             )
 
         /** Emitted by ReconcileEntriesUseCase when a sweep attempt still finds no PENDING match. */

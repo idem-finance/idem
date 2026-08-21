@@ -136,7 +136,11 @@ class PostTransactionServiceTest {
             capturedTx.add(tx)
             tx
         }
-        whenever(reconciliationService.reconcile(any())).thenReturn(ReconciliationResult.NotApplicable)
+        // lenient: the compensating_for-metadata tests intentionally never reach this call.
+        org.mockito.Mockito
+            .lenient()
+            .`when`(reconciliationService.reconcile(any()))
+            .thenReturn(ReconciliationResult.NotApplicable)
         return capturedTx
     }
 
@@ -476,6 +480,33 @@ class PostTransactionServiceTest {
         val captor = argumentCaptor<Transaction>()
         verify(reconciliationService).reconcile(captor.capture())
         assertEquals(saved.first().id, captor.firstValue.id)
+    }
+
+    @Test
+    fun `reconcile is skipped when transaction carries compensating_for metadata`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        stubAccountsExist()
+        stubSave()
+
+        val compensatingCmd =
+            command().copy(metadata = mapOf("compensating_for" to TransactionId.generate().value.toString()))
+        val result = service.execute(compensatingCmd)
+
+        assertTrue(result.isSuccess)
+        verify(reconciliationService, never()).reconcile(any())
+    }
+
+    @Test
+    fun `reconcile still runs for non-compensating transactions with other metadata`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        stubAccountsExist()
+        stubSave()
+
+        val cmd = command().copy(metadata = mapOf("chain_key" to "EVM_1"))
+        val result = service.execute(cmd)
+
+        assertTrue(result.isSuccess)
+        verify(reconciliationService).reconcile(any())
     }
 
     @Test

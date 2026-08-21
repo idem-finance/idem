@@ -3,10 +3,12 @@ package finance.idem.infrastructure.chain
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.reconciliation.ReorgReversalUseCase
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.ledger.SettlementRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -32,6 +34,8 @@ class AlchemyWebhookServiceTest {
             objectMapper = objectMapper,
             config = ChainConfig(),
             deadLetterRecorder = mock<DeadLetterRecorder>(),
+            reorgReversalUseCase = mock<ReorgReversalUseCase>(),
+            settlementRepository = mock<SettlementRepository>(),
         )
 
     private val usdcContract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
@@ -278,7 +282,7 @@ class AlchemyWebhookServiceTest {
     }
 
     @Test
-    fun `decodeActivity logIndex defaults to 0 when log is absent`() {
+    fun `decodeActivity returns null when log is absent rather than guessing logIndex 0`() {
         val activity =
             buildActivity(
                 toAddress = watchedWallet,
@@ -287,10 +291,7 @@ class AlchemyWebhookServiceTest {
                 logIndex = null,
             )
 
-        val result = service.decodeActivity(activity, "EVM_1", listOf(watchedAddress))
-
-        assertNotNull(result)
-        assertEquals("EVM_1:$txHash:0", result!!.idempotencyKey)
+        assertNull(service.decodeActivity(activity, "EVM_1", listOf(watchedAddress)))
     }
 
     // -- helper --

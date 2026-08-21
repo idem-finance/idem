@@ -12,6 +12,7 @@ import finance.idem.core.ledger.Settlement
 import finance.idem.core.ledger.SettlementRepository
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.infrastructure.chain.FinalityPolicy
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -92,17 +93,28 @@ class BasicReconciliationService(
         transaction: Transaction,
         onChainEntry: OnChainEntry,
     ): ReconciliationResult {
+        // Only the real-time Alchemy webhook path needs a finality gate — the chain-recovery
+        // and Tron pollers only ever surface transfers already past their chain's finality
+        // bound (EvmChainReader.resolveScanBound() / TronChainReader's block-time margin), so
+        // they can settle immediately, as today.
+        val isWebhookSourced = transaction.createdBy == FinalityPolicy.WEBHOOK_SOURCE
         val saved =
             settlementRepository.save(
                 match.copy(
-                    status = EntryStatus.SETTLED,
+                    status = if (isWebhookSourced) EntryStatus.WATCHING else EntryStatus.SETTLED,
                     matchedTransactionId = transaction.id,
                     txHash = onChainEntry.txHash,
                     blockNumber = onChainEntry.blockNumber,
-                    confirmedAt = Instant.now(),
+                    confirmedAt = if (isWebhookSourced) null else Instant.now(),
+                    chainKey = transaction.metadata["chain_key"],
+                    logIndex = transaction.metadata["log_index"]?.toIntOrNull(),
                 ),
             )
-        webhookOutboxRepository.save(WebhookOutboxEntry.transactionSettled(transaction))
+        // WATCHING settlements are not yet finality-confirmed — SettlementFinalityPoller
+        // fires transaction.settled once it promotes this row to SETTLED.
+        if (!isWebhookSourced) {
+            webhookOutboxRepository.save(WebhookOutboxEntry.transactionSettled(transaction))
+        }
         return ReconciliationResult.Settled(saved)
     }
 
@@ -125,6 +137,11 @@ class BasicReconciliationService(
             )
             return ReconciliationResult.NotApplicable
         }
+        // Mirrors settle()'s isWebhookSourced branch: a webhook-sourced UNMATCHED row is not yet
+        // finality-confirmed either — SettlementFinalityPoller sweeps it the same way it sweeps
+        // WATCHING rows (see findPendingFinalitySweep), and fires the deferred
+        // reconciliation.unmatched webhook once it's verified past finality.
+        val isWebhookSourced = transaction.createdBy == FinalityPolicy.WEBHOOK_SOURCE
         val now = Instant.now()
         val saved =
             settlementRepository.save(
@@ -140,12 +157,16 @@ class BasicReconciliationService(
                     matchedTransactionId = transaction.id,
                     txHash = onChainEntry.txHash,
                     blockNumber = onChainEntry.blockNumber,
-                    confirmedAt = now,
+                    confirmedAt = if (isWebhookSourced) null else now,
                     createdAt = now,
                     createdBy = "system",
+                    chainKey = transaction.metadata["chain_key"],
+                    logIndex = transaction.metadata["log_index"]?.toIntOrNull(),
                 ),
             )
-        webhookOutboxRepository.save(WebhookOutboxEntry.reconciliationUnmatched(transaction))
+        if (!isWebhookSourced) {
+            webhookOutboxRepository.save(WebhookOutboxEntry.reconciliationUnmatched(transaction))
+        }
         log.warn(
             "Reconciliation: no PENDING match for tx={} tenant={} amount={} token={} chainId={} " +
                 "wallet={} txHash={} — flagged UNMATCHED (id={})",

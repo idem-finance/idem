@@ -48,10 +48,22 @@ idem:
   chain:
     evm:
       rpc-url: "https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY:}"
+      # Prefer the RPC's actual finalized-block tag (real consensus finality). confirmations
+      # is used only if the endpoint doesn't support the tag — a probabilistic depth heuristic,
+      # not a guarantee.
+      use-finalized-tag: true
+      confirmations: 12
     evm-base:
       rpc-url: "https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY:}"
+      use-finalized-tag: true
+      confirmations: 10
     evm-polygon:
       rpc-url: "https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY:}"
+      use-finalized-tag: true
+      # Fallback only — Polygon PoS pre-fast-finality has historically had 100+ block reorgs,
+      # so this heuristic is a conservative bet, not a guarantee, if the finalized tag is ever
+      # unavailable on a given endpoint.
+      confirmations: 128
     solana:
       rpc-url: "${QUICKNODE_SOLANA_URL:}"
       batch-size: 100
@@ -61,6 +73,8 @@ idem:
       api-url: https://apilist.tronscan.org
       api-key: "${TRONSCAN_API_KEY:}"
       polling-interval-ms: 5000
+    # SettlementFinalityPoller: active on-chain re-verification of WATCHING settlements.
+    finality-check-interval-ms: 15000
   reconciliation:
     enabled: true
     matching-window-hours: 24

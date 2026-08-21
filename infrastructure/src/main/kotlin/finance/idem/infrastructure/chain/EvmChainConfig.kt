@@ -15,6 +15,12 @@ data class ChainConfig(
 
 data class EvmNetworkConfig(
     val rpcUrl: String = "",
+    // Prefer the RPC's actual post-merge `finalized` block tag (a real consensus-finality
+    // guarantee) over a fixed block-count heuristic. `confirmations` is used only as a
+    // fallback when the endpoint doesn't support the tag — a probabilistic bet, not a
+    // guarantee, especially on chains without a fast-finality mechanism.
+    val useFinalizedTag: Boolean = true,
+    val confirmations: Long = 12,
 )
 
 data class SolanaNetworkConfig(

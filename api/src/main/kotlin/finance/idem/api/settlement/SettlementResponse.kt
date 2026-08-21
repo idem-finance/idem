@@ -21,6 +21,12 @@ data class SettlementResponse(
     val confirmedAt: Instant?,
     val expiresAt: Instant?,
     val createdAt: Instant,
+    val chainKey: String?,
+    val logIndex: Int?,
+    val observedBlockHeight: Long?,
+    val confirmationSource: String?,
+    val reversalTransactionId: UUID?,
+    val reorgedAt: Instant?,
 ) {
     companion object {
         fun from(
@@ -47,6 +53,12 @@ data class SettlementResponse(
                         null
                     },
                 createdAt = settlement.createdAt,
+                chainKey = settlement.chainKey,
+                logIndex = settlement.logIndex,
+                observedBlockHeight = settlement.observedBlockHeight,
+                confirmationSource = settlement.confirmationSource,
+                reversalTransactionId = settlement.reversalTransactionId?.value,
+                reorgedAt = settlement.reorgedAt,
             )
     }
 }

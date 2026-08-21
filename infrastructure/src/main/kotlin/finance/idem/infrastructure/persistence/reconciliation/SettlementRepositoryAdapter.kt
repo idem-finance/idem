@@ -99,6 +99,55 @@ class SettlementRepositoryAdapter(
                 limit,
             ).map { it.toDomain() }
     }
+
+    @Transactional(readOnly = true)
+    override fun findReversibleByTxHashAndLogIndex(
+        tenantId: TenantId,
+        txHash: String,
+        logIndex: Int,
+    ): Settlement? {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository
+            .findReversibleByTxHashAndLogIndex(tenantId.value, txHash, logIndex)
+            .firstOrNull()
+            ?.toDomain()
+    }
+
+    @Transactional(readOnly = true)
+    override fun findReorgedByTxHashAndLogIndex(
+        tenantId: TenantId,
+        txHash: String,
+        logIndex: Int,
+    ): Settlement? {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository
+            .findReorgedByTxHashAndLogIndex(tenantId.value, txHash, logIndex)
+            .firstOrNull()
+            ?.toDomain()
+    }
+
+    @Transactional(readOnly = true)
+    override fun findPendingFinalitySweep(
+        tenantId: TenantId,
+        chainKey: String,
+        upToBlock: Long,
+    ): List<Settlement> {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository
+            .findPendingFinalitySweep(tenantId.value, chainKey, upToBlock)
+            .map { it.toDomain() }
+    }
+
+    @Transactional
+    override fun markReorged(
+        id: UUID,
+        tenantId: TenantId,
+        reversalTransactionId: TransactionId,
+        reorgedAt: Instant,
+    ): Boolean {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository.markReorged(id, tenantId.value, reversalTransactionId.value, reorgedAt) == 1
+    }
 }
 
 private fun Settlement.toEntity() =
@@ -118,6 +167,13 @@ private fun Settlement.toEntity() =
         expectedFromAddress = expectedFromAddress,
         createdAt = createdAt,
         createdBy = createdBy,
+        chainKey = chainKey,
+        logIndex = logIndex,
+        observedBlockHeight = observedBlockHeight,
+        confirmationSource = confirmationSource,
+        confirmationsRequired = confirmationsRequired,
+        reversalTransactionId = reversalTransactionId?.value,
+        reorgedAt = reorgedAt,
     )
 
 private fun SettlementDataModel.toDomain() =
@@ -137,4 +193,11 @@ private fun SettlementDataModel.toDomain() =
         expectedFromAddress = expectedFromAddress,
         createdAt = createdAt,
         createdBy = createdBy,
+        chainKey = chainKey,
+        logIndex = logIndex,
+        observedBlockHeight = observedBlockHeight,
+        confirmationSource = confirmationSource,
+        confirmationsRequired = confirmationsRequired,
+        reversalTransactionId = reversalTransactionId?.let { TransactionId(it) },
+        reorgedAt = reorgedAt,
     )

@@ -4,13 +4,28 @@ import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.web3j.protocol.Web3j
+import org.web3j.protocol.core.DefaultBlockParameterName
+import org.web3j.protocol.core.Request
+import org.web3j.protocol.core.methods.response.EthBlock
+import org.web3j.protocol.core.methods.response.EthBlockNumber
+import org.web3j.protocol.core.methods.response.EthGetTransactionReceipt
+import org.web3j.protocol.core.methods.response.Log
+import org.web3j.protocol.core.methods.response.TransactionReceipt
+import java.io.IOException
 import java.math.BigDecimal
+import java.math.BigInteger
+import java.util.Optional
 
 class EvmChainReaderTest {
     private val usdcContract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
@@ -192,6 +207,214 @@ class EvmChainReaderTest {
         val result = readerForOtherChain.poll(0L)
 
         assertEquals(emptyList<DetectedTransfer>(), result)
+    }
+
+    // ── resolveScanBound ──────────────────────────────────────────────────────
+
+    private fun mockFinalizedBlock(
+        web3j: Web3j,
+        number: Long?,
+        hasError: Boolean = false,
+    ) {
+        val request = mock<Request<*, EthBlock>>()
+        val ethBlock = mock<EthBlock>()
+        whenever(web3j.ethGetBlockByNumber(DefaultBlockParameterName.FINALIZED, false)).thenReturn(request)
+        whenever(request.send()).thenReturn(ethBlock)
+        whenever(ethBlock.hasError()).thenReturn(hasError)
+        if (!hasError && number != null) {
+            val block = mock<EthBlock.Block>()
+            whenever(block.number).thenReturn(BigInteger.valueOf(number))
+            whenever(ethBlock.block).thenReturn(block)
+        } else {
+            whenever(ethBlock.block).thenReturn(null)
+        }
+    }
+
+    private fun mockLatestBlockNumber(
+        web3j: Web3j,
+        number: Long,
+    ) {
+        val request = mock<Request<*, EthBlockNumber>>()
+        val response = mock<EthBlockNumber>()
+        whenever(web3j.ethBlockNumber()).thenReturn(request)
+        whenever(request.send()).thenReturn(response)
+        whenever(response.blockNumber).thenReturn(BigInteger.valueOf(number))
+    }
+
+    @Test
+    fun `resolveScanBound prefers the finalized tag when available`() {
+        val web3j = mock<Web3j>()
+        mockFinalizedBlock(web3j, number = 21_000_000L)
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo)
+
+        val bound = reader.resolveScanBound()
+
+        assertEquals(21_000_000L, bound.blockNumber)
+        assertEquals(ConfirmationSource.FINALIZED_TAG, bound.source)
+        assertEquals(null, bound.confirmationsUsed)
+        verify(web3j, never()).ethBlockNumber()
+    }
+
+    @Test
+    fun `resolveScanBound falls back to depth heuristic when finalized tag errors`() {
+        val web3j = mock<Web3j>()
+        mockFinalizedBlock(web3j, number = null, hasError = true)
+        mockLatestBlockNumber(web3j, number = 21_000_012L)
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo, useFinalizedTag = true, confirmations = 12L)
+
+        val bound = reader.resolveScanBound()
+
+        assertEquals(21_000_000L, bound.blockNumber)
+        assertEquals(ConfirmationSource.BLOCK_DEPTH_HEURISTIC, bound.source)
+        assertEquals(12L, bound.confirmationsUsed)
+    }
+
+    @Test
+    fun `resolveScanBound falls back to depth heuristic when finalized tag call throws`() {
+        val web3j = mock<Web3j>()
+        val request = mock<Request<*, EthBlock>>()
+        whenever(web3j.ethGetBlockByNumber(DefaultBlockParameterName.FINALIZED, false)).thenReturn(request)
+        whenever(request.send()).thenThrow(IOException("method eth_getBlockByNumber('finalized') not supported"))
+        mockLatestBlockNumber(web3j, number = 21_000_012L)
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo, useFinalizedTag = true, confirmations = 12L)
+
+        val bound = reader.resolveScanBound()
+
+        assertEquals(21_000_000L, bound.blockNumber)
+    }
+
+    @Test
+    fun `resolveScanBound never calls the finalized tag when useFinalizedTag is false`() {
+        val web3j = mock<Web3j>()
+        mockLatestBlockNumber(web3j, number = 100L)
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo, useFinalizedTag = false, confirmations = 12L)
+
+        val bound = reader.resolveScanBound()
+
+        assertEquals(88L, bound.blockNumber)
+        assertEquals(ConfirmationSource.BLOCK_DEPTH_HEURISTIC, bound.source)
+        verify(web3j, never()).ethGetBlockByNumber(any(), any())
+    }
+
+    @Test
+    fun `resolveScanBound with confirmations=0 and useFinalizedTag=false preserves the pre-fix unlagged tip`() {
+        val web3j = mock<Web3j>()
+        mockLatestBlockNumber(web3j, number = 100L)
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo, useFinalizedTag = false, confirmations = 0L)
+
+        val bound = reader.resolveScanBound()
+
+        assertEquals(100L, bound.blockNumber)
+    }
+
+    @Test
+    fun `resolveScanBound depth heuristic never goes negative`() {
+        val web3j = mock<Web3j>()
+        mockLatestBlockNumber(web3j, number = 5L)
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo, useFinalizedTag = false, confirmations = 12L)
+
+        val bound = reader.resolveScanBound()
+
+        assertEquals(0L, bound.blockNumber)
+    }
+
+    // ── verifyLogStillPresent ────────────────────────────────────────────────
+
+    private fun mockTransactionReceipt(
+        web3j: Web3j,
+        blockNumber: Long?,
+        logIndexes: List<Long> = emptyList(),
+        hasError: Boolean = false,
+    ) {
+        val request = mock<Request<*, EthGetTransactionReceipt>>()
+        val response = mock<EthGetTransactionReceipt>()
+        whenever(web3j.ethGetTransactionReceipt(any())).thenReturn(request)
+        whenever(request.send()).thenReturn(response)
+        whenever(response.hasError()).thenReturn(hasError)
+        if (!hasError && blockNumber != null) {
+            val receipt = mock<TransactionReceipt>()
+            whenever(receipt.blockNumber).thenReturn(BigInteger.valueOf(blockNumber))
+            val logs =
+                logIndexes.map { idx ->
+                    mock<Log>().also { whenever(it.logIndex).thenReturn(BigInteger.valueOf(idx)) }
+                }
+            whenever(receipt.logs).thenReturn(logs)
+            whenever(response.transactionReceipt).thenReturn(Optional.of(receipt))
+        } else {
+            whenever(response.transactionReceipt).thenReturn(Optional.empty())
+        }
+    }
+
+    @Test
+    fun `verifyLogStillPresent returns Present when the receipt exists at the expected block with a matching log index`() {
+        val web3j = mock<Web3j>()
+        mockTransactionReceipt(web3j, blockNumber = 100L, logIndexes = listOf(0L, 2L))
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo)
+
+        assertEquals(LogVerification.Present, reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+    }
+
+    @Test
+    fun `verifyLogStillPresent returns Absent when the receipt is missing entirely (reorged out)`() {
+        val web3j = mock<Web3j>()
+        mockTransactionReceipt(web3j, blockNumber = null)
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo)
+
+        assertEquals(LogVerification.Absent, reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+    }
+
+    @Test
+    fun `verifyLogStillPresent returns Absent when the receipt has moved to a different block (re-mined)`() {
+        val web3j = mock<Web3j>()
+        mockTransactionReceipt(web3j, blockNumber = 105L, logIndexes = listOf(2L))
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo)
+
+        assertEquals(LogVerification.Absent, reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+    }
+
+    @Test
+    fun `verifyLogStillPresent returns Absent when the log index is no longer present in the receipt`() {
+        val web3j = mock<Web3j>()
+        mockTransactionReceipt(web3j, blockNumber = 100L, logIndexes = listOf(0L, 1L))
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo)
+
+        assertEquals(LogVerification.Absent, reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L))
+    }
+
+    @Test
+    fun `verifyLogStillPresent returns VerificationFailed (not Absent) on RPC error`() {
+        val web3j = mock<Web3j>()
+        mockTransactionReceipt(web3j, blockNumber = 100L, hasError = true)
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo)
+
+        val result = reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L)
+
+        assertTrue(result is LogVerification.VerificationFailed)
+    }
+
+    @Test
+    fun `verifyLogStillPresent returns VerificationFailed (not Absent) when the RPC call throws`() {
+        val web3j = mock<Web3j>()
+        val request = mock<Request<*, EthGetTransactionReceipt>>()
+        whenever(web3j.ethGetTransactionReceipt(any())).thenReturn(request)
+        whenever(request.send()).thenThrow(IOException("connection reset"))
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo)
+
+        val result = reader.verifyLogStillPresent(txHash, logIndex = 2, expectedBlockNumber = 100L)
+
+        assertTrue(result is LogVerification.VerificationFailed)
+    }
+
+    @Test
+    fun `poll skips scanning entirely when the resolved bound has not advanced past checkpoint`() {
+        val web3j = mock<Web3j>()
+        mockFinalizedBlock(web3j, number = 100L)
+        val reader = EvmChainReader("EVM_1", web3j, mockRepo)
+
+        val result = reader.poll(checkpoint = 100L)
+
+        assertEquals(emptyList<DetectedTransfer>(), result)
+        verify(web3j, never()).ethGetLogs(any())
     }
 
     @Test

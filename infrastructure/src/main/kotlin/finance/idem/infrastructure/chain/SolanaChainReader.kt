@@ -122,6 +122,7 @@ class SolanaChainReader(
                     tokenContract = watchedAddress.tokenContract,
                 ),
             watchedAddress = watchedAddress,
+            chainKey = chainKey,
         )
     }
 

@@ -14,6 +14,10 @@ data class DetectedTransfer(
     val idempotencyKey: String,
     val entry: OnChainEntry,
     val watchedAddress: WatchedAddress,
+    val chainKey: String,
+    // Null for readers with no per-log granularity (e.g. Tron). EVM/Solana always set this —
+    // it disambiguates multiple independent transfers within the same txHash/signature.
+    val logIndex: Int? = null,
 )
 
 fun DetectedTransfer.toCommand(createdBy: String): PostTransactionCommand =
@@ -26,6 +30,11 @@ fun DetectedTransfer.toCommand(createdBy: String): PostTransactionCommand =
                 JournalLineRequest(AccountId.of(watchedAddress.creditAccountId), EntryType.CREDIT, entry),
             ),
         createdBy = createdBy,
+        metadata =
+            buildMap {
+                put("chain_key", chainKey)
+                logIndex?.let { put("log_index", it.toString()) }
+            },
     )
 
 fun DetectedTransfer.toFailedChainTransfer(

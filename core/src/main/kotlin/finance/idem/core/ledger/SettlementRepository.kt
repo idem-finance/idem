@@ -4,6 +4,7 @@ import finance.idem.core.AccountId
 import finance.idem.core.ChainId
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
+import finance.idem.core.TransactionId
 import java.time.Instant
 import java.util.UUID
 
@@ -47,4 +48,47 @@ interface SettlementRepository {
         afterId: UUID?,
         limit: Int,
     ): List<Settlement>
+
+    /** Most recent settlement matched to a posted transaction for this exact
+     * (txHash, logIndex) — WATCHING/SETTLED/UNMATCHED all qualify (all three have a real
+     * posted ledger Transaction that must be compensated on reorg). Excludes rows already
+     * REORGED, so re-delivery of the same removed:true webhook is a no-op. Null if no match. */
+    fun findReversibleByTxHashAndLogIndex(
+        tenantId: TenantId,
+        txHash: String,
+        logIndex: Int,
+    ): Settlement?
+
+    /** Most recent REORGED settlement for this exact (txHash, logIndex), if any — used to
+     * distinguish a genuine chain re-mine (new blockNumber) from a stale at-least-once webhook
+     * redelivery of the exact evidence that was just reversed (identical blockNumber). Null if
+     * this (txHash, logIndex) has never been reversed. */
+    fun findReorgedByTxHashAndLogIndex(
+        tenantId: TenantId,
+        txHash: String,
+        logIndex: Int,
+    ): Settlement?
+
+    /** WATCHING and webhook-sourced UNMATCHED rows for tenant+chainKey, not yet
+     * finality-confirmed (confirmedAt IS NULL) and with blockNumber <= upToBlock — candidates
+     * for the finality-sweep poller. Tenant-scoped (not a cross-tenant query): `settlements`
+     * keeps FORCE ROW LEVEL SECURITY, unlike webhook_outbox, so the poller derives its tenant
+     * set from WatchedAddressRepository.findByChainKey (already cross-tenant, no RLS) and calls
+     * this once per tenant. */
+    fun findPendingFinalitySweep(
+        tenantId: TenantId,
+        chainKey: String,
+        upToBlock: Long,
+    ): List<Settlement>
+
+    /** Atomically transitions a settlement to REORGED — a conditional update
+     * (`WHERE status <> 'REORGED'`), not a plain save, so two concurrent reorg-detection paths
+     * (webhook fast path + poller backstop) racing the same settlement result in exactly one
+     * transition. Returns whether this call performed the transition. */
+    fun markReorged(
+        id: UUID,
+        tenantId: TenantId,
+        reversalTransactionId: TransactionId,
+        reorgedAt: Instant,
+    ): Boolean
 }

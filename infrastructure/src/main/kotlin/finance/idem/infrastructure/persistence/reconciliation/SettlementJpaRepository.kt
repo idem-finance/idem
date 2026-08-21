@@ -3,6 +3,7 @@ package finance.idem.infrastructure.persistence.reconciliation
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.Instant
@@ -86,4 +87,74 @@ interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
         @Param("afterId") afterId: UUID?,
         @Param("limit") limit: Int,
     ): List<SettlementDataModel>
+
+    // Plain read: the actual reversal-vs-duplicate guard is markReorged's conditional UPDATE
+    // below, not this SELECT — two concurrent readers can both see a row as reversible before
+    // either commits, but only one of their subsequent markReorged calls will actually transition it.
+    @Query(
+        """
+        SELECT s FROM SettlementDataModel s
+        WHERE s.tenantId = :tenantId AND s.txHash = :txHash AND s.logIndex = :logIndex
+          AND s.matchedTransactionId IS NOT NULL AND s.status <> 'REORGED'
+        ORDER BY s.createdAt DESC
+        """,
+    )
+    fun findReversibleByTxHashAndLogIndex(
+        @Param("tenantId") tenantId: UUID,
+        @Param("txHash") txHash: String,
+        @Param("logIndex") logIndex: Int,
+    ): List<SettlementDataModel>
+
+    @Query(
+        """
+        SELECT s FROM SettlementDataModel s
+        WHERE s.tenantId = :tenantId AND s.txHash = :txHash AND s.logIndex = :logIndex
+          AND s.status = 'REORGED'
+        ORDER BY s.reorgedAt DESC
+        """,
+    )
+    fun findReorgedByTxHashAndLogIndex(
+        @Param("tenantId") tenantId: UUID,
+        @Param("txHash") txHash: String,
+        @Param("logIndex") logIndex: Int,
+    ): List<SettlementDataModel>
+
+    // Tenant-scoped: settlements keeps FORCE ROW LEVEL SECURITY, so the adapter calls this
+    // once per tenant (see SettlementRepositoryAdapter.findPendingFinalitySweep) rather than
+    // reading cross-tenant. confirmedAt IS NULL covers both WATCHING matches and webhook-sourced
+    // UNMATCHED rows (BasicReconciliationService.createUnmatched leaves it null for the latter) —
+    // recovery/Tron-sourced rows are already past finality when written, so confirmedAt is set
+    // immediately for them and they're correctly excluded from this sweep.
+    @Query(
+        """
+        SELECT s FROM SettlementDataModel s
+        WHERE s.tenantId = :tenantId AND s.chainKey = :chainKey
+          AND s.status IN ('WATCHING', 'UNMATCHED') AND s.confirmedAt IS NULL
+          AND s.blockNumber <= :upToBlock
+        ORDER BY s.createdAt ASC
+        """,
+    )
+    fun findPendingFinalitySweep(
+        @Param("tenantId") tenantId: UUID,
+        @Param("chainKey") chainKey: String,
+        @Param("upToBlock") upToBlock: Long,
+    ): List<SettlementDataModel>
+
+    // Conditional UPDATE — the real dedup gate for reorg processing (see findReversibleByTxHashAndLogIndex's
+    // comment above): two concurrent callers targeting the same row will only have one of these
+    // return 1; the other returns 0 and the caller treats it as AlreadyReorged.
+    @Modifying
+    @Query(
+        """
+        UPDATE SettlementDataModel s
+        SET s.status = 'REORGED', s.reversalTransactionId = :reversalTransactionId, s.reorgedAt = :reorgedAt
+        WHERE s.id = :id AND s.tenantId = :tenantId AND s.status <> 'REORGED'
+        """,
+    )
+    fun markReorged(
+        @Param("id") id: UUID,
+        @Param("tenantId") tenantId: UUID,
+        @Param("reversalTransactionId") reversalTransactionId: UUID,
+        @Param("reorgedAt") reorgedAt: Instant,
+    ): Int
 }

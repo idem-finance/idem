@@ -25,4 +25,18 @@ data class Settlement(
     val expectedFromAddress: String? = null,
     val createdAt: Instant,
     val createdBy: String,
+    // Chain-finality evidence — populated once a chain-sourced match is recorded (see
+    // BasicReconciliationService.settle()). chainKey/logIndex identify the specific on-chain
+    // log a webhook-sourced match came from (a single txHash can carry multiple independent
+    // watched-address transfers, disambiguated by logIndex).
+    val chainKey: String? = null,
+    val logIndex: Int? = null,
+    val observedBlockHeight: Long? = null,
+    val confirmationSource: String? = null,
+    val confirmationsRequired: Long? = null,
+    // Reorg-reversal marker — additive only. Set when a chain reorg invalidates a previously
+    // matched/settled entry; the fields above (txHash/blockNumber/confirmedAt/etc.) are never
+    // rewritten, preserving the original evidence for audit purposes.
+    val reversalTransactionId: TransactionId? = null,
+    val reorgedAt: Instant? = null,
 )
