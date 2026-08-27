@@ -321,6 +321,37 @@ class RollbackWorkflowServiceTest {
     }
 
     @Test
+    fun `step already compensated by a chain-reorg reversal reuses that transaction — no duplicate post`() {
+        val tx0Id = TransactionId.generate()
+        val tx1Id = TransactionId.generate()
+        val reorgCompensatingTxId = TransactionId.generate()
+        val plan = committedPlanWithSteps(tx0Id, tx1Id)
+
+        whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
+        whenever(transactionRepository.findById(tx0Id, tenantId)).thenReturn(originalTx(tx0Id))
+        whenever(transactionRepository.findById(tx1Id, tenantId)).thenReturn(originalTx(tx1Id))
+        // Step 1 is processed first (reverse order) — its original tx was already reversed by a
+        // chain reorg under a different idempotency key.
+        whenever(transactionRepository.findByIdempotencyKey("reorg-reversal:${tx1Id.value}", tenantId))
+            .thenReturn(originalTx(reorgCompensatingTxId))
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId.generate()))
+
+        val result = service.execute(rollbackCommand())
+
+        assertTrue(result.isSuccess)
+        // Only step 0 posts a new compensating transaction — step 1 reused the reorg's.
+        verify(postTransactionUseCase, times(1)).execute(any())
+
+        val stepCaptor = argumentCaptor<finance.idem.core.agentic.WorkflowStep>()
+        verify(workflowPlanRepository, times(2)).updateStep(any(), any(), stepCaptor.capture())
+        val step1 = stepCaptor.allValues.first { it.stepOrder == 1 }
+        assertEquals(finance.idem.core.agentic.StepStatus.REORGED, step1.status)
+        assertEquals(reorgCompensatingTxId, step1.compensatingTransactionId)
+        val step0 = stepCaptor.allValues.first { it.stepOrder == 0 }
+        assertEquals(finance.idem.core.agentic.StepStatus.ROLLED_BACK, step0.status)
+    }
+
+    @Test
     fun `compensating transaction failure propagates as RuntimeException`() {
         val txId = TransactionId.generate()
         val plan =

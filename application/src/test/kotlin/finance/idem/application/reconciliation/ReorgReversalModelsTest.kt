@@ -61,4 +61,33 @@ class ReorgReversalModelsTest {
         assertEquals(ReorgReversalResult.NoMatchingSettlement, ReorgReversalResult.NoMatchingSettlement)
         assertEquals(ReorgReversalResult.AlreadyReorged, ReorgReversalResult.AlreadyReorged)
     }
+
+    @Test
+    fun `ReorgReversalResult AlreadyCompensatedByRollback holds settlement and rollbackTransactionId`() {
+        val rollbackTxId = TransactionId.generate()
+        val settlement =
+            Settlement(
+                id = UUID.randomUUID(),
+                tenantId = tenantId,
+                accountId = AccountId.generate(),
+                amount = MonetaryAmount.of("100.000000"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                walletAddress = "0xabc",
+                status = EntryStatus.REORGED,
+                reversalTransactionId = rollbackTxId,
+                reorgedAt = now,
+                createdAt = now,
+                createdBy = "system",
+            )
+
+        val result = ReorgReversalResult.AlreadyCompensatedByRollback(settlement, rollbackTxId)
+
+        assertIs<ReorgReversalResult>(result)
+        assertEquals(settlement, result.settlement)
+        assertEquals(rollbackTxId, result.rollbackTransactionId)
+        assertEquals(result, result.copy())
+        assertEquals(result.hashCode(), result.copy().hashCode())
+        assertEquals(result.toString(), result.copy().toString())
+    }
 }

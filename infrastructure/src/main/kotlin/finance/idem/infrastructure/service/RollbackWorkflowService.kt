@@ -69,6 +69,18 @@ class RollbackWorkflowService(
                 transactionRepository.findById(originalTxId, cmd.tenantId)
                     ?: error("Original transaction $originalTxId not found for step ${step.stepOrder} — cannot compensate")
 
+            // A chain-reorg reversal (ReorgReversalService) may have already compensated this
+            // exact transaction — same original tx, different idempotency key
+            // ("reorg-reversal:<id>" vs this service's "rollback:<id>"). The ledger is already
+            // balanced; reuse that compensation and mark the step REORGED (not ROLLED_BACK) —
+            // chain reality, not this rollback, is why the step is being reversed.
+            val existingReorgTx = transactionRepository.findByIdempotencyKey("reorg-reversal:${originalTxId.value}", cmd.tenantId)
+            if (existingReorgTx != null) {
+                updatedPlan = updatedPlan.withStepReorged(step.stepOrder, existingReorgTx.id)
+                workflowPlanRepository.updateStep(cmd.workflowPlanId, cmd.tenantId, updatedPlan.steps[step.stepOrder])
+                return@forEach
+            }
+
             val compensatingLines =
                 originalTx.lines.map { line ->
                     JournalLineRequest(

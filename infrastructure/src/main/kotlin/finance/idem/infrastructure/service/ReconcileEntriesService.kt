@@ -131,19 +131,37 @@ class ReconcileEntriesService(
         val match = findMatch(candidates.filter { it.accountId == entry.accountId }, entry, effectiveTolerance)
         return if (match != null) {
             candidates.remove(match)
+            // Mirrors BasicReconciliationService.settle()'s isWebhookSourced gate: entry.confirmedAt
+            // is the shared "already past finality" signal (set immediately for non-webhook-sourced
+            // rows, left null for webhook-sourced rows until SettlementFinalityPoller confirms it) —
+            // not entry.createdBy, which createUnmatched always sets to "system" regardless of source.
+            // A manual reconcile_batch sweep must not bypass the finality gate the automatic path enforces.
+            val stillPendingFinality = entry.confirmedAt == null
+            val newStatus = if (stillPendingFinality) EntryStatus.WATCHING else EntryStatus.SETTLED
+            val confirmedAt = if (stillPendingFinality) null else Instant.now()
             settlementRepository.save(
                 match.copy(
-                    status = EntryStatus.SETTLED,
+                    status = newStatus,
                     matchedTransactionId = entry.matchedTransactionId,
                     txHash = entry.txHash,
                     blockNumber = entry.blockNumber,
-                    confirmedAt = Instant.now(),
+                    confirmedAt = confirmedAt,
+                    // Needed for SettlementFinalityPoller.verifyLogStillPresent when this row is
+                    // WATCHING — previously never set here because this path always short-circuited
+                    // straight to SETTLED, before either field mattered.
+                    chainKey = entry.chainKey,
+                    logIndex = entry.logIndex,
                 ),
             )
-            settlementRepository.save(entry.copy(status = EntryStatus.SETTLED))
-            webhookOutboxRepository.save(WebhookOutboxEntry.transactionSettled(entry))
+            settlementRepository.save(entry.copy(status = newStatus, confirmedAt = confirmedAt))
+            // WATCHING settlements are not yet finality-confirmed — SettlementFinalityPoller fires
+            // transaction.settled once it promotes both rows to SETTLED on a later sweep.
+            if (!stillPendingFinality) {
+                webhookOutboxRepository.save(WebhookOutboxEntry.transactionSettled(entry))
+            }
             log.info(
-                "ReconcileEntries: settled UNMATCHED={} against PENDING={} tenant={} amount={} token={} txHash={}",
+                "ReconcileEntries: {} UNMATCHED={} against PENDING={} tenant={} amount={} token={} txHash={}",
+                if (stillPendingFinality) "matched (pending finality)" else "settled",
                 entry.id,
                 match.id,
                 entry.tenantId.value,

@@ -16,6 +16,7 @@ import finance.idem.core.ledger.AccountRepository
 import finance.idem.core.ledger.AccountType
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.OnChainBalance
+import finance.idem.core.ledger.SettlementRepository
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.monetary.FiatEntry
@@ -40,6 +41,8 @@ class GetBalanceServiceTest {
 
     @Mock lateinit var transactionRepository: TransactionRepository
 
+    @Mock lateinit var settlementRepository: SettlementRepository
+
     private lateinit var service: GetBalanceService
 
     private val tenantId = TenantId.generate()
@@ -49,7 +52,7 @@ class GetBalanceServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = GetBalanceService(accountRepository, transactionRepository, fixedClock)
+        service = GetBalanceService(accountRepository, transactionRepository, settlementRepository, fixedClock)
     }
 
     private fun assetAccount() =
@@ -251,6 +254,108 @@ class GetBalanceServiceTest {
             ),
         )
         assertEquals(emptyList(), service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow().onChainBalances)
+    }
+
+    @Test
+    fun `pendingFinalityAmount reflects WATCHING settlements for the token, zero when none exist`() {
+        val other = otherAccountId()
+        val onChainEntry =
+            OnChainEntry(
+                amount = MonetaryAmount.of("180.00"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                txHash = "0xabc",
+                blockNumber = 19_000_000L,
+                walletAddress = "0xWallet",
+                tokenContract = "0xContract",
+            )
+        whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx({ id ->
+                    listOf(
+                        JournalLine(UUID.randomUUID(), id, accountId, tenantId, EntryType.DEBIT, onChainEntry, null, now, "system"),
+                        JournalLine(UUID.randomUUID(), id, other, tenantId, EntryType.CREDIT, onChainEntry, null, now, "system"),
+                    )
+                }),
+            ),
+        )
+        val watchingSettlement =
+            finance.idem.core.ledger.Settlement(
+                id = UUID.randomUUID(),
+                tenantId = tenantId,
+                accountId = accountId,
+                amount = MonetaryAmount.of("60.00"),
+                token = StablecoinToken.USDC,
+                chainId = ChainId.EVM,
+                walletAddress = "0xWallet",
+                status = finance.idem.core.ledger.EntryStatus.WATCHING,
+                createdAt = now,
+                createdBy = "system",
+            )
+        whenever(
+            settlementRepository.findByAccountIdAndStatus(tenantId, accountId, finance.idem.core.ledger.EntryStatus.WATCHING),
+        ).thenReturn(listOf(watchingSettlement))
+
+        val balance = service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow()
+        val usdc = balance.onChainBalances.first { it.token == StablecoinToken.USDC }
+        assertEquals(MonetaryAmount.of("180.00"), usdc.amount)
+        assertEquals(MonetaryAmount.of("60.00"), usdc.pendingFinalityAmount)
+    }
+
+    @Test
+    fun `pendingFinalityAmount is zero when no WATCHING settlements exist for the account`() {
+        whenever(accountRepository.findById(accountId, tenantId)).thenReturn(assetAccount())
+        whenever(transactionRepository.findByAccountId(accountId, tenantId)).thenReturn(
+            listOf(
+                tx({ id ->
+                    listOf(
+                        JournalLine(
+                            UUID.randomUUID(),
+                            id,
+                            accountId,
+                            tenantId,
+                            EntryType.DEBIT,
+                            OnChainEntry(
+                                amount = MonetaryAmount.of("50.00"),
+                                token = StablecoinToken.USDC,
+                                chainId = ChainId.EVM,
+                                txHash = "0xdef",
+                                blockNumber = 19_000_001L,
+                                walletAddress = "0xWallet",
+                                tokenContract = "0xContract",
+                            ),
+                            null,
+                            now,
+                            "system",
+                        ),
+                        JournalLine(
+                            UUID.randomUUID(),
+                            id,
+                            otherAccountId(),
+                            tenantId,
+                            EntryType.CREDIT,
+                            OnChainEntry(
+                                amount = MonetaryAmount.of("50.00"),
+                                token = StablecoinToken.USDC,
+                                chainId = ChainId.EVM,
+                                txHash = "0xdef",
+                                blockNumber = 19_000_001L,
+                                walletAddress = "0xWallet",
+                                tokenContract = "0xContract",
+                            ),
+                            null,
+                            now,
+                            "system",
+                        ),
+                    )
+                }),
+            ),
+        )
+
+        val balance = service.execute(GetBalanceQuery(accountId, tenantId)).getOrThrow()
+        val usdc = balance.onChainBalances.first { it.token == StablecoinToken.USDC }
+        assertEquals(MonetaryAmount.ZERO, usdc.pendingFinalityAmount)
     }
 
     @Test

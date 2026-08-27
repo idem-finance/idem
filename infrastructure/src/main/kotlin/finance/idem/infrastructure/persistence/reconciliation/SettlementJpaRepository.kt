@@ -140,6 +140,21 @@ interface SettlementJpaRepository : JpaRepository<SettlementDataModel, UUID> {
         @Param("upToBlock") upToBlock: Long,
     ): List<SettlementDataModel>
 
+    // Backs the get_balance/describe_account pending-finality breakdown — small, bounded
+    // per-account/status result set, no pagination needed.
+    @Query(
+        """
+        SELECT s FROM SettlementDataModel s
+        WHERE s.tenantId = :tenantId AND s.accountId = :accountId AND s.status = :status
+        ORDER BY s.createdAt ASC
+        """,
+    )
+    fun findByAccountIdAndStatus(
+        @Param("tenantId") tenantId: UUID,
+        @Param("accountId") accountId: UUID,
+        @Param("status") status: String,
+    ): List<SettlementDataModel>
+
     // Conditional UPDATE — the real dedup gate for reorg processing (see findReversibleByTxHashAndLogIndex's
     // comment above): two concurrent callers targeting the same row will only have one of these
     // return 1; the other returns 0 and the caller treats it as AlreadyReorged.

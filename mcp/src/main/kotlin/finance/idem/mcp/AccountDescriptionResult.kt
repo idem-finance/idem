@@ -9,4 +9,5 @@ data class AccountDescriptionResult(
     val lastActivityAt: String?,
     val balanceCurrency: String,
     val balanceAmount: String,
+    val onChainBalances: List<OnChainTokenBalance> = emptyList(),
 )

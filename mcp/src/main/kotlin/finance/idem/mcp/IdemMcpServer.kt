@@ -104,7 +104,10 @@ class IdemMcpServer(
         description =
             "Get the current balance for an account. Optionally pass asOf (ISO-8601 instant) " +
                 "to compute a historical balance. Also returns a per-token on-chain balance breakdown " +
-                "(never combined with the fiat amount). Requires AGENTS_EXECUTE scope.",
+                "(never combined with the fiat amount), including pendingFinalityAmount — the portion " +
+                "of that token's balance still awaiting chain finality and thus still reversible by a " +
+                "reorg; treat amount minus pendingFinalityAmount as the reorg-safe figure before acting " +
+                "on on-chain funds. Requires AGENTS_EXECUTE scope.",
     )
     fun getBalance(
         @ToolParam(description = "Account UUID") accountId: String,
@@ -125,7 +128,11 @@ class IdemMcpServer(
                     computedAt = balance.computedAt.toString(),
                     onChainBalances =
                         balance.onChainBalances.map {
-                            OnChainTokenBalance(token = it.token.name, amount = it.amount.value.toPlainString())
+                            OnChainTokenBalance(
+                                token = it.token.name,
+                                amount = it.amount.value.toPlainString(),
+                                pendingFinalityAmount = it.pendingFinalityAmount.value.toPlainString(),
+                            )
                         },
                 )
             },
@@ -188,7 +195,8 @@ class IdemMcpServer(
     @Tool(
         description =
             "Describe an account: returns name, currency, entry count, last activity timestamp, " +
-                "and current balance. Requires AGENTS_EXECUTE scope.",
+                "current balance, and a per-token on-chain balance breakdown including " +
+                "pendingFinalityAmount (see get_balance). Requires AGENTS_EXECUTE scope.",
     )
     fun describeAccount(
         @ToolParam(description = "Account UUID") accountId: String,
@@ -211,6 +219,14 @@ class IdemMcpServer(
                     balanceAmount =
                         desc.balance.amount.value
                             .toPlainString(),
+                    onChainBalances =
+                        desc.balance.onChainBalances.map {
+                            OnChainTokenBalance(
+                                token = it.token.name,
+                                amount = it.amount.value.toPlainString(),
+                                pendingFinalityAmount = it.pendingFinalityAmount.value.toPlainString(),
+                            )
+                        },
                 )
             },
             onFailure = { handleFailure(it) },

@@ -81,6 +81,15 @@ interface SettlementRepository {
         upToBlock: Long,
     ): List<Settlement>
 
+    /** Settlements for this account matching the given status — used to report the
+     * pending-finality portion of an on-chain balance (status = WATCHING) without exposing it
+     * as confirmed. Not paginated: callers use this for small, bounded per-account/status sets. */
+    fun findByAccountIdAndStatus(
+        tenantId: TenantId,
+        accountId: AccountId,
+        status: EntryStatus,
+    ): List<Settlement>
+
     /** Atomically transitions a settlement to REORGED — a conditional update
      * (`WHERE status <> 'REORGED'`), not a plain save, so two concurrent reorg-detection paths
      * (webhook fast path + poller backstop) racing the same settlement result in exactly one

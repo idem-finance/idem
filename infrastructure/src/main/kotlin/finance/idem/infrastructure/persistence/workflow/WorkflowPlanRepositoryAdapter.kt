@@ -69,6 +69,15 @@ class WorkflowPlanRepositoryAdapter(
         entityManager.setRlsTenantId(tenantId)
         return jpaRepository.findByIdAndTenantId(id.value, tenantId.value)?.toDomain()
     }
+
+    @Transactional(readOnly = true)
+    override fun findByTransactionId(
+        transactionId: TransactionId,
+        tenantId: TenantId,
+    ): WorkflowPlan? {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository.findByStepTransactionId(transactionId.value, tenantId.value)?.toDomain()
+    }
 }
 
 // ── Entity → Domain ──────────────────────────────────────────────────────────

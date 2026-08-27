@@ -144,5 +144,23 @@ data class WorkflowPlan internal constructor(
                 },
         )
 
+    // No terminal-status guard, deliberately mirroring withStepRolledBack: a reorg can (and
+    // typically does) invalidate a step's on-chain settlement well after the plan reached
+    // COMMITTED — that's the expected case, not an error.
+    fun withStepReorged(
+        stepOrder: Int,
+        compensatingTxId: TransactionId,
+    ): WorkflowPlan =
+        copy(
+            steps =
+                steps.map { step ->
+                    if (step.stepOrder == stepOrder) {
+                        step.copy(status = StepStatus.REORGED, compensatingTransactionId = compensatingTxId)
+                    } else {
+                        step
+                    }
+                },
+        )
+
     fun executedSteps(): List<WorkflowStep> = steps.filter { it.status == StepStatus.EXECUTED }
 }

@@ -138,6 +138,18 @@ class SettlementRepositoryAdapter(
             .map { it.toDomain() }
     }
 
+    @Transactional(readOnly = true)
+    override fun findByAccountIdAndStatus(
+        tenantId: TenantId,
+        accountId: AccountId,
+        status: EntryStatus,
+    ): List<Settlement> {
+        entityManager.setRlsTenantId(tenantId)
+        return jpaRepository
+            .findByAccountIdAndStatus(tenantId.value, accountId.value, status.name)
+            .map { it.toDomain() }
+    }
+
     @Transactional
     override fun markReorged(
         id: UUID,

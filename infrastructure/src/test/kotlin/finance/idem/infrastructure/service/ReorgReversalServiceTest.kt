@@ -3,6 +3,7 @@ package finance.idem.infrastructure.service
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
+import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.ReorgReversalCommand
@@ -14,6 +15,13 @@ import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
+import finance.idem.core.WorkflowPlanId
+import finance.idem.core.agentic.AgentAuditEvent
+import finance.idem.core.agentic.AgentContext
+import finance.idem.core.agentic.StepStatus
+import finance.idem.core.agentic.WorkflowPlan
+import finance.idem.core.agentic.WorkflowPlanRepository
+import finance.idem.core.agentic.WorkflowStep
 import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Settlement
@@ -49,6 +57,10 @@ class ReorgReversalServiceTest {
 
     @Mock lateinit var idempotencyStore: IdempotencyStore
 
+    @Mock lateinit var workflowPlanRepository: WorkflowPlanRepository
+
+    @Mock lateinit var agentAuditRepository: AgentAuditRepository
+
     private lateinit var service: ReorgReversalService
 
     private val tenantId = TenantId.generate()
@@ -69,6 +81,8 @@ class ReorgReversalServiceTest {
                 postTransactionUseCase,
                 webhookOutboxRepository,
                 idempotencyStore,
+                workflowPlanRepository,
+                agentAuditRepository,
             )
     }
 
@@ -215,6 +229,93 @@ class ReorgReversalServiceTest {
         assertEquals(ReorgReversalResult.AlreadyReorged, result)
         verify(idempotencyStore, never()).release(any(), any())
         verify(webhookOutboxRepository, never()).save(any())
+    }
+
+    @Test
+    fun `original transaction already compensated by rollback reuses that transaction — no duplicate post`() {
+        val originalTxId = TransactionId.generate()
+        val settlement = reversibleSettlement(originalTxId)
+        val tx = originalTx(originalTxId)
+        val rollbackTxId = TransactionId.generate()
+        val rollbackTx = originalTx(rollbackTxId)
+
+        whenever(settlementRepository.findReversibleByTxHashAndLogIndex(tenantId, txHash, 2)).thenReturn(settlement)
+        whenever(transactionRepository.findById(originalTxId, tenantId)).thenReturn(tx)
+        whenever(transactionRepository.findByIdempotencyKey("rollback:${originalTxId.value}", tenantId)).thenReturn(rollbackTx)
+        whenever(settlementRepository.markReorged(any(), any(), any(), any())).thenReturn(true)
+
+        val result = service.execute(cmd()).getOrThrow()
+
+        assertIs<ReorgReversalResult.AlreadyCompensatedByRollback>(result)
+        assertEquals(rollbackTxId, result.rollbackTransactionId)
+        assertEquals(EntryStatus.REORGED, result.settlement.status)
+
+        verify(postTransactionUseCase, never()).execute(any())
+        verify(settlementRepository).markReorged(any(), any(), any(), any())
+        verify(idempotencyStore).release("EVM_1:$txHash:2", tenantId)
+
+        val outboxCaptor = argumentCaptor<WebhookOutboxEntry>()
+        verify(webhookOutboxRepository).save(outboxCaptor.capture())
+        assertEquals("settlement.reorged", outboxCaptor.firstValue.eventType)
+    }
+
+    @Test
+    fun `no matching workflow plan for the transaction — reversal proceeds unchanged, no audit event`() {
+        val originalTxId = TransactionId.generate()
+        val settlement = reversibleSettlement(originalTxId)
+        val tx = originalTx(originalTxId)
+        val compensatingTxId = TransactionId.generate()
+
+        whenever(settlementRepository.findReversibleByTxHashAndLogIndex(tenantId, txHash, 2)).thenReturn(settlement)
+        whenever(transactionRepository.findById(originalTxId, tenantId)).thenReturn(tx)
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(compensatingTxId))
+        whenever(settlementRepository.markReorged(any(), any(), any(), any())).thenReturn(true)
+        whenever(workflowPlanRepository.findByTransactionId(originalTxId, tenantId)).thenReturn(null)
+
+        val result = service.execute(cmd()).getOrThrow()
+
+        assertIs<ReorgReversalResult.Reversed>(result)
+        verify(workflowPlanRepository, never()).updateStep(any(), any(), any())
+        verify(agentAuditRepository, never()).save(any())
+    }
+
+    @Test
+    fun `matching agent workflow step transitions to REORGED and an audit event is written`() {
+        val originalTxId = TransactionId.generate()
+        val settlement = reversibleSettlement(originalTxId)
+        val tx = originalTx(originalTxId)
+        val compensatingTxId = TransactionId.generate()
+
+        val agentContext = AgentContext(agentId = "agent-1", sessionId = "session-1")
+        val plan =
+            WorkflowPlan
+                .create(
+                    id = WorkflowPlanId.generate(),
+                    tenantId = tenantId,
+                    agentContext = agentContext,
+                    stepDescriptions = listOf("disburse on-chain"),
+                    createdAt = now,
+                ).withStepExecuted(0, originalTxId)
+
+        whenever(settlementRepository.findReversibleByTxHashAndLogIndex(tenantId, txHash, 2)).thenReturn(settlement)
+        whenever(transactionRepository.findById(originalTxId, tenantId)).thenReturn(tx)
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(compensatingTxId))
+        whenever(settlementRepository.markReorged(any(), any(), any(), any())).thenReturn(true)
+        whenever(workflowPlanRepository.findByTransactionId(originalTxId, tenantId)).thenReturn(plan)
+
+        val result = service.execute(cmd()).getOrThrow()
+
+        assertIs<ReorgReversalResult.Reversed>(result)
+
+        val stepCaptor = argumentCaptor<WorkflowStep>()
+        verify(workflowPlanRepository).updateStep(any(), any(), stepCaptor.capture())
+        assertEquals(StepStatus.REORGED, stepCaptor.firstValue.status)
+        assertEquals(compensatingTxId, stepCaptor.firstValue.compensatingTransactionId)
+
+        val eventCaptor = argumentCaptor<AgentAuditEvent>()
+        verify(agentAuditRepository).save(eventCaptor.capture())
+        assertEquals(plan.id, eventCaptor.firstValue.workflowPlanId)
+        assertEquals("CHAIN_REORG_REVERSAL", eventCaptor.firstValue.intent)
     }
 
     @Test

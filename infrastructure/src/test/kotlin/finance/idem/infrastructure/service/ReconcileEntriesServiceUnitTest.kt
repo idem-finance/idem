@@ -71,6 +71,9 @@ class ReconcileEntriesServiceUnitTest {
     private fun unmatchedSettlement(
         walletAddress: String = "wallet-1",
         token: StablecoinToken = StablecoinToken.USDC,
+        confirmedAt: Instant? = now.minusSeconds(30),
+        chainKey: String? = "SOLANA_1",
+        logIndex: Int? = 0,
     ) = Settlement(
         id = UUID.randomUUID(),
         tenantId = tenantId,
@@ -83,7 +86,25 @@ class ReconcileEntriesServiceUnitTest {
         matchedTransactionId = TransactionId.generate(),
         txHash = "hash-${UUID.randomUUID()}",
         blockNumber = 1L,
-        confirmedAt = now.minusSeconds(30),
+        confirmedAt = confirmedAt,
+        createdAt = now,
+        createdBy = "system",
+        chainKey = chainKey,
+        logIndex = logIndex,
+    )
+
+    private fun pendingSettlement(
+        walletAddress: String = "wallet-1",
+        token: StablecoinToken = StablecoinToken.USDC,
+    ) = Settlement(
+        id = UUID.randomUUID(),
+        tenantId = tenantId,
+        accountId = accountId,
+        amount = MonetaryAmount.of("100.000000"),
+        token = token,
+        chainId = ChainId.SOLANA,
+        walletAddress = walletAddress,
+        status = EntryStatus.PENDING,
         createdAt = now,
         createdBy = "system",
     )
@@ -147,6 +168,12 @@ class ReconcileEntriesServiceUnitTest {
                 tenantId: TenantId,
                 chainKey: String,
                 upToBlock: Long,
+            ) = emptyList<Settlement>()
+
+            override fun findByAccountIdAndStatus(
+                tenantId: TenantId,
+                accountId: AccountId,
+                status: finance.idem.core.ledger.EntryStatus,
             ) = emptyList<Settlement>()
 
             override fun markReorged(
@@ -241,6 +268,12 @@ class ReconcileEntriesServiceUnitTest {
                     upToBlock: Long,
                 ) = emptyList<Settlement>()
 
+                override fun findByAccountIdAndStatus(
+                    tenantId: TenantId,
+                    accountId: AccountId,
+                    status: finance.idem.core.ledger.EntryStatus,
+                ) = emptyList<Settlement>()
+
                 override fun markReorged(
                     id: UUID,
                     tenantId: TenantId,
@@ -266,5 +299,114 @@ class ReconcileEntriesServiceUnitTest {
         // Outbox written only for the surviving (Unmatched) group, not for the Failed one.
         assertEquals(1, savedOutbox.size)
         assertEquals("reconciliation.exception", savedOutbox[0].eventType)
+    }
+
+    private fun matchingRepo(
+        entry: Settlement,
+        candidate: Settlement,
+        saved: MutableList<Settlement>,
+    ) = object : SettlementRepository {
+        override fun save(settlement: Settlement): Settlement {
+            saved.add(settlement)
+            return settlement
+        }
+
+        override fun findById(
+            id: UUID,
+            tenantId: TenantId,
+        ): Settlement? = null
+
+        override fun findUnmatchedInWindow(
+            tenantId: TenantId,
+            accountId: AccountId?,
+            from: Instant,
+            to: Instant,
+        ) = listOf(entry)
+
+        override fun findPendingCandidates(
+            tenantId: TenantId,
+            accountIds: Set<AccountId>,
+            token: StablecoinToken,
+            chainId: ChainId,
+            walletAddress: String,
+            since: Instant,
+        ) = listOf(candidate)
+
+        override fun findPage(
+            tenantId: TenantId,
+            status: EntryStatus?,
+            from: Instant?,
+            to: Instant?,
+            afterCreatedAt: Instant?,
+            afterId: UUID?,
+            limit: Int,
+        ) = emptyList<Settlement>()
+
+        override fun findReversibleByTxHashAndLogIndex(
+            tenantId: TenantId,
+            txHash: String,
+            logIndex: Int,
+        ): Settlement? = null
+
+        override fun findReorgedByTxHashAndLogIndex(
+            tenantId: TenantId,
+            txHash: String,
+            logIndex: Int,
+        ): Settlement? = null
+
+        override fun findPendingFinalitySweep(
+            tenantId: TenantId,
+            chainKey: String,
+            upToBlock: Long,
+        ) = emptyList<Settlement>()
+
+        override fun findByAccountIdAndStatus(
+            tenantId: TenantId,
+            accountId: AccountId,
+            status: EntryStatus,
+        ) = emptyList<Settlement>()
+
+        override fun markReorged(
+            id: UUID,
+            tenantId: TenantId,
+            reversalTransactionId: TransactionId,
+            reorgedAt: Instant,
+        ): Boolean = false
+    }
+
+    @Test
+    fun `webhook-sourced match still pending finality settles both rows to WATCHING, not SETTLED`() {
+        val entry = unmatchedSettlement(confirmedAt = null, chainKey = "EVM_1", logIndex = 5)
+        val candidate = pendingSettlement()
+        val saved = mutableListOf<Settlement>()
+
+        val service = ReconcileEntriesService(matchingRepo(entry, candidate, saved), outboxRepo, txManager, BigDecimal.ZERO)
+        val result = service.execute(cmd()).getOrThrow()
+
+        assertEquals(1, result.matched)
+        assertTrue(saved.all { it.status == EntryStatus.WATCHING })
+        assertTrue(saved.all { it.confirmedAt == null })
+        // The PENDING-side row needs chainKey/logIndex for SettlementFinalityPoller.verifyLogStillPresent
+        // to work once it sweeps this WATCHING row on a later tick.
+        val matchRow = saved.first { it.id == candidate.id }
+        assertEquals("EVM_1", matchRow.chainKey)
+        assertEquals(5, matchRow.logIndex)
+        // Deferred to SettlementFinalityPoller — must not fire early for an unconfirmed match.
+        assertTrue(savedOutbox.none { it.eventType == "transaction.settled" })
+    }
+
+    @Test
+    fun `already finality-confirmed match settles both rows to SETTLED immediately`() {
+        val entry = unmatchedSettlement(confirmedAt = now.minusSeconds(30))
+        val candidate = pendingSettlement()
+        val saved = mutableListOf<Settlement>()
+
+        val service = ReconcileEntriesService(matchingRepo(entry, candidate, saved), outboxRepo, txManager, BigDecimal.ZERO)
+        val result = service.execute(cmd()).getOrThrow()
+
+        assertEquals(1, result.matched)
+        assertTrue(saved.all { it.status == EntryStatus.SETTLED })
+        assertTrue(saved.all { it.confirmedAt != null })
+        assertTrue(savedOutbox.any { it.eventType == "transaction.settled" })
     }
 }

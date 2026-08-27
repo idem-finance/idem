@@ -116,9 +116,16 @@ override fun reconcile(transaction: Transaction): ReconciliationResult {
      back to FIFO and consuming it would be strictly worse than UNMATCHED. See
      "Sender-address matching — MVP scope and roadmap" below for per-chain
      `fromAddress` coverage.
-6. **Settle** (match found): `match.copy(status=SETTLED, matchedTransactionId=tx.id,
-   txHash, blockNumber, confirmedAt=now)`, saved **in place** (same `id` — no
-   duplicate row). Writes `WebhookOutboxEntry.transactionSettled(tx)`.
+6. **Settle** (match found): for a transaction posted through the real-time Alchemy
+   webhook path (`transaction.createdBy == FinalityPolicy.WEBHOOK_SOURCE`), the match
+   is saved as `match.copy(status=WATCHING, matchedTransactionId=tx.id, txHash,
+   blockNumber, confirmedAt=null, chainKey, logIndex)` and `transaction.settled` is
+   **deferred** — see "Chain finality and reorg reversal" below. Every other source
+   (chain-recovery replay, the Tron poller) already surfaces transfers past their
+   chain's finality bound, so those settle immediately:
+   `match.copy(status=SETTLED, matchedTransactionId=tx.id, txHash, blockNumber,
+   confirmedAt=now)`, saved **in place** (same `id` — no duplicate row), with
+   `WebhookOutboxEntry.transactionSettled(tx)` written right away.
 7. **Create UNMATCHED** (no match): a brand-new `Settlement` row, `status=UNMATCHED`,
    `accountId` = the **CREDIT-side** on-chain line's account (the customer-facing
    account, by convention), all proof fields (`txHash`, `blockNumber`, `confirmedAt`)
@@ -205,6 +212,67 @@ automatic path. A failure on any item rolls back the entire batch.
 > `UNMATCHED` row (see "Known limitations" below). Re-trigger is most useful when a
 > `PENDING` expectation has since been registered and the original automatic pass found
 > no match.
+
+> **Not the same as the `reconcile_batch` MCP tool.** This REST endpoint re-runs
+> reconciliation *for known transactions* (matches PENDING candidates against a given
+> transaction's on-chain lines). The MCP `reconcile_batch` tool (`ReconcileEntriesUseCase`
+> / `ReconcileEntriesService`) instead sweeps `UNMATCHED` `Settlement` rows in a time
+> window and matches them against `PENDING` `Settlement` rows directly — settlement-to-
+> settlement, with no `Transaction` re-derivation. Both paths independently apply the
+> finality gate described below; see "Chain finality and reorg reversal".
+
+---
+
+## Chain finality and reorg reversal
+
+The algorithm above answers "was this transfer expected?" but says nothing about
+whether the on-chain evidence itself is final. A chain reorg can invalidate a
+transfer *after* it has already been reconciled. Idem handles this with a hybrid
+approach — **hold below finality, and reverse with a compensating entry if a reorg
+is caught anyway**:
+
+- **Hold**: a match sourced from the real-time Alchemy webhook
+  (`transaction.createdBy == FinalityPolicy.WEBHOOK_SOURCE`) is saved as
+  `EntryStatus.WATCHING`, not `SETTLED` — `confirmedAt` stays `null` and the
+  `transaction.settled` webhook is deferred. Matches sourced from chain-recovery
+  replay or the Tron poller settle immediately, since those sources only ever surface
+  transfers already past their chain's finality bound.
+- **Actively re-verify, don't just wait out a timer**: `SettlementFinalityPoller`
+  (`infrastructure/.../chain/SettlementFinalityPoller.kt`) sweeps `WATCHING` and
+  webhook-sourced `UNMATCHED` rows (`confirmedAt IS NULL`) once they've cleared the
+  chain's finality bound (`EvmChainReader.resolveScanBound()` — the RPC's `finalized`
+  block tag where supported, falling back to a fixed confirmation count). Before
+  promoting a row to `SETTLED`, it re-verifies the log is still present on-chain
+  (`verifyLogStillPresent`). This poller is the *primary* reorg-detection mechanism,
+  not merely a promoter — it's the reliable backstop for a missed webhook delivery.
+- **Reverse, never mutate**: when a reorg is detected — either via the webhook's
+  real-time `removed:true` signal or the poller's active re-verification —
+  `ReorgReversalService` (`infrastructure/.../service/ReorgReversalService.kt`) posts
+  a **compensating transaction** (every DEBIT/CREDIT line swapped) rather than
+  touching the original transaction or settlement row, mirroring the saga pattern
+  `RollbackWorkflowService` uses for agent-initiated rollbacks. The original
+  settlement is flagged `REORGED`, with `reversalTransactionId` pointing at the
+  compensation.
+- **`reconcile_batch` (MCP) respects the same gate**: `ReconcileEntriesService`
+  checks the same `confirmedAt == null` signal before settling a matched pair — an
+  agent triggering a manual sweep cannot bypass finality and force an unconfirmed,
+  webhook-sourced transfer straight to `SETTLED`.
+- **Mutual exclusion with agent rollbacks**: an agent-executed workflow step with an
+  on-chain leg can, in principle, be compensated by *either* `RollbackWorkflowService`
+  (an operator/agent-initiated rollback) or `ReorgReversalService` (a reorg). Both tag
+  their compensating transaction with a deterministic idempotency key derived from the
+  original transaction id (`rollback:<id>` vs `reorg-reversal:<id>`); whichever runs
+  second detects the first one's compensation via `TransactionRepository
+  .findByIdempotencyKey` and reuses it instead of posting a duplicate. When the
+  original transaction traces back to a `WorkflowStep` (`WorkflowPlanRepository
+  .findByTransactionId`), a reorg reversal marks that step `StepStatus.REORGED`
+  (distinct from `ROLLED_BACK`) and writes a `CHAIN_REORG_REVERSAL` `AgentAuditEvent`,
+  so the reversal is traceable through `get_agent_audit_log`.
+- **`get_balance` / `describe_account` report the unconfirmed portion separately**:
+  the MCP tools' on-chain balance breakdown includes `pendingFinalityAmount` per
+  token — the slice of the balance still `WATCHING` and therefore still reversible.
+  Agents deciding whether to act on on-chain funds should treat
+  `amount - pendingFinalityAmount` as the reorg-safe figure.
 
 ---
 
@@ -364,6 +432,21 @@ sequenceDiagram
 - **Sender-address matching is MVP-scoped** — see "Sender-address matching — MVP
   scope and roadmap" below for current per-chain `fromAddress` coverage and the
   Cloud/Enterprise resolution path.
+- **Double-reversal guard is a read-before-write check, not a DB row lock** — the
+  mutual-exclusion mechanism between `RollbackWorkflowService` and
+  `ReorgReversalService` (see "Chain finality and reorg reversal" above) works by each
+  service checking whether the *other's* deterministic idempotency key
+  (`rollback:<id>` / `reorg-reversal:<id>`) already exists before compensating. This
+  closes the realistic failure mode — one saga runs to completion, then the other
+  finds it and reuses the existing compensation — but the two keys are distinct from
+  each other, so `PostTransactionUseCase`'s idempotency store (which only enforces
+  uniqueness *per key*) does not provide a DB-level guarantee against both sagas
+  posting simultaneously inside the same narrow race window. In practice, rollback is
+  operator/agent-triggered and reorg reversal is webhook/poller-triggered — truly
+  concurrent execution against the same original transaction is an edge case, not the
+  common path. A stronger guarantee (e.g. a `SELECT ... FOR UPDATE` on the original
+  transaction, or a single shared compensation-claim table) is a candidate hardening
+  if this is ever observed in practice.
 
 ---
 
@@ -430,7 +513,12 @@ rtk test mvn test -pl app                   # AlchemyWebhookIntegrationTest (ful
 - `docs/evm-chain-reader.md`, `docs/solana-chain-reader.md`, `docs/tron-chain-reader.md` — on-chain entry sources that feed `PostTransactionService`
 - `docs/webhook-outbox-poller.md` — WebhookOutboxPoller (#55): delivers transaction.committed/settled/reconciliation.unmatched events to per-tenant webhooks
 - `infrastructure/.../service/BasicReconciliationService.kt`
-- `infrastructure/.../service/ReconcileBatchService.kt` — manual batch re-trigger
+- `infrastructure/.../service/ReconcileBatchService.kt` — manual batch re-trigger (REST)
+- `infrastructure/.../service/ReconcileEntriesService.kt` — settlement-sweep batch reconciliation (MCP `reconcile_batch`)
 - `infrastructure/.../service/PostTransactionService.kt` — call site
 - `infrastructure/.../persistence/reconciliation/SettlementRepositoryAdapter.kt`
+- `infrastructure/.../chain/SettlementFinalityPoller.kt` — finality confirmation + primary reorg detection
+- `infrastructure/.../service/ReorgReversalService.kt` — compensating-entry reorg reversal
+- `infrastructure/.../service/RollbackWorkflowService.kt` — agent workflow rollback (the other saga `ReorgReversalService` coordinates with)
 - Issue [#75](https://github.com/idem-finance/idem/issues/75)
+- Issues #278, #279 (EVM finality-aware settlement + chain-reorg reversal), #280 (review remediation)

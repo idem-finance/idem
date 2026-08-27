@@ -12,7 +12,7 @@ class BalanceResultTest {
 
     @Test
     fun `holds all fields including on-chain breakdown`() {
-        val tokenBalance = OnChainTokenBalance(token = "USDC", amount = "2.50")
+        val tokenBalance = OnChainTokenBalance(token = "USDC", amount = "2.50", pendingFinalityAmount = "0.50")
         val result =
             BalanceResult(
                 accountId = "acc-1",
@@ -26,6 +26,7 @@ class BalanceResultTest {
         assertEquals(listOf(tokenBalance), result.onChainBalances)
         assertEquals("USDC", tokenBalance.token)
         assertEquals("2.50", tokenBalance.amount)
+        assertEquals("0.50", tokenBalance.pendingFinalityAmount)
         assertEquals(tokenBalance, tokenBalance.copy())
     }
 }
