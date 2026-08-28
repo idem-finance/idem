@@ -80,6 +80,12 @@ idem:
   limits:
     # Log an INFO nudge when self-hosted tenant count exceeds this value. Set to -1 to disable.
     soft-warn-threshold: 10
+  billing:
+    # Cloud-only. Blank on self-hosted installs by design — the receiver stays mounted but
+    # rejects every request rather than failing startup (see BillingConfig).
+    webhook-secret: "${IDEM_BILLING_WEBHOOK_SECRET:}"
+  tenant-config:
+    cache-ttl-minutes: 10
 
 ---
 spring:
