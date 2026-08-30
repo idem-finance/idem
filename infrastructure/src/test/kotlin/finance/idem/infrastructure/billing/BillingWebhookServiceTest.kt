@@ -4,26 +4,40 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import finance.idem.core.TenantId
 import finance.idem.core.tenant.TenantConfigRepository
+import finance.idem.infrastructure.persistence.tenant.TenantJpaRepository
 import finance.idem.infrastructure.security.HmacSigner
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
 import org.mockito.kotlin.any
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
+import org.mockito.quality.Strictness
 import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class BillingWebhookServiceTest {
     @Mock
     private lateinit var tenantConfigRepository: TenantConfigRepository
+
+    @Mock
+    private lateinit var tenantJpaRepository: TenantJpaRepository
 
     private val objectMapper = ObjectMapper().registerKotlinModule()
     private val secret = "billing-webhook-secret"
     private val tenantId = TenantId.generate()
 
-    private fun payload() = """{"tenantId":"${tenantId.value}"}"""
+    @BeforeEach
+    fun setUp() {
+        whenever(tenantJpaRepository.existsById(any())).thenReturn(true)
+    }
+
+    private fun payload(tenantIdValue: String = tenantId.value.toString()) = """{"tenantId":"$tenantIdValue"}"""
 
     private fun sign(
         body: String,
@@ -31,7 +45,7 @@ class BillingWebhookServiceTest {
     ) = HmacSigner.hexHmacSha256(withSecret, body)
 
     private fun service(configuredSecret: String = secret) =
-        BillingWebhookService(tenantConfigRepository, objectMapper, BillingConfig(webhookSecret = configuredSecret))
+        BillingWebhookService(tenantConfigRepository, tenantJpaRepository, objectMapper, BillingConfig(webhookSecret = configuredSecret))
 
     @Test
     fun `handle rejects when webhook secret is not configured — fail closed`() {
@@ -71,6 +85,27 @@ class BillingWebhookServiceTest {
     @Test
     fun `handle succeeds without side effects on unparsable payload`() {
         val body = "not json"
+
+        val result = service().handle(signature = sign(body), rawBody = body)
+
+        assertTrue(result.isSuccess)
+        verify(tenantConfigRepository, never()).invalidate(any())
+    }
+
+    @Test
+    fun `handle succeeds without invalidating when tenantId is malformed`() {
+        val body = payload(tenantIdValue = "not-a-uuid")
+
+        val result = service().handle(signature = sign(body), rawBody = body)
+
+        assertTrue(result.isSuccess)
+        verify(tenantConfigRepository, never()).invalidate(any())
+    }
+
+    @Test
+    fun `handle succeeds without invalidating when tenantId is well-formed but unknown`() {
+        whenever(tenantJpaRepository.existsById(any())).thenReturn(false)
+        val body = payload()
 
         val result = service().handle(signature = sign(body), rawBody = body)
 

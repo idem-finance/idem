@@ -5,13 +5,23 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import finance.idem.application.billing.BillingWebhookUseCase
 import finance.idem.core.TenantId
 import finance.idem.core.tenant.TenantConfigRepository
+import finance.idem.infrastructure.persistence.tenant.TenantJpaRepository
 import finance.idem.infrastructure.security.HmacSigner
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
+/**
+ * The HMAC signature over the request body proves the caller holds the shared billing
+ * secret — i.e. that the request came from the trusted billing integration — but says
+ * nothing about whether the tenantId named inside that body is legitimate: the secret is
+ * global, not per-tenant, and the tenantId is inherent to the payload it signs. That trust
+ * model is acceptable ONLY because this endpoint's sole effect is idempotent cache
+ * invalidation; do not extend this pattern to a mutating endpoint without per-tenant auth.
+ */
 @Service
 class BillingWebhookService(
     private val tenantConfigRepository: TenantConfigRepository,
+    private val tenantJpaRepository: TenantJpaRepository,
     private val objectMapper: ObjectMapper,
     private val config: BillingConfig,
 ) : BillingWebhookUseCase {
@@ -39,11 +49,16 @@ class BillingWebhookService(
                 return Result.success(Unit)
             }
 
-        runCatching {
-            tenantConfigRepository.invalidate(TenantId.of(payload.tenantId))
-        }.onFailure {
-            log.warn("Billing webhook: invalid tenantId '${payload.tenantId}' — ignoring")
-        }
+        runCatching { TenantId.of(payload.tenantId) }
+            .onSuccess { tenantId ->
+                if (tenantJpaRepository.existsById(tenantId.value)) {
+                    tenantConfigRepository.invalidate(tenantId)
+                } else {
+                    log.warn("Billing webhook: unknown tenantId '${payload.tenantId}' — ignoring")
+                }
+            }.onFailure {
+                log.warn("Billing webhook: invalid tenantId '${payload.tenantId}' — ignoring")
+            }
 
         return Result.success(Unit)
     }
