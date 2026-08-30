@@ -8,7 +8,6 @@ import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.infrastructure.security.HmacSigner
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import java.security.MessageDigest
 
 @Service
 class QuickNodeWebhookService(
@@ -122,13 +121,7 @@ class QuickNodeWebhookService(
             timestamp: String,
             body: String,
             header: String,
-        ): Boolean {
-            val expected = HmacSigner.hexHmacSha256(secret, nonce + timestamp + body)
-            return MessageDigest.isEqual(
-                expected.toByteArray(Charsets.UTF_8),
-                header.toByteArray(Charsets.UTF_8),
-            )
-        }
+        ): Boolean = HmacSigner.verify(secret, nonce + timestamp + body, header)
 
         internal fun networkToChainKey(network: String): String? =
             when (network.lowercase()) {

@@ -13,7 +13,6 @@ import finance.idem.infrastructure.security.HmacSigner
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
-import java.security.MessageDigest
 
 @Service
 class AlchemyWebhookService(
@@ -153,13 +152,7 @@ class AlchemyWebhookService(
             signingKey: String,
             rawBody: String,
             signature: String,
-        ): Boolean {
-            val expected = HmacSigner.hexHmacSha256(signingKey, rawBody)
-            return MessageDigest.isEqual(
-                expected.toByteArray(Charsets.UTF_8),
-                signature.toByteArray(Charsets.UTF_8),
-            )
-        }
+        ): Boolean = HmacSigner.verify(signingKey, rawBody, signature)
 
         internal fun networkToChainKey(network: String): String? =
             when (network.uppercase()) {
