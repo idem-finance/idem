@@ -43,6 +43,13 @@ class TenantRepositoryAdapter(
                 webhookSecret = config.webhookSecret,
                 createdAt = existing?.createdAt ?: now,
                 updatedAt = now,
+                plan = existing?.plan ?: "OPEN_SOURCE",
+                rateLimitPerSecond = existing?.rateLimitPerSecond,
+                rateLimitPerMinute = existing?.rateLimitPerMinute,
+                featureFlags = existing?.featureFlags ?: "",
+                hmacKey = existing?.hmacKey,
+                billingCustomerId = existing?.billingCustomerId,
+                suspendedAt = existing?.suspendedAt,
             )
         jpaRepository.save(updated)
     }
