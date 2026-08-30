@@ -336,4 +336,24 @@ class AgentAuditRepositoryAdapterTest : SharedPostgresTestBase() {
 
         assertEquals(event.computeHmac(auditProperties.hmacSecret), hmac)
     }
+
+    @Test
+    fun `save propagates uncaught when tenant config lookup fails — never silently drops the audit write`() {
+        val planId = WorkflowPlanId.generate()
+        val event = AgentAuditEvent.pending(planId, tenantA, agentContext(planId), "offramp")
+        whenever(tenantConfigRepository.findByTenantId(tenantA))
+            .thenThrow(RuntimeException("redis unavailable"))
+
+        assertThrows<RuntimeException> { adapter.save(event) }
+
+        entityManager.clear()
+        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
+        val count =
+            (
+                entityManager
+                    .createNativeQuery("SELECT COUNT(*) FROM agent_audit_events WHERE id = '${event.id}'")
+                    .singleResult as Number
+            ).toLong()
+        assertEquals(0L, count, "A failed HMAC-key lookup must not leave a half-written row")
+    }
 }

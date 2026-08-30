@@ -6,7 +6,6 @@ import finance.idem.application.agentic.WorkflowStepCommand
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
-import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
@@ -39,6 +38,7 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import org.mockito.quality.Strictness
 import kotlin.test.assertEquals
@@ -49,8 +49,6 @@ import kotlin.test.assertTrue
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ExecuteWorkflowServiceTest {
     @Mock lateinit var workflowPlanRepository: WorkflowPlanRepository
-
-    @Mock lateinit var agentAuditRepository: AgentAuditRepository
 
     @Mock lateinit var agentAuditRecorder: AgentAuditRecorder
 
@@ -74,7 +72,6 @@ class ExecuteWorkflowServiceTest {
         service =
             ExecuteWorkflowService(
                 workflowPlanRepository,
-                agentAuditRepository,
                 agentAuditRecorder,
                 webhookOutboxRepository,
                 postTransactionUseCase,
@@ -133,14 +130,11 @@ class ExecuteWorkflowServiceTest {
 
         verify(workflowPlanRepository, times(2)).updateStep(any(), any(), any())
 
-        // PENDING is written durably (own transaction); COMPLETED joins the business tx.
-        val pendingCaptor = argumentCaptor<AgentAuditEvent>()
-        verify(agentAuditRecorder, times(1)).recordDurable(pendingCaptor.capture())
-        assertEquals(AgentAuditStatus.PENDING, pendingCaptor.firstValue.status)
-
-        val completedCaptor = argumentCaptor<AgentAuditEvent>()
-        verify(agentAuditRepository, times(1)).save(completedCaptor.capture())
-        assertEquals(AgentAuditStatus.COMPLETED, completedCaptor.firstValue.status)
+        // PENDING and COMPLETED are both written durably, each in its own transaction.
+        val auditCaptor = argumentCaptor<AgentAuditEvent>()
+        verify(agentAuditRecorder, times(2)).recordDurable(auditCaptor.capture())
+        assertEquals(AgentAuditStatus.PENDING, auditCaptor.allValues[0].status)
+        assertEquals(AgentAuditStatus.COMPLETED, auditCaptor.allValues[1].status)
 
         val outboxCaptor = argumentCaptor<WebhookOutboxEntry>()
         verify(webhookOutboxRepository).save(outboxCaptor.capture())
@@ -158,12 +152,46 @@ class ExecuteWorkflowServiceTest {
 
         verify(workflowPlanRepository, times(0)).insert(any())
         verify(workflowPlanRepository, times(0)).updateStatus(any(), any(), any(), anyOrNull(), anyOrNull(), anyOrNull())
-        // No COMPLETED/in-tx audit, but the denied attempt is recorded durably as FAILED.
-        verify(agentAuditRepository, times(0)).save(any())
+        // No plan/status changes, but the denied attempt is recorded durably as FAILED.
         val deniedCaptor = argumentCaptor<AgentAuditEvent>()
         verify(agentAuditRecorder, times(1)).recordDurable(deniedCaptor.capture())
         assertEquals(AgentAuditStatus.FAILED, deniedCaptor.firstValue.status)
         assertTrue(deniedCaptor.firstValue.outcome!!.startsWith("Policy denied"))
+    }
+
+    @Test
+    fun `pending audit write failure propagates and aborts execution before any step runs`() {
+        whenever(agentAuditRecorder.recordDurable(any())).thenThrow(RuntimeException("redis unavailable"))
+
+        assertThrows<RuntimeException> {
+            service.execute(twoStepCommand())
+        }
+
+        // The plan row itself may already be inserted, but nothing must execute un-audited.
+        verifyNoInteractions(postTransactionUseCase)
+        verify(workflowPlanRepository, times(0)).updateStatus(any(), any(), any(), anyOrNull(), anyOrNull(), anyOrNull())
+    }
+
+    @Test
+    fun `completed audit write failure does not roll back an already-successful execution`() {
+        val txId0 = TransactionId.generate()
+        val txId1 = TransactionId.generate()
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(txId0), Result.success(txId1))
+        // First recordDurable call is the pending write (succeeds); second is the completed
+        // write (fails) — proves an audit hiccup after execution can't undo a real commit.
+        org.mockito.Mockito
+            .doNothing()
+            .doThrow(RuntimeException("redis unavailable"))
+            .`when`(agentAuditRecorder)
+            .recordDurable(any())
+
+        val result = service.execute(twoStepCommand())
+
+        assertTrue(result.isSuccess)
+        val statusCaptor = argumentCaptor<WorkflowStatus>()
+        verify(workflowPlanRepository, times(2)).updateStatus(any(), any(), statusCaptor.capture(), anyOrNull(), anyOrNull(), anyOrNull())
+        assertEquals(WorkflowStatus.COMMITTED, statusCaptor.allValues[1])
+        verify(webhookOutboxRepository, times(1)).save(any())
     }
 
     @Test
@@ -194,7 +222,6 @@ class ExecuteWorkflowServiceTest {
         verify(agentAuditRecorder, times(2)).recordDurable(auditCaptor.capture())
         assertEquals(AgentAuditStatus.PENDING, auditCaptor.allValues[0].status)
         assertEquals(AgentAuditStatus.FAILED, auditCaptor.allValues[1].status)
-        verify(agentAuditRepository, times(0)).save(any())
 
         verify(webhookOutboxRepository, times(0)).save(any())
     }
@@ -206,10 +233,10 @@ class ExecuteWorkflowServiceTest {
 
         service.execute(twoStepCommand())
 
-        val order = inOrder(agentAuditRecorder, postTransactionUseCase, agentAuditRepository, webhookOutboxRepository)
+        val order = inOrder(agentAuditRecorder, postTransactionUseCase, webhookOutboxRepository)
         order.verify(agentAuditRecorder).recordDurable(any()) // durable PENDING before steps
         order.verify(postTransactionUseCase, times(2)).execute(any())
-        order.verify(agentAuditRepository).save(any()) // in-tx COMPLETED after steps
+        order.verify(agentAuditRecorder).recordDurable(any()) // durable COMPLETED after steps
         order.verify(webhookOutboxRepository).save(any())
     }
 

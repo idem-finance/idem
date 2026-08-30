@@ -4,7 +4,6 @@ import finance.idem.application.agentic.RollbackWorkflowCommand
 import finance.idem.application.agentic.WorkflowPlanNotFound
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
-import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
@@ -33,9 +32,9 @@ import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.time.Instant
 import java.util.UUID
@@ -46,8 +45,6 @@ import kotlin.test.assertTrue
 @ExtendWith(MockitoExtension::class)
 class RollbackWorkflowServiceTest {
     @Mock lateinit var workflowPlanRepository: WorkflowPlanRepository
-
-    @Mock lateinit var agentAuditRepository: AgentAuditRepository
 
     @Mock lateinit var agentAuditRecorder: AgentAuditRecorder
 
@@ -71,7 +68,6 @@ class RollbackWorkflowServiceTest {
         service =
             RollbackWorkflowService(
                 workflowPlanRepository,
-                agentAuditRepository,
                 agentAuditRecorder,
                 webhookOutboxRepository,
                 transactionRepository,
@@ -178,7 +174,7 @@ class RollbackWorkflowServiceTest {
         assertTrue(result.isFailure)
         assertIs<WorkflowPlanNotFound>(result.exceptionOrNull())
         verify(postTransactionUseCase, times(0)).execute(any())
-        verify(agentAuditRepository, times(0)).save(any())
+        verifyNoInteractions(agentAuditRecorder)
     }
 
     @Test
@@ -196,7 +192,7 @@ class RollbackWorkflowServiceTest {
             assertIs<IllegalStateException>(result.exceptionOrNull())
             assertTrue(result.exceptionOrNull()!!.message!!.contains(status.name))
         }
-        verify(agentAuditRepository, times(0)).save(any())
+        verifyNoInteractions(agentAuditRecorder)
         verify(postTransactionUseCase, times(0)).execute(any())
     }
 
@@ -276,15 +272,61 @@ class RollbackWorkflowServiceTest {
 
         service.execute(rollbackCommand())
 
-        // PENDING is written durably (own transaction); COMPLETED joins the business tx.
-        val pendingCaptor = argumentCaptor<AgentAuditEvent>()
-        verify(agentAuditRecorder, times(1)).recordDurable(pendingCaptor.capture())
-        assertEquals(AgentAuditStatus.PENDING, pendingCaptor.firstValue.status)
+        // PENDING and COMPLETED are both written durably, each in its own transaction.
+        val auditCaptor = argumentCaptor<AgentAuditEvent>()
+        verify(agentAuditRecorder, times(2)).recordDurable(auditCaptor.capture())
+        assertEquals(AgentAuditStatus.PENDING, auditCaptor.allValues[0].status)
+        assertEquals(AgentAuditStatus.COMPLETED, auditCaptor.allValues[1].status)
+        assertTrue(auditCaptor.allValues[1].outcome!!.contains("compliance review"))
+    }
 
-        val completedCaptor = argumentCaptor<AgentAuditEvent>()
-        verify(agentAuditRepository, times(1)).save(completedCaptor.capture())
-        assertEquals(AgentAuditStatus.COMPLETED, completedCaptor.firstValue.status)
-        assertTrue(completedCaptor.firstValue.outcome!!.contains("compliance review"))
+    @Test
+    fun `pending audit write failure propagates and aborts before any compensation runs`() {
+        val txId = TransactionId.generate()
+        val plan =
+            WorkflowPlan
+                .create(planId, tenantId, agentContext, listOf("step-0"), now)
+                .withStepExecuted(0, txId)
+                .withStatus(WorkflowStatus.COMMITTED)
+
+        whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
+        whenever(agentAuditRecorder.recordDurable(any())).thenThrow(RuntimeException("redis unavailable"))
+
+        assertThrows<RuntimeException> {
+            service.execute(rollbackCommand())
+        }
+
+        verify(postTransactionUseCase, times(0)).execute(any())
+        verify(workflowPlanRepository, times(0)).updateStatus(any(), any(), any(), anyOrNull(), anyOrNull(), anyOrNull())
+    }
+
+    @Test
+    fun `completed audit write failure does not roll back an already-successful compensation`() {
+        val txId = TransactionId.generate()
+        val plan =
+            WorkflowPlan
+                .create(planId, tenantId, agentContext, listOf("step-0"), now)
+                .withStepExecuted(0, txId)
+                .withStatus(WorkflowStatus.COMMITTED)
+
+        whenever(workflowPlanRepository.findById(planId, tenantId)).thenReturn(plan)
+        whenever(transactionRepository.findById(txId, tenantId)).thenReturn(originalTx(txId))
+        whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId.generate()))
+        // First recordDurable call is the pending write (succeeds); second is the completed
+        // write (fails) — proves an audit hiccup after compensation can't undo a real rollback.
+        org.mockito.Mockito
+            .doNothing()
+            .doThrow(RuntimeException("redis unavailable"))
+            .`when`(agentAuditRecorder)
+            .recordDurable(any())
+
+        val result = service.execute(rollbackCommand())
+
+        assertTrue(result.isSuccess)
+        val statusCaptor = argumentCaptor<WorkflowStatus>()
+        verify(workflowPlanRepository, times(1)).updateStatus(any(), any(), statusCaptor.capture(), anyOrNull(), anyOrNull(), anyOrNull())
+        assertEquals(WorkflowStatus.ROLLED_BACK, statusCaptor.firstValue)
+        verify(webhookOutboxRepository, times(1)).save(any())
     }
 
     @Test
@@ -335,7 +377,7 @@ class RollbackWorkflowServiceTest {
             .thenReturn(Result.failure(RuntimeException("ledger rejected")))
 
         val ex =
-            org.junit.jupiter.api.assertThrows<RuntimeException> {
+            assertThrows<RuntimeException> {
                 service.execute(rollbackCommand())
             }
         assertTrue(ex.message!!.contains("step 0"))
@@ -346,6 +388,5 @@ class RollbackWorkflowServiceTest {
         verify(agentAuditRecorder, times(2)).recordDurable(auditCaptor.capture())
         assertEquals(AgentAuditStatus.PENDING, auditCaptor.allValues[0].status)
         assertEquals(AgentAuditStatus.FAILED, auditCaptor.allValues[1].status)
-        verify(agentAuditRepository, never()).save(any())
     }
 }

@@ -5,7 +5,6 @@ import finance.idem.application.agentic.SessionDebitPort
 import finance.idem.application.agentic.WorkflowStepCommand
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionUseCase
-import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
@@ -39,8 +38,6 @@ import org.mockito.quality.Strictness
 class ExecuteWorkflowServicePolicyTest {
     @Mock lateinit var workflowPlanRepository: WorkflowPlanRepository
 
-    @Mock lateinit var agentAuditRepository: AgentAuditRepository
-
     @Mock lateinit var agentAuditRecorder: AgentAuditRecorder
 
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
@@ -63,7 +60,6 @@ class ExecuteWorkflowServicePolicyTest {
         service =
             ExecuteWorkflowService(
                 workflowPlanRepository,
-                agentAuditRepository,
                 agentAuditRecorder,
                 webhookOutboxRepository,
                 postTransactionUseCase,
@@ -129,7 +125,6 @@ class ExecuteWorkflowServicePolicyTest {
         assertThrows<PolicyViolationException> { service.execute(cmd()) }
 
         verify(workflowPlanRepository, times(0)).insert(any())
-        verify(agentAuditRepository, times(0)).save(any())
     }
 
     @Test
