@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Duration
 import java.time.Instant
 
@@ -29,11 +31,20 @@ class TenantConfigRepositoryAdapter(
     override fun findByTenantId(tenantId: TenantId): TenantConfig? {
         val cacheKey = cacheKey(tenantId)
         redisTemplate.opsForValue().get(cacheKey)?.let { json ->
-            return deserializeFromCache(json)
+            return if (json == NOT_FOUND_MARKER) null else deserializeFromCache(json)
         }
 
+        // Repopulating the cache here after a miss can race a concurrent invalidate() (from
+        // BillingWebhookService) and re-cache a value that's stale by the time this SET lands.
+        // upsert()'s own cache eviction now runs strictly after its DB commit (see below), so
+        // the only remaining staleness window is bounded by cacheTtl and already best-effort.
         entityManager.setRlsTenantId(tenantId)
-        val config = jpaRepository.findById(tenantId.value).orElse(null)?.toTenantConfig() ?: return null
+        val entity = jpaRepository.findById(tenantId.value).orElse(null)
+        if (entity == null) {
+            redisTemplate.opsForValue().set(cacheKey, NOT_FOUND_MARKER, cacheTtl)
+            return null
+        }
+        val config = entity.toTenantConfig()
         redisTemplate.opsForValue().set(cacheKey, serializeForCache(config), cacheTtl)
         return config
     }
@@ -59,11 +70,31 @@ class TenantConfigRepositoryAdapter(
                 suspendedAt = config.suspendedAt,
             )
         jpaRepository.save(updated)
-        redisTemplate.delete(cacheKey(config.tenantId))
+        evictCacheAfterCommit(config.tenantId)
     }
 
     override fun invalidate(tenantId: TenantId) {
         redisTemplate.delete(cacheKey(tenantId))
+    }
+
+    /**
+     * Defers the cache eviction until this transaction commits. Deleting immediately (while
+     * the write is still uncommitted) lets a concurrent cache-miss reader repopulate the cache
+     * with the pre-upsert value in the window before commit, where the eviction that was meant
+     * to prevent exactly that has already fired and won't fire again.
+     */
+    private fun evictCacheAfterCommit(tenantId: TenantId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                object : TransactionSynchronization {
+                    override fun afterCommit() {
+                        redisTemplate.delete(cacheKey(tenantId))
+                    }
+                },
+            )
+        } else {
+            redisTemplate.delete(cacheKey(tenantId))
+        }
     }
 
     private fun cacheKey(tenantId: TenantId) = "tenantconfig:${tenantId.value}"
@@ -123,5 +154,9 @@ class TenantConfigRepositoryAdapter(
                     suspendedAt = config.suspendedAt,
                 )
         }
+    }
+
+    companion object {
+        private const val NOT_FOUND_MARKER = "__NOT_FOUND__"
     }
 }
