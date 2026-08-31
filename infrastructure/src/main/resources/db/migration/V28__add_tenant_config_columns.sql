@@ -14,3 +14,14 @@ ALTER TABLE tenants
     ADD COLUMN hmac_key TEXT,
     ADD COLUMN billing_customer_id TEXT,
     ADD COLUMN suspended_at TIMESTAMPTZ;
+
+-- hmac_key inherits this table's NO FORCE ROW LEVEL SECURITY (the table-owner role
+-- bypasses RLS for cross-tenant reads such as WebhookOutboxPoller resolving
+-- webhook_url/webhook_secret) -- an accepted, defense-in-depth-only tradeoff at the
+-- same exposure level webhook_secret has carried since V13. Documented here (not
+-- fixed): a table split would be needed to isolate hmac_key from this exemption,
+-- and isn't warranted without a driving incident.
+COMMENT ON COLUMN tenants.hmac_key IS
+    'Per-tenant HMAC key for AgentAuditEvent signing. Inherits this table''s '
+    'NO FORCE ROW LEVEL SECURITY exemption (see V13) -- same accepted, '
+    'defense-in-depth-only tradeoff already applied to webhook_secret.';

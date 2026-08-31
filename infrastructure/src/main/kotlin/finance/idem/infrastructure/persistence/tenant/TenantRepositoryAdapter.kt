@@ -17,7 +17,7 @@ class TenantRepositoryAdapter(
      * any tenant's webhook config while WebhookOutboxPoller iterates
      * cross-tenant dispatchable rows. That same NO FORCE exemption also covers
      * every other column on this row this class touches below (`hmac_key`,
-     * `billing_customer_id`, `plan`, rate limits, `feature_flags`) — see V29.
+     * `billing_customer_id`, `plan`, rate limits, `feature_flags`) — see V28.
      */
     @Transactional(readOnly = true)
     override fun findWebhookConfig(tenantId: TenantId): TenantWebhookConfig? {
