@@ -92,7 +92,6 @@
     <ID>ReturnCount:AlchemyWebhookService.kt$AlchemyWebhookService$override fun handle( signature: String?, rawBody: String, ): Result&lt;Unit&gt;</ID>
     <ID>ReturnCount:ApiKeyService.kt$ApiKeyService$fun validate(rawKey: String): ValidatedApiKey?</ID>
     <ID>ReturnCount:BasicReconciliationService.kt$BasicReconciliationService$override fun reconcile(transaction: Transaction): ReconciliationResult</ID>
-    <ID>ReturnCount:BillingWebhookService.kt$BillingWebhookService$override fun handle( signature: String?, rawBody: String, ): Result&lt;Unit&gt;</ID>
     <ID>ReturnCount:CancelSettlementService.kt$CancelSettlementService$@Transactional override fun execute(cmd: CancelSettlementCommand): Result&lt;Settlement&gt;</ID>
     <ID>ReturnCount:DescribeAccountService.kt$DescribeAccountService$override fun execute(query: DescribeAccountQuery): Result&lt;AccountDescription&gt;</ID>
     <ID>ReturnCount:EvmChainReader.kt$EvmChainReader$internal fun decodeTransfer( topics: List&lt;String&gt;, data: String, txHash: String, blockNumber: Long, logIndex: Int, contractAddress: String, relevant: List&lt;WatchedAddress&gt; = watchedAddressRepository.findByChainKey(chainKey), ): DetectedTransfer?</ID>

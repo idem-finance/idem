@@ -20,7 +20,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
@@ -103,20 +102,6 @@ class TenantConfigRepositoryAdapterIntegrationTest : SharedPostgresTestBase() {
         val found = adapter.findByTenantId(tenantId)
 
         assertEquals(TenantPlan.ENTERPRISE, found?.plan)
-    }
-
-    @Test
-    fun `invalidate evicts cache so a later read hits the DB again`() {
-        val tenantId = TenantId.generate()
-        adapter.upsert(config(tenantId, rateLimitPerSecond = 5))
-        adapter.findByTenantId(tenantId) // populate cache
-
-        // Simulate an out-of-band DB update the cache doesn't know about yet.
-        adapter.invalidate(tenantId)
-        val found = adapter.findByTenantId(tenantId)
-
-        assertTrue(found != null)
-        assertEquals(5, found.rateLimitPerSecond)
     }
 
     @Test

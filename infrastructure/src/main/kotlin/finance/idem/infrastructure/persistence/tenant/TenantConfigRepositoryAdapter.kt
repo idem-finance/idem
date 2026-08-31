@@ -34,10 +34,10 @@ class TenantConfigRepositoryAdapter(
             return if (json == NOT_FOUND_MARKER) null else deserializeFromCache(json)
         }
 
-        // Repopulating the cache here after a miss can race a concurrent invalidate() (from
-        // BillingWebhookService) and re-cache a value that's stale by the time this SET lands.
-        // upsert()'s own cache eviction now runs strictly after its DB commit (see below), so
-        // the only remaining staleness window is bounded by cacheTtl and already best-effort.
+        // Repopulating the cache here after a miss can race a concurrent upsert() and re-cache
+        // a value that's stale by the time this SET lands. upsert()'s own cache eviction now
+        // runs strictly after its DB commit (see below), so the only remaining staleness window
+        // is bounded by cacheTtl and already best-effort.
         entityManager.setRlsTenantId(tenantId)
         val entity = jpaRepository.findById(tenantId.value).orElse(null)
         if (entity == null) {
@@ -71,10 +71,6 @@ class TenantConfigRepositoryAdapter(
             )
         jpaRepository.save(updated)
         evictCacheAfterCommit(config.tenantId)
-    }
-
-    override fun invalidate(tenantId: TenantId) {
-        redisTemplate.delete(cacheKey(tenantId))
     }
 
     /**
