@@ -18,6 +18,7 @@ import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.LgpdRetentionRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.BasicReconciliationUseCase
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TransactionId
 import finance.idem.core.compliance.TravelRuleData
@@ -27,6 +28,7 @@ import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.ledger.TransactionStatus
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.core.usage.MetricType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -44,6 +46,7 @@ class PostTransactionService(
     private val travelRuleValidator: TravelRuleValidator,
     private val complianceQueueRepository: ComplianceQueueRepository,
     private val lgpdRetentionRepository: LgpdRetentionRepository,
+    private val usageMeteringService: UsageMeteringService,
 ) : PostTransactionUseCase {
     override fun execute(cmd: PostTransactionCommand): Result<TransactionId> {
         val txId = TransactionId.generate()
@@ -149,6 +152,12 @@ class PostTransactionService(
         if (flaggedItems.isNotEmpty()) {
             webhookOutboxRepository.save(WebhookOutboxEntry.travelRuleRequired(transaction))
         }
+
+        // recordUsage joins this method's ambient transaction (see UsageMeteringService KDoc)
+        // — a metering failure here rolls back the whole commit, same as auditRepository.save
+        // and webhookOutboxRepository.save above, per CLAUDE.md's single-transaction rule.
+        usageMeteringService.recordUsage(cmd.tenantId, MetricType.TRANSACTION_COUNT)
+        usageMeteringService.recordUsage(cmd.tenantId, MetricType.ENTRY_COUNT, lines.size.toLong())
 
         return Result.success(transaction.id)
     }

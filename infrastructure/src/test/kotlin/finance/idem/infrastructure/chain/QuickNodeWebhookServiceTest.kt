@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
@@ -11,6 +12,7 @@ import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.core.usage.MetricType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -35,6 +37,7 @@ class QuickNodeWebhookServiceTest {
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var deadLetterRecorder: DeadLetterRecorder
+    private lateinit var usageMeteringService: UsageMeteringService
     private lateinit var solanaReader: SolanaChainReader
     private lateinit var service: QuickNodeWebhookService
 
@@ -68,6 +71,7 @@ class QuickNodeWebhookServiceTest {
         checkpointRepository = mock()
         postTransactionUseCase = mock()
         deadLetterRecorder = mock()
+        usageMeteringService = mock()
         solanaReader = mock()
         service =
             QuickNodeWebhookService(
@@ -77,6 +81,7 @@ class QuickNodeWebhookServiceTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(quicknodeWebhookSecret = signingKey),
                 deadLetterRecorder = deadLetterRecorder,
+                usageMeteringService = usageMeteringService,
                 chainReaders = listOf(solanaReader),
             )
     }
@@ -138,6 +143,7 @@ class QuickNodeWebhookServiceTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(quicknodeWebhookSecret = ""),
                 deadLetterRecorder = deadLetterRecorder,
+                usageMeteringService = usageMeteringService,
                 chainReaders = listOf(solanaReader),
             )
         whenever(watchedAddressRepository.findByChainKey("SOLANA")).thenReturn(emptyList())
@@ -208,6 +214,7 @@ class QuickNodeWebhookServiceTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(quicknodeWebhookSecret = signingKey),
                 deadLetterRecorder = deadLetterRecorder,
+                usageMeteringService = usageMeteringService,
                 chainReaders = emptyList(),
             )
         val body = buildBody(testSignature, testSlot)
@@ -246,6 +253,15 @@ class QuickNodeWebhookServiceTest {
         assertEquals(2, cmd.lines.size)
 
         verify(checkpointRepository).save("SOLANA", testSlot)
+        // tenantId matched with any(), not eq() -- Mockito's eq()/any() box a @JvmInline value
+        // class (TenantId) into a real object, while the real call site passes the
+        // compiler-erased UUID directly, so eq(tenantId) always reports a false mismatch here.
+        verify(usageMeteringService).recordUsage(
+            any(),
+            eq(MetricType.CHAIN_EVENT_COUNT),
+            any(),
+            eq(transfer.idempotencyKey),
+        )
     }
 
     @Test

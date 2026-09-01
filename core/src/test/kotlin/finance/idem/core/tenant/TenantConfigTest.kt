@@ -1,8 +1,10 @@
 package finance.idem.core.tenant
 
 import finance.idem.core.TenantId
+import finance.idem.core.usage.MetricType
 import org.junit.jupiter.api.Test
 import java.time.Instant
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -22,6 +24,30 @@ class TenantConfigTest {
         assertNull(config.hmacKey)
         assertNull(config.billingCustomerId)
         assertFalse(config.isSuspended)
+        MetricType.entries.forEach { assertNull(config.limitFor(it)) }
+    }
+
+    @Test
+    fun `limitFor returns the field matching each metric type`() {
+        val config =
+            tenantConfig().copy(
+                monthlyTransactionLimit = 1L,
+                monthlyApiCallLimit = 2L,
+                monthlyChainEventLimit = 3L,
+                monthlyWebhookDeliveryLimit = 4L,
+                monthlyEntryLimit = 5L,
+            )
+
+        assertEquals(1L, config.limitFor(MetricType.TRANSACTION_COUNT))
+        assertEquals(2L, config.limitFor(MetricType.API_CALL_COUNT))
+        assertEquals(3L, config.limitFor(MetricType.CHAIN_EVENT_COUNT))
+        assertEquals(4L, config.limitFor(MetricType.WEBHOOK_DELIVERY_COUNT))
+        assertEquals(5L, config.limitFor(MetricType.ENTRY_COUNT))
+    }
+
+    @Test
+    fun `limitFor returns null for an unconfigured metric type`() {
+        assertNull(tenantConfig().limitFor(MetricType.TRANSACTION_COUNT))
     }
 
     @Test

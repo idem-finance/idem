@@ -1,5 +1,6 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.tenant.TenantConfigRepository
 import finance.idem.infrastructure.SharedPostgresTestBase
 import jakarta.persistence.EntityManager
@@ -19,6 +20,11 @@ abstract class PostgresServiceIntegrationTestBase : SharedPostgresTestBase() {
     // elsewhere is harmless.
     @MockitoBean
     protected lateinit var tenantConfigRepository: TenantConfigRepository
+
+    // Same rationale: PostTransactionService now depends on this too. A no-op mock is the
+    // right default here — these tests assert ledger behavior, not usage-metering side effects.
+    @MockitoBean
+    protected lateinit var usageMeteringService: UsageMeteringService
 
     @BeforeEach
     fun stubTenantConfigLookup() {

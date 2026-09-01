@@ -2,6 +2,7 @@ package finance.idem.infrastructure.chain
 
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
@@ -9,6 +10,7 @@ import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.core.usage.MetricType
 import net.javacrumbs.shedlock.core.LockConfiguration
 import net.javacrumbs.shedlock.core.LockingTaskExecutor
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -17,6 +19,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doAnswer
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -29,6 +32,7 @@ class ChainReaderOrchestratorTest {
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var deadLetterRecorder: DeadLetterRecorder
+    private lateinit var usageMeteringService: UsageMeteringService
     private lateinit var lockingTaskExecutor: LockingTaskExecutor
 
     private val recoveryExecutor: Executor = Executor { it.run() }
@@ -42,6 +46,7 @@ class ChainReaderOrchestratorTest {
         checkpointRepository = mock()
         postTransactionUseCase = mock()
         deadLetterRecorder = mock()
+        usageMeteringService = mock()
         lockingTaskExecutor = mock()
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId(UUID.randomUUID())))
         // Simulate the lock being acquired: run the recovery task synchronously.
@@ -56,6 +61,7 @@ class ChainReaderOrchestratorTest {
             checkpointRepository,
             postTransactionUseCase,
             deadLetterRecorder,
+            usageMeteringService,
             recoveryExecutor,
         ).also { it.lockingTaskExecutor = lockingTaskExecutor }
 
@@ -138,6 +144,25 @@ class ChainReaderOrchestratorTest {
         verify(postTransactionUseCase).execute(captor.capture())
         assertEquals("chain-recovery", captor.firstValue.createdBy)
         assertEquals(xfer.idempotencyKey, captor.firstValue.idempotencyKey)
+    }
+
+    @Test
+    fun `records CHAIN_EVENT_COUNT usage keyed by the transfer's own idempotency key`() {
+        val xfer = transfer("EVM_1", blockNumber = 100L)
+        val evmReader = fakeReader("EVM_1", xfer)
+
+        val orchestrator = orchestrator(listOf(evmReader))
+        orchestrator.onApplicationStarted()
+
+        // tenantId matched with any(), not eq() -- Mockito's eq()/any() box a @JvmInline value
+        // class (TenantId) into a real object, while the real call site passes the
+        // compiler-erased UUID directly, so eq(tenantId) always reports a false mismatch here.
+        verify(usageMeteringService).recordUsage(
+            any(),
+            eq(MetricType.CHAIN_EVENT_COUNT),
+            any(),
+            eq(xfer.idempotencyKey),
+        )
     }
 
     @Test
@@ -228,6 +253,7 @@ class ChainReaderOrchestratorTest {
                 checkpointRepository,
                 postTransactionUseCase,
                 deadLetterRecorder,
+                usageMeteringService,
                 executor,
             ).also { it.lockingTaskExecutor = lockingTaskExecutor }
         orchestrator.onApplicationStarted()

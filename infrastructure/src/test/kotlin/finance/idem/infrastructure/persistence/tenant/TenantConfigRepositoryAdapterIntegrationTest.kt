@@ -51,6 +51,7 @@ class TenantConfigRepositoryAdapterIntegrationTest : SharedPostgresTestBase() {
         rateLimitPerSecond: Int? = 5,
         featureFlags: Set<String> = setOf("compliance_export"),
         hmacKey: String? = "tenant-hmac-key",
+        monthlyTransactionLimit: Long? = null,
     ) = TenantConfig(
         tenantId = tenantId,
         plan = plan,
@@ -63,6 +64,7 @@ class TenantConfigRepositoryAdapterIntegrationTest : SharedPostgresTestBase() {
         // round-tripped value compares equal instead of differing in trailing nanos.
         createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS),
         suspendedAt = null,
+        monthlyTransactionLimit = monthlyTransactionLimit,
     )
 
     @Test

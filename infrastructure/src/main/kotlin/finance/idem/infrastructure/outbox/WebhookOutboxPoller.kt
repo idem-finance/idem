@@ -3,6 +3,8 @@ package finance.idem.infrastructure.outbox
 import finance.idem.application.outbox.WebhookOutboxDispatch
 import finance.idem.application.port.TenantRepository
 import finance.idem.application.port.WebhookOutboxRepository
+import finance.idem.application.usage.UsageMeteringService
+import finance.idem.core.usage.MetricType
 import finance.idem.infrastructure.security.HmacSigner
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
@@ -22,6 +24,7 @@ class WebhookOutboxPoller(
     private val tenantRepository: TenantRepository,
     private val httpClient: HttpClient,
     private val urlValidator: WebhookUrlValidator,
+    private val usageMeteringService: UsageMeteringService,
     @Value("\${idem.webhook.timeout-ms:5000}") private val timeoutMs: Long,
     @Value("\${idem.webhook.max-attempts:5}") private val maxAttempts: Int,
     @Value("\${idem.webhook.batch-size:50}") private val batchSize: Int,
@@ -85,6 +88,8 @@ class WebhookOutboxPoller(
                 onSuccess = { response ->
                     if (response.statusCode() in 200..299) {
                         webhookOutboxRepository.markDelivered(entry.id, entry.tenantId)
+                        runCatching { usageMeteringService.recordUsage(entry.tenantId, MetricType.WEBHOOK_DELIVERY_COUNT) }
+                            .onFailure { log.warn("WebhookOutboxPoller: failed to record WEBHOOK_DELIVERY_COUNT for id=${entry.id}", it) }
                     } else {
                         handleFailure(entry, "HTTP ${response.statusCode()}")
                     }

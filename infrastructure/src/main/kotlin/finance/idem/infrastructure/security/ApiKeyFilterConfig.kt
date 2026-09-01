@@ -7,10 +7,11 @@ import org.springframework.context.annotation.Configuration
 class ApiKeyFilterConfig(
     private val apiKeyService: ApiKeyService,
     private val sessionAuthStore: McpSseSessionAuthStore,
+    private val apiCallCounter: ApiCallCounter,
 ) {
     @Bean
-    fun apiKeyAuthFilter(): ApiKeyAuthFilter = ApiKeyAuthFilter(apiKeyService)
+    fun apiKeyAuthFilter(): ApiKeyAuthFilter = ApiKeyAuthFilter(apiKeyService, apiCallCounter)
 
     @Bean
-    fun mcpSseAuthBridgeFilter(): McpSseAuthBridgeFilter = McpSseAuthBridgeFilter(sessionAuthStore)
+    fun mcpSseAuthBridgeFilter(): McpSseAuthBridgeFilter = McpSseAuthBridgeFilter(sessionAuthStore, apiCallCounter)
 }

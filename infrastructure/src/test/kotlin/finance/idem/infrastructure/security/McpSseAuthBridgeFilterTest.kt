@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.springframework.mock.web.MockHttpServletRequest
@@ -27,8 +28,10 @@ import kotlin.test.assertNull
 class McpSseAuthBridgeFilterTest {
     @Mock lateinit var chain: FilterChain
 
+    @Mock lateinit var apiCallCounter: ApiCallCounter
+
     private val store = McpSseSessionAuthStore()
-    private val filter = McpSseAuthBridgeFilter(store)
+    private val filter by lazy { McpSseAuthBridgeFilter(store, apiCallCounter) }
 
     private val tenantId = TenantId(UUID.randomUUID())
     private val auth = ApiKeyAuthentication(tenantId, "sk_live_test", listOf(SimpleGrantedAuthority(ApiScope.AGENTS_EXECUTE.name)))
@@ -52,6 +55,7 @@ class McpSseAuthBridgeFilterTest {
         assertNotNull(injected)
         assertEquals(tenantId, injected.principal)
         verify(chain).doFilter(any(), any())
+        verify(apiCallCounter).increment(tenantId)
     }
 
     @Test
@@ -64,6 +68,7 @@ class McpSseAuthBridgeFilterTest {
 
         assertNull(SecurityContextHolder.getContext().authentication)
         verify(chain).doFilter(any(), any())
+        verify(apiCallCounter, never()).increment(any())
     }
 
     @Test
@@ -81,6 +86,7 @@ class McpSseAuthBridgeFilterTest {
         filter.doFilter(request, response, chain)
 
         assertEquals(otherAuth, SecurityContextHolder.getContext().authentication)
+        verify(apiCallCounter, never()).increment(any())
     }
 
     @Test
