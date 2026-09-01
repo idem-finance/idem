@@ -9,6 +9,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 
 class ApiKeyAuthFilter(
     private val apiKeyService: ApiKeyService,
+    private val apiCallCounter: ApiCallCounter,
 ) : OncePerRequestFilter() {
     override fun doFilterInternal(
         request: HttpServletRequest,
@@ -29,6 +30,7 @@ class ApiKeyAuthFilter(
                 val authorities = it.scopes.map { scope -> SimpleGrantedAuthority(scope.name) }
                 SecurityContextHolder.getContext().authentication =
                     ApiKeyAuthentication(it.tenantId, rawKey.take(12), authorities)
+                apiCallCounter.increment(it.tenantId)
             }
         }
         chain.doFilter(request, response)

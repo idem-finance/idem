@@ -1,5 +1,6 @@
 package finance.idem.infrastructure.security
 
+import finance.idem.core.TenantId
 import jakarta.servlet.FilterChain
 import jakarta.servlet.ServletOutputStream
 import jakarta.servlet.WriteListener
@@ -24,6 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter
  */
 class McpSseAuthBridgeFilter(
     private val sessionAuthStore: McpSseSessionAuthStore,
+    private val apiCallCounter: ApiCallCounter,
 ) : OncePerRequestFilter() {
     private val log = LoggerFactory.getLogger(McpSseAuthBridgeFilter::class.java)
 
@@ -55,6 +57,10 @@ class McpSseAuthBridgeFilter(
                 log.debug("POST /mcp/messages — sessionId={}, authFound={}", sessionId, storedAuth != null)
                 if (storedAuth != null) {
                     SecurityContextHolder.getContext().authentication = storedAuth
+                    // ApiKeyAuthFilter already ran and found no header to count on this
+                    // headerless POST — this is the only place that knows the request was
+                    // authenticated, so it owns the API-call count for this path.
+                    apiCallCounter.increment(storedAuth.principal as TenantId)
                 }
                 chain.doFilter(request, response)
             }

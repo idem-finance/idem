@@ -30,6 +30,8 @@ class ApiKeyAuthFilterTest {
 
     @Mock lateinit var chain: FilterChain
 
+    @Mock lateinit var apiCallCounter: ApiCallCounter
+
     private lateinit var filter: ApiKeyAuthFilter
 
     private val tenantId = TenantId(UUID.randomUUID())
@@ -37,7 +39,7 @@ class ApiKeyAuthFilterTest {
 
     @BeforeEach
     fun setUp() {
-        filter = ApiKeyAuthFilter(apiKeyService)
+        filter = ApiKeyAuthFilter(apiKeyService, apiCallCounter)
         SecurityContextHolder.clearContext()
     }
 
@@ -93,6 +95,17 @@ class ApiKeyAuthFilterTest {
 
         assertNull(SecurityContextHolder.getContext().authentication)
         verify(chain).doFilter(request, response)
+        verify(apiCallCounter, org.mockito.kotlin.never()).increment(org.mockito.kotlin.any())
+    }
+
+    @Test
+    fun `valid key — increments the API call counter for the authenticated tenant`() {
+        whenever(request.getHeader("X-API-Key")).thenReturn("sk_live_abc123")
+        whenever(apiKeyService.validate("sk_live_abc123")).thenReturn(validatedKey)
+
+        filter.doFilter(request, response, chain)
+
+        verify(apiCallCounter).increment(tenantId)
     }
 
     @Test
