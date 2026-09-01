@@ -87,6 +87,9 @@ idem:
     # it's rolling up is considered fully elapsed. Override for testing (e.g. "0 * * * * *").
     rollup-cron: "0 5 * * * *"
     rollup-safety-buffer-minutes: 5
+    # Bounds a single run's catch-up so a large backlog can't outrun the 10-minute
+    # @SchedulerLock lease — see UsageMetricsRollupJob KDoc.
+    rollup-max-hours-per-run: 120
     api-call-flush-interval-ms: 60000
 
 ---

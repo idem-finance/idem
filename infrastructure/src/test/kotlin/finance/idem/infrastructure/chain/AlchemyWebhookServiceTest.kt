@@ -7,15 +7,22 @@ import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
+import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.usage.MetricType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.math.BigDecimal
+import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -23,6 +30,7 @@ class AlchemyWebhookServiceTest {
     private val mockWatchedRepo = mock<WatchedAddressRepository>()
     private val mockCheckpointRepo = mock<ChainCheckpointRepository>()
     private val mockUseCase = mock<PostTransactionUseCase>()
+    private val mockUsageMeteringService = mock<UsageMeteringService>()
     private val objectMapper = ObjectMapper().registerKotlinModule()
 
     private val service =
@@ -33,7 +41,7 @@ class AlchemyWebhookServiceTest {
             objectMapper = objectMapper,
             config = ChainConfig(),
             deadLetterRecorder = mock<DeadLetterRecorder>(),
-            usageMeteringService = mock<UsageMeteringService>(),
+            usageMeteringService = mockUsageMeteringService,
         )
 
     private val usdcContract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
@@ -293,6 +301,46 @@ class AlchemyWebhookServiceTest {
 
         assertNotNull(result)
         assertEquals("EVM_1:$txHash:0", result!!.idempotencyKey)
+    }
+
+    // -- handle() --
+
+    @Test
+    fun `handle records CHAIN_EVENT_COUNT usage keyed by the decoded transfer's idempotency key`() {
+        whenever(mockWatchedRepo.findByChainKey("EVM_1")).thenReturn(listOf(watchedAddress))
+        whenever(mockCheckpointRepo.findByChainKey("EVM_1")).thenReturn(null)
+        whenever(mockUseCase.execute(any())).thenReturn(Result.success(TransactionId(UUID.randomUUID())))
+
+        val payload =
+            AlchemyWebhookPayload(
+                type = "ADDRESS_ACTIVITY",
+                event =
+                    AlchemyWebhookEvent(
+                        network = "ETH_MAINNET",
+                        activity =
+                            listOf(
+                                buildActivity(
+                                    toAddress = watchedWallet,
+                                    contract = usdcContract,
+                                    rawValue = "0x000f4240",
+                                    blockNum = "0x1",
+                                    logIndex = "0x0",
+                                ),
+                            ),
+                    ),
+            )
+
+        service.handle(signature = null, rawBody = objectMapper.writeValueAsString(payload))
+
+        // tenantId matched with any(), not eq() -- Mockito's eq()/any() box a @JvmInline value
+        // class (TenantId) into a real object, while the real call site passes the
+        // compiler-erased UUID directly, so eq(tenantId) always reports a false mismatch here.
+        verify(mockUsageMeteringService).recordUsage(
+            any(),
+            eq(MetricType.CHAIN_EVENT_COUNT),
+            any(),
+            eq("EVM_1:$txHash:0"),
+        )
     }
 
     // -- helper --

@@ -29,7 +29,6 @@ import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.ledger.TransactionStatus
 import finance.idem.core.monetary.OnChainEntry
 import finance.idem.core.usage.MetricType
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -49,8 +48,6 @@ class PostTransactionService(
     private val lgpdRetentionRepository: LgpdRetentionRepository,
     private val usageMeteringService: UsageMeteringService,
 ) : PostTransactionUseCase {
-    private val log = LoggerFactory.getLogger(javaClass)
-
     override fun execute(cmd: PostTransactionCommand): Result<TransactionId> {
         val txId = TransactionId.generate()
         val now = Instant.now()
@@ -156,12 +153,11 @@ class PostTransactionService(
             webhookOutboxRepository.save(WebhookOutboxEntry.travelRuleRequired(transaction))
         }
 
-        // Best-effort — usageMeteringService.recordUsage runs in its own REQUIRES_NEW
-        // transaction, so a metering failure can never roll back this ledger commit.
-        runCatching { usageMeteringService.recordUsage(cmd.tenantId, MetricType.TRANSACTION_COUNT) }
-            .onFailure { log.warn("PostTransactionService: failed to record TRANSACTION_COUNT for tenant=${cmd.tenantId.value}", it) }
-        runCatching { usageMeteringService.recordUsage(cmd.tenantId, MetricType.ENTRY_COUNT, lines.size.toLong()) }
-            .onFailure { log.warn("PostTransactionService: failed to record ENTRY_COUNT for tenant=${cmd.tenantId.value}", it) }
+        // recordUsage joins this method's ambient transaction (see UsageMeteringService KDoc)
+        // — a metering failure here rolls back the whole commit, same as auditRepository.save
+        // and webhookOutboxRepository.save above, per CLAUDE.md's single-transaction rule.
+        usageMeteringService.recordUsage(cmd.tenantId, MetricType.TRANSACTION_COUNT)
+        usageMeteringService.recordUsage(cmd.tenantId, MetricType.ENTRY_COUNT, lines.size.toLong())
 
         return Result.success(transaction.id)
     }

@@ -12,6 +12,7 @@ import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.core.usage.MetricType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -252,6 +253,15 @@ class QuickNodeWebhookServiceTest {
         assertEquals(2, cmd.lines.size)
 
         verify(checkpointRepository).save("SOLANA", testSlot)
+        // tenantId matched with any(), not eq() -- Mockito's eq()/any() box a @JvmInline value
+        // class (TenantId) into a real object, while the real call site passes the
+        // compiler-erased UUID directly, so eq(tenantId) always reports a false mismatch here.
+        verify(usageMeteringService).recordUsage(
+            any(),
+            eq(MetricType.CHAIN_EVENT_COUNT),
+            any(),
+            eq(transfer.idempotencyKey),
+        )
     }
 
     @Test

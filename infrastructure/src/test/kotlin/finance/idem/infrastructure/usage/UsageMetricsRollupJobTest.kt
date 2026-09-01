@@ -21,10 +21,11 @@ class UsageMetricsRollupJobTest {
     private lateinit var job: UsageMetricsRollupJob
 
     private val safetyBufferMinutes = 5L
+    private val maxHoursPerRun = 120
 
     @BeforeEach
     fun setUp() {
-        job = UsageMetricsRollupJob(usageMetricRepository, safetyBufferMinutes)
+        job = UsageMetricsRollupJob(usageMetricRepository, safetyBufferMinutes, maxHoursPerRun)
     }
 
     @Test
@@ -55,6 +56,22 @@ class UsageMetricsRollupJobTest {
         verify(usageMetricRepository, times(2)).rollupHour(any(), any())
         verify(usageMetricRepository).advanceWatermark(watermark.plus(Duration.ofHours(1)))
         verify(usageMetricRepository).advanceWatermark(watermark.plus(Duration.ofHours(2)))
+    }
+
+    @Test
+    fun `a single run processes at most maxHoursPerRun hours, leaving the rest for the next run`() {
+        val now = Instant.now()
+        // 10 hours eligible, well past a bound of 3 -- simulates a large backlog (e.g. from an
+        // extended outage) that must not risk outrunning the 10-minute @SchedulerLock lease.
+        val watermark = now.minus(Duration.ofHours(10)).minus(Duration.ofMinutes(10))
+        whenever(usageMetricRepository.currentWatermark()).thenReturn(watermark)
+        val boundedJob = UsageMetricsRollupJob(usageMetricRepository, safetyBufferMinutes, maxHoursPerRun = 3)
+
+        boundedJob.rollup()
+
+        verify(usageMetricRepository, times(3)).rollupHour(any(), any())
+        verify(usageMetricRepository).advanceWatermark(watermark.plus(Duration.ofHours(3)))
+        verify(usageMetricRepository, never()).advanceWatermark(watermark.plus(Duration.ofHours(4)))
     }
 
     @Test

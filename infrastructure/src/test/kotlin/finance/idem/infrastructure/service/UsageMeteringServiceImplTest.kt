@@ -5,7 +5,6 @@ import finance.idem.core.tenant.TenantConfig
 import finance.idem.core.tenant.TenantConfigRepository
 import finance.idem.core.tenant.TenantPlan
 import finance.idem.core.usage.MetricType
-import finance.idem.core.usage.UsageMetric
 import finance.idem.core.usage.UsageMetricRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -55,14 +54,21 @@ class UsageMeteringServiceImplTest {
     fun `recordUsage delegates to the repository with the given amount and a current timestamp`() {
         service.recordUsage(tenantId, MetricType.TRANSACTION_COUNT, 3L)
 
-        verify(usageMetricRepository).recordEvent(any(), eq(MetricType.TRANSACTION_COUNT), eq(3L), any())
+        verify(usageMetricRepository).recordEvent(any(), eq(MetricType.TRANSACTION_COUNT), eq(3L), any(), eq(null))
     }
 
     @Test
     fun `recordUsage defaults amount to 1`() {
         service.recordUsage(tenantId, MetricType.API_CALL_COUNT)
 
-        verify(usageMetricRepository).recordEvent(any(), eq(MetricType.API_CALL_COUNT), eq(1L), any())
+        verify(usageMetricRepository).recordEvent(any(), eq(MetricType.API_CALL_COUNT), eq(1L), any(), eq(null))
+    }
+
+    @Test
+    fun `recordUsage passes the idempotencyKey through to the repository`() {
+        service.recordUsage(tenantId, MetricType.CHAIN_EVENT_COUNT, 1L, idempotencyKey = "EVM_1:0xabc:0")
+
+        verify(usageMetricRepository).recordEvent(any(), eq(MetricType.CHAIN_EVENT_COUNT), eq(1L), any(), eq("EVM_1:0xabc:0"))
     }
 
     @Test
@@ -70,42 +76,59 @@ class UsageMeteringServiceImplTest {
         val watermark = monthEnd.plus(java.time.Duration.ofDays(5)) // watermark well past this month
         whenever(usageMetricRepository.currentWatermark()).thenReturn(watermark)
         whenever(
-            usageMetricRepository.findHourlyBuckets(tenantId, MetricType.TRANSACTION_COUNT, monthStart, monthEnd),
-        ).thenReturn(
-            listOf(
-                UsageMetric(tenantId, MetricType.TRANSACTION_COUNT, 10L, monthStart, monthStart.plusSeconds(3600)),
-                UsageMetric(tenantId, MetricType.TRANSACTION_COUNT, 5L, monthStart.plusSeconds(3600), monthStart.plusSeconds(7200)),
-            ),
-        )
+            usageMetricRepository.hourlyBucketSums(tenantId, monthStart, monthEnd),
+        ).thenReturn(mapOf(MetricType.TRANSACTION_COUNT to 15L))
         whenever(tenantConfigRepository.findByTenantId(tenantId)).thenReturn(null)
 
         val summary = service.getMonthlyUsage(tenantId, yearMonth)
 
         assertEquals(15L, summary.usage[MetricType.TRANSACTION_COUNT])
-        verify(usageMetricRepository, org.mockito.kotlin.never())
-            .sumRawSince(eq(tenantId), eq(MetricType.TRANSACTION_COUNT), any())
+        verify(usageMetricRepository, org.mockito.kotlin.never()).rawSumsBetween(any(), any(), any())
     }
 
     @Test
-    fun `getMonthlyUsage for the current month tops up with raw events since the watermark`() {
+    fun `getMonthlyUsage for the current month tops up with raw events since the watermark, bounded to monthEnd`() {
         val watermark = monthStart.plusSeconds(7200) // 2 hours into the month
         whenever(usageMetricRepository.currentWatermark()).thenReturn(watermark)
         whenever(
-            usageMetricRepository.findHourlyBuckets(tenantId, MetricType.TRANSACTION_COUNT, monthStart, watermark),
-        ).thenReturn(listOf(UsageMetric(tenantId, MetricType.TRANSACTION_COUNT, 20L, monthStart, watermark)))
-        whenever(usageMetricRepository.sumRawSince(tenantId, MetricType.TRANSACTION_COUNT, watermark)).thenReturn(4L)
+            usageMetricRepository.hourlyBucketSums(tenantId, monthStart, watermark),
+        ).thenReturn(mapOf(MetricType.TRANSACTION_COUNT to 20L))
+        whenever(usageMetricRepository.rawSumsBetween(tenantId, watermark, monthEnd)).thenReturn(mapOf(MetricType.TRANSACTION_COUNT to 4L))
         whenever(tenantConfigRepository.findByTenantId(tenantId)).thenReturn(null)
 
         val summary = service.getMonthlyUsage(tenantId, yearMonth)
 
         assertEquals(24L, summary.usage[MetricType.TRANSACTION_COUNT])
+        // The crux of the fix: rawSumsBetween's upper bound is monthEnd, not "no bound" — a
+        // lagging watermark can no longer leak a later period's raw events into this month.
+        // tenantId is matched via a plain (non-eq) value -- see the class-level comment on why
+        // eq() on this @JvmInline value class always reports a false mismatch here.
+        verify(usageMetricRepository).rawSumsBetween(tenantId, watermark, monthEnd)
+    }
+
+    @Test
+    fun `getMonthlyUsage for a past month with a lagging watermark still bounds the raw query to monthEnd`() {
+        // Watermark stalled well before this month even started (e.g. the rollup job was
+        // broken) — splitPoint clamps to monthStart, so the ENTIRE month is raw territory,
+        // and rawSumsBetween must be called with monthEnd as its upper bound, not left open.
+        val watermark = monthStart.minus(java.time.Duration.ofDays(60))
+        whenever(usageMetricRepository.currentWatermark()).thenReturn(watermark)
+        whenever(usageMetricRepository.hourlyBucketSums(tenantId, monthStart, monthStart)).thenReturn(emptyMap())
+        whenever(usageMetricRepository.rawSumsBetween(tenantId, monthStart, monthEnd)).thenReturn(mapOf(MetricType.TRANSACTION_COUNT to 7L))
+        whenever(tenantConfigRepository.findByTenantId(tenantId)).thenReturn(null)
+
+        val summary = service.getMonthlyUsage(tenantId, yearMonth)
+
+        assertEquals(7L, summary.usage[MetricType.TRANSACTION_COUNT])
+        // tenantId matched via a plain (non-eq) value -- see the class-level comment above.
+        verify(usageMetricRepository).rawSumsBetween(tenantId, monthStart, monthEnd)
     }
 
     @Test
     fun `getMonthlyUsage uses TenantConfig limitFor when a config row exists`() {
         whenever(usageMetricRepository.currentWatermark()).thenReturn(Instant.EPOCH)
-        whenever(usageMetricRepository.findHourlyBuckets(any(), any(), any(), any())).thenReturn(emptyList())
-        whenever(usageMetricRepository.sumRawSince(any(), any(), any())).thenReturn(0L)
+        whenever(usageMetricRepository.hourlyBucketSums(any(), any(), any())).thenReturn(emptyMap())
+        whenever(usageMetricRepository.rawSumsBetween(any(), any(), any())).thenReturn(emptyMap())
         whenever(tenantConfigRepository.findByTenantId(tenantId)).thenReturn(
             TenantConfig(
                 tenantId = tenantId,
@@ -129,8 +152,8 @@ class UsageMeteringServiceImplTest {
     @Test
     fun `getMonthlyUsage falls back to TenantConfig default (unlimited) when no config row exists`() {
         whenever(usageMetricRepository.currentWatermark()).thenReturn(Instant.EPOCH)
-        whenever(usageMetricRepository.findHourlyBuckets(any(), any(), any(), any())).thenReturn(emptyList())
-        whenever(usageMetricRepository.sumRawSince(any(), any(), any())).thenReturn(0L)
+        whenever(usageMetricRepository.hourlyBucketSums(any(), any(), any())).thenReturn(emptyMap())
+        whenever(usageMetricRepository.rawSumsBetween(any(), any(), any())).thenReturn(emptyMap())
         whenever(tenantConfigRepository.findByTenantId(tenantId)).thenReturn(null)
 
         val summary = service.getMonthlyUsage(tenantId, yearMonth)

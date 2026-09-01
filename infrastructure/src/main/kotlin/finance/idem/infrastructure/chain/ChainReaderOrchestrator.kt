@@ -104,6 +104,7 @@ class ChainReaderOrchestrator(
                     usageMeteringService.recordUsage(
                         TenantId.of(transfer.watchedAddress.tenantId),
                         MetricType.CHAIN_EVENT_COUNT,
+                        idempotencyKey = transfer.idempotencyKey,
                     )
                 }.onFailure { log.warn("${reader.chainKey}: failed to record CHAIN_EVENT_COUNT", it) }
                 postTransactionUseCase.execute(transfer.toCommand(createdBy)).onFailure { error ->

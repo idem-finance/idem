@@ -13,5 +13,5 @@ class ApiKeyFilterConfig(
     fun apiKeyAuthFilter(): ApiKeyAuthFilter = ApiKeyAuthFilter(apiKeyService, apiCallCounter)
 
     @Bean
-    fun mcpSseAuthBridgeFilter(): McpSseAuthBridgeFilter = McpSseAuthBridgeFilter(sessionAuthStore)
+    fun mcpSseAuthBridgeFilter(): McpSseAuthBridgeFilter = McpSseAuthBridgeFilter(sessionAuthStore, apiCallCounter)
 }

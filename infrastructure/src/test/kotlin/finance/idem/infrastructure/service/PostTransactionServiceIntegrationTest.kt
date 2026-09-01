@@ -10,7 +10,6 @@ import finance.idem.core.PaymentRail
 import finance.idem.core.TenantId
 import finance.idem.core.ledger.Account
 import finance.idem.core.ledger.AccountType
-import finance.idem.core.ledger.TransactionStatus
 import finance.idem.core.monetary.FiatEntry
 import finance.idem.core.tenant.TenantConfigRepository
 import finance.idem.core.usage.MetricType
@@ -27,9 +26,11 @@ import finance.idem.infrastructure.persistence.audit.AuditRepositoryAdapter
 import finance.idem.infrastructure.persistence.idempotency.PostgresIdempotencyStore
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
+import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -38,15 +39,18 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.test.context.transaction.TestTransaction
 import java.time.Instant
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
+import kotlin.test.assertFailsWith
 
 /**
- * Verifies the isolation guarantee documented on [UsageMeteringServiceImpl.recordUsage]: a
- * usage-metering write failure must never roll back the ledger transaction that triggered it.
- * Uses the REAL [UsageMeteringServiceImpl] (so its REQUIRES_NEW proxy is genuinely exercised)
- * with a mocked [UsageMetricRepository] that throws.
+ * Verifies the transactional-boundary rule documented on [UsageMeteringServiceImpl.recordUsage]:
+ * a usage-metering write failure inside [PostTransactionService.execute]'s ambient transaction
+ * rolls back the whole ledger commit along with it — usage metering is a side effect of the
+ * primary operation, not an isolated concern, per CLAUDE.md's single-transaction rule.
+ * Uses the REAL [UsageMeteringServiceImpl] (so its transactional propagation is genuinely
+ * exercised) with a mocked [UsageMetricRepository] that throws.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -71,19 +75,20 @@ class PostTransactionServiceIntegrationTest : SharedPostgresTestBase() {
 
     @Autowired lateinit var accountAdapter: AccountRepositoryAdapter
 
-    @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
-
     // Deliberately NOT using PostgresServiceIntegrationTestBase here: it @MockitoBeans
     // UsageMeteringService, which would silently replace the real UsageMeteringServiceImpl
-    // imported below and defeat this test's whole point (exercising the real REQUIRES_NEW
-    // proxy). tenantConfigRepository is mocked directly instead, matching that base class's
-    // own default -- UsageMeteringServiceImpl needs it to construct, but recordUsage (the
-    // only method PostTransactionService calls) never actually invokes it.
+    // imported below and defeat this test's whole point (exercising its real transactional
+    // propagation). tenantConfigRepository is mocked directly instead, matching that base
+    // class's own default -- UsageMeteringServiceImpl needs it to construct, but recordUsage
+    // (the only method PostTransactionService calls) never actually invokes it.
     @MockitoBean
     lateinit var tenantConfigRepository: TenantConfigRepository
 
     @MockitoBean
     lateinit var usageMetricRepository: UsageMetricRepository
+
+    @Autowired
+    lateinit var entityManager: EntityManager
 
     private val tenantId = TenantId.generate()
     private val debitId = AccountId.generate()
@@ -113,16 +118,45 @@ class PostTransactionServiceIntegrationTest : SharedPostgresTestBase() {
         )
 
     @Test
-    fun `ledger transaction commits even when usage metering fails`() {
-        whenever(usageMetricRepository.recordEvent(any(), any(), any(), any()))
+    fun `execute fails when usage metering fails, instead of silently succeeding`() {
+        // Under the old REQUIRES_NEW isolation, this failure would be swallowed by
+        // PostTransactionService's runCatching and execute() would return Result.success —
+        // the caller would never know metering was broken. Now recordUsage joins execute()'s
+        // own transaction (see UsageMeteringServiceImpl KDoc), so a metering failure
+        // propagates and fails the whole call, consistent with how an audit_log or
+        // webhook_outbox write failure already behaves in this method.
+        whenever(usageMetricRepository.recordEvent(any(), any(), any(), any(), anyOrNull()))
             .thenThrow(RuntimeException("usage_metrics insert failed"))
 
-        val txId = postTransactionService.execute(command("usage-failure-001")).getOrThrow()
+        assertFailsWith<RuntimeException> {
+            postTransactionService.execute(command("usage-failure-001"))
+        }
+    }
 
-        val transaction = transactionAdapter.findById(txId, tenantId)
-        assertNotNull(transaction)
-        assertEquals(TransactionStatus.COMMITTED, transaction.status)
-        assertEquals(2, transaction.lines.size)
+    @Test
+    fun `no transaction row is persisted when usage metering fails`() {
+        whenever(usageMetricRepository.recordEvent(any(), any(), any(), any(), anyOrNull()))
+            .thenThrow(RuntimeException("usage_metrics insert failed"))
+
+        assertFailsWith<RuntimeException> {
+            postTransactionService.execute(command("usage-failure-002"))
+        }
+
+        // Force the test's ambient transaction (marked rollback-only by the propagated
+        // failure) to actually roll back, then start a fresh transaction to read post-rollback
+        // state — proves the ledger write genuinely did not survive, not just that it's
+        // invisible to a later, separately-rolled-back test.
+        TestTransaction.end()
+        TestTransaction.start()
+
+        val count =
+            (
+                entityManager
+                    .createNativeQuery("SELECT COUNT(*) FROM transactions WHERE tenant_id = :tenantId")
+                    .setParameter("tenantId", tenantId.value)
+                    .singleResult as Number
+            ).toLong()
+        assertEquals(0L, count, "the transaction row must roll back along with the usage-metering failure")
     }
 
     @Test
@@ -131,7 +165,7 @@ class PostTransactionServiceIntegrationTest : SharedPostgresTestBase() {
         // eq() on a @JvmInline value class parameter always reports a false mismatch here.
         postTransactionService.execute(command("usage-success-001")).getOrThrow()
 
-        verify(usageMetricRepository).recordEvent(any(), eq(MetricType.TRANSACTION_COUNT), eq(1L), any())
-        verify(usageMetricRepository).recordEvent(any(), eq(MetricType.ENTRY_COUNT), eq(2L), any())
+        verify(usageMetricRepository).recordEvent(any(), eq(MetricType.TRANSACTION_COUNT), eq(1L), any(), eq(null))
+        verify(usageMetricRepository).recordEvent(any(), eq(MetricType.ENTRY_COUNT), eq(2L), any(), eq(null))
     }
 }

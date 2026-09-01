@@ -27,25 +27,80 @@ class UsageMetricRepositoryAdapterIntegrationTest : SharedPostgresTestBase() {
     // transaction regardless of isolation level.
 
     @Test
-    fun `recordEvent persists a raw row visible to sumRawSince`() {
+    fun `recordEvent persists a raw row visible to rawSumsBetween`() {
         val now = Instant.now()
         adapter.recordEvent(tenantId, MetricType.TRANSACTION_COUNT, 1L, now)
         adapter.recordEvent(tenantId, MetricType.TRANSACTION_COUNT, 1L, now)
 
-        val sum = adapter.sumRawSince(tenantId, MetricType.TRANSACTION_COUNT, now.minus(Duration.ofMinutes(1)))
+        val sums = adapter.rawSumsBetween(tenantId, now.minus(Duration.ofMinutes(1)), now.plus(Duration.ofMinutes(1)))
 
-        assertEquals(2L, sum)
+        assertEquals(2L, sums[MetricType.TRANSACTION_COUNT])
     }
 
     @Test
-    fun `sumRawSince is scoped to the requested metricType and tenant`() {
+    fun `rawSumsBetween excludes events outside the requested window`() {
+        val now = Instant.now()
+        adapter.recordEvent(tenantId, MetricType.TRANSACTION_COUNT, 5L, now.minus(Duration.ofHours(2)))
+        adapter.recordEvent(tenantId, MetricType.TRANSACTION_COUNT, 3L, now)
+        adapter.recordEvent(tenantId, MetricType.TRANSACTION_COUNT, 7L, now.plus(Duration.ofHours(2)))
+
+        val sums = adapter.rawSumsBetween(tenantId, now.minus(Duration.ofMinutes(1)), now.plus(Duration.ofMinutes(1)))
+
+        assertEquals(
+            3L,
+            sums[MetricType.TRANSACTION_COUNT],
+            "events before `from` or at/after `to` must not be included — this is the bug #4 fixed (an unbounded upper end)",
+        )
+    }
+
+    @Test
+    fun `rawSumsBetween groups multiple metric types into one call`() {
+        val now = Instant.now()
+        adapter.recordEvent(tenantId, MetricType.TRANSACTION_COUNT, 5L, now)
+        adapter.recordEvent(tenantId, MetricType.API_CALL_COUNT, 9L, now)
+
+        val sums = adapter.rawSumsBetween(tenantId, now.minus(Duration.ofMinutes(1)), now.plus(Duration.ofMinutes(1)))
+
+        assertEquals(5L, sums[MetricType.TRANSACTION_COUNT])
+        assertEquals(9L, sums[MetricType.API_CALL_COUNT])
+    }
+
+    @Test
+    fun `recordEvent with the same idempotencyKey is a no-op on the second call`() {
+        val now = Instant.now()
+        adapter.recordEvent(tenantId, MetricType.CHAIN_EVENT_COUNT, 1L, now, idempotencyKey = "EVM_1:0xabc:0")
+        adapter.recordEvent(tenantId, MetricType.CHAIN_EVENT_COUNT, 1L, now, idempotencyKey = "EVM_1:0xabc:0")
+
+        val sums = adapter.rawSumsBetween(tenantId, now.minus(Duration.ofMinutes(1)), now.plus(Duration.ofMinutes(1)))
+
+        assertEquals(
+            1L,
+            sums[MetricType.CHAIN_EVENT_COUNT],
+            "a redelivered event with the same idempotency key must not be double-counted",
+        )
+    }
+
+    @Test
+    fun `recordEvent with different idempotencyKeys records both`() {
+        val now = Instant.now()
+        adapter.recordEvent(tenantId, MetricType.CHAIN_EVENT_COUNT, 1L, now, idempotencyKey = "EVM_1:0xabc:0")
+        adapter.recordEvent(tenantId, MetricType.CHAIN_EVENT_COUNT, 1L, now, idempotencyKey = "EVM_1:0xdef:0")
+
+        val sums = adapter.rawSumsBetween(tenantId, now.minus(Duration.ofMinutes(1)), now.plus(Duration.ofMinutes(1)))
+
+        assertEquals(2L, sums[MetricType.CHAIN_EVENT_COUNT])
+    }
+
+    @Test
+    fun `rawSumsBetween is scoped to the requested tenant`() {
         val now = Instant.now()
         val otherTenant = TenantId.generate()
         adapter.recordEvent(tenantId, MetricType.TRANSACTION_COUNT, 5L, now)
-        adapter.recordEvent(tenantId, MetricType.API_CALL_COUNT, 9L, now)
         adapter.recordEvent(otherTenant, MetricType.TRANSACTION_COUNT, 100L, now)
 
-        assertEquals(5L, adapter.sumRawSince(tenantId, MetricType.TRANSACTION_COUNT, now.minus(Duration.ofMinutes(1))))
+        val sums = adapter.rawSumsBetween(tenantId, now.minus(Duration.ofMinutes(1)), now.plus(Duration.ofMinutes(1)))
+
+        assertEquals(5L, sums[MetricType.TRANSACTION_COUNT])
     }
 
     @Test
@@ -58,12 +113,11 @@ class UsageMetricRepositoryAdapterIntegrationTest : SharedPostgresTestBase() {
         val firstRun = adapter.rollupHour(hourStart, hourEnd)
         val secondRun = adapter.rollupHour(hourStart, hourEnd) // must not double-count
 
-        val buckets = adapter.findHourlyBuckets(tenantId, MetricType.ENTRY_COUNT, hourStart, hourEnd.plusSeconds(1))
+        val sums = adapter.hourlyBucketSums(tenantId, hourStart, hourEnd.plusSeconds(1))
 
         assertEquals(1, firstRun)
         assertEquals(0, secondRun, "re-running an already-rolled-up hour must be a no-op (ON CONFLICT DO NOTHING)")
-        assertEquals(1, buckets.size)
-        assertEquals(7L, buckets.single().value)
+        assertEquals(7L, sums[MetricType.ENTRY_COUNT])
     }
 
     @Test
@@ -76,11 +130,26 @@ class UsageMetricRepositoryAdapterIntegrationTest : SharedPostgresTestBase() {
 
         adapter.rollupHour(hourStart, hourEnd)
 
-        val tenantBuckets = adapter.findHourlyBuckets(tenantId, MetricType.TRANSACTION_COUNT, hourStart, hourEnd.plusSeconds(1))
-        val otherBuckets = adapter.findHourlyBuckets(otherTenant, MetricType.TRANSACTION_COUNT, hourStart, hourEnd.plusSeconds(1))
+        val tenantSums = adapter.hourlyBucketSums(tenantId, hourStart, hourEnd.plusSeconds(1))
+        val otherSums = adapter.hourlyBucketSums(otherTenant, hourStart, hourEnd.plusSeconds(1))
 
-        assertEquals(2L, tenantBuckets.single().value)
-        assertEquals(10L, otherBuckets.single().value)
+        assertEquals(2L, tenantSums[MetricType.TRANSACTION_COUNT])
+        assertEquals(10L, otherSums[MetricType.TRANSACTION_COUNT])
+    }
+
+    @Test
+    fun `hourlyBucketSums groups multiple metric types into one call`() {
+        val hourStart = Instant.now().minus(Duration.ofHours(5)).truncatedTo(java.time.temporal.ChronoUnit.HOURS)
+        val hourEnd = hourStart.plus(Duration.ofHours(1))
+        adapter.recordEvent(tenantId, MetricType.TRANSACTION_COUNT, 2L, hourStart.plusSeconds(30))
+        adapter.recordEvent(tenantId, MetricType.API_CALL_COUNT, 6L, hourStart.plusSeconds(30))
+
+        adapter.rollupHour(hourStart, hourEnd)
+
+        val sums = adapter.hourlyBucketSums(tenantId, hourStart, hourEnd.plusSeconds(1))
+
+        assertEquals(2L, sums[MetricType.TRANSACTION_COUNT])
+        assertEquals(6L, sums[MetricType.API_CALL_COUNT])
     }
 
     @Test

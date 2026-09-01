@@ -10,6 +10,7 @@ import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.core.usage.MetricType
 import net.javacrumbs.shedlock.core.LockConfiguration
 import net.javacrumbs.shedlock.core.LockingTaskExecutor
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doAnswer
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -142,6 +144,25 @@ class ChainReaderOrchestratorTest {
         verify(postTransactionUseCase).execute(captor.capture())
         assertEquals("chain-recovery", captor.firstValue.createdBy)
         assertEquals(xfer.idempotencyKey, captor.firstValue.idempotencyKey)
+    }
+
+    @Test
+    fun `records CHAIN_EVENT_COUNT usage keyed by the transfer's own idempotency key`() {
+        val xfer = transfer("EVM_1", blockNumber = 100L)
+        val evmReader = fakeReader("EVM_1", xfer)
+
+        val orchestrator = orchestrator(listOf(evmReader))
+        orchestrator.onApplicationStarted()
+
+        // tenantId matched with any(), not eq() -- Mockito's eq()/any() box a @JvmInline value
+        // class (TenantId) into a real object, while the real call site passes the
+        // compiler-erased UUID directly, so eq(tenantId) always reports a false mismatch here.
+        verify(usageMeteringService).recordUsage(
+            any(),
+            eq(MetricType.CHAIN_EVENT_COUNT),
+            any(),
+            eq(xfer.idempotencyKey),
+        )
     }
 
     @Test

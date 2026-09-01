@@ -4,6 +4,7 @@ import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.TenantId
 import finance.idem.core.usage.MetricType
 import finance.idem.infrastructure.security.ApiCallCounter
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -13,6 +14,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import kotlin.test.assertNull
 
 @ExtendWith(MockitoExtension::class)
 class ApiCallCounterFlushJobTest {
@@ -35,7 +37,7 @@ class ApiCallCounterFlushJobTest {
 
         job.flush()
 
-        verify(usageMeteringService, never()).recordUsage(any(), any(), any())
+        verify(usageMeteringService, never()).recordUsage(any(), any(), any(), any())
     }
 
     @Test
@@ -57,5 +59,17 @@ class ApiCallCounterFlushJobTest {
         job.flush() // must not throw
 
         verify(usageMeteringService).recordUsage(otherTenant, MetricType.API_CALL_COUNT, 5L)
+    }
+
+    @Test
+    fun `flush() has no SchedulerLock annotation — every replica must flush its own in-heap counts`() {
+        val method = ApiCallCounterFlushJob::class.java.getDeclaredMethod("flush")
+
+        assertNull(
+            method.getAnnotation(SchedulerLock::class.java),
+            "ApiCallCounterFlushJob.flush() must NOT be @SchedulerLock-guarded — ApiCallCounter's " +
+                "state is per-JVM/per-replica in-heap, not shared, so locking this job would silently " +
+                "drop every replica's counts but one. See the class KDoc.",
+        )
     }
 }

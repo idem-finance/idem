@@ -2,7 +2,6 @@ package finance.idem.infrastructure.persistence.usage
 
 import finance.idem.core.TenantId
 import finance.idem.core.usage.MetricType
-import finance.idem.core.usage.UsageMetric
 import finance.idem.core.usage.UsageMetricRepository
 import finance.idem.infrastructure.persistence.setRlsTenantId
 import jakarta.persistence.EntityManager
@@ -23,47 +22,59 @@ class UsageMetricRepositoryAdapter(
         metricType: MetricType,
         amount: Long,
         occurredAt: Instant,
+        idempotencyKey: String?,
     ) {
         // usage_metrics is NO FORCE RLS (the rollup job needs cross-tenant reads as owner) —
         // setting app.tenant_id here is defense-in-depth, not a correctness requirement.
         entityManager.setRlsTenantId(tenantId)
-        eventJpaRepository.save(
-            UsageMetricEventDataModel.new(
-                tenantId = tenantId.value,
-                metricType = metricType.name,
-                amount = amount,
-                occurredAt = occurredAt,
-            ),
-        )
+        if (idempotencyKey == null) {
+            eventJpaRepository.save(
+                UsageMetricEventDataModel.new(
+                    tenantId = tenantId.value,
+                    metricType = metricType.name,
+                    amount = amount,
+                    occurredAt = occurredAt,
+                ),
+            )
+        } else {
+            // JPA save() has no ON CONFLICT support and this table's PK is BIGSERIAL (not
+            // natural), so an "insert or skip on dedup key" needs a native query.
+            entityManager
+                .createNativeQuery(
+                    """
+                    INSERT INTO usage_metrics (tenant_id, metric_type, amount, occurred_at, idempotency_key)
+                    VALUES (:tenantId, :metricType, :amount, :occurredAt, :idempotencyKey)
+                    ON CONFLICT (tenant_id, metric_type, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+                    """.trimIndent(),
+                ).setParameter("tenantId", tenantId.value)
+                .setParameter("metricType", metricType.name)
+                .setParameter("amount", amount)
+                .setParameter("occurredAt", occurredAt)
+                .setParameter("idempotencyKey", idempotencyKey)
+                .executeUpdate()
+        }
     }
 
     @Transactional(readOnly = true)
-    override fun findHourlyBuckets(
+    override fun hourlyBucketSums(
         tenantId: TenantId,
-        metricType: MetricType,
         from: Instant,
         to: Instant,
-    ): List<UsageMetric> {
+    ): Map<MetricType, Long> {
         // usage_metrics_hourly is FORCE RLS — app.tenant_id MUST be set or the owner role
         // sees zero rows, unlike the NO FORCE raw table above.
         entityManager.setRlsTenantId(tenantId)
-        return hourlyJpaRepository
-            .findByTenantIdAndMetricTypeAndPeriodStartGreaterThanEqualAndPeriodStartLessThanOrderByPeriodStartAsc(
-                tenantId.value,
-                metricType.name,
-                from,
-                to,
-            ).map { it.toDomain() }
+        return hourlyJpaRepository.sumValueGroupedByMetricType(tenantId.value, from, to).toMetricTypeMap()
     }
 
     @Transactional(readOnly = true)
-    override fun sumRawSince(
+    override fun rawSumsBetween(
         tenantId: TenantId,
-        metricType: MetricType,
-        since: Instant,
-    ): Long {
+        from: Instant,
+        to: Instant,
+    ): Map<MetricType, Long> {
         entityManager.setRlsTenantId(tenantId)
-        return eventJpaRepository.sumAmountSince(tenantId.value, metricType.name, since)
+        return eventJpaRepository.sumAmountGroupedByMetricType(tenantId.value, from, to).toMetricTypeMap()
     }
 
     @Transactional
@@ -102,11 +113,5 @@ class UsageMetricRepositoryAdapter(
     }
 }
 
-private fun UsageMetricHourlyDataModel.toDomain() =
-    UsageMetric(
-        tenantId = TenantId(tenantId),
-        metricType = MetricType.valueOf(metricType),
-        value = value,
-        periodStart = periodStart,
-        periodEnd = periodEnd,
-    )
+private fun List<Array<Any>>.toMetricTypeMap(): Map<MetricType, Long> =
+    associate { row -> MetricType.valueOf(row[0] as String) to (row[1] as Number).toLong() }

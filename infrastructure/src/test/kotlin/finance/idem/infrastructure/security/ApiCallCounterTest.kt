@@ -4,6 +4,8 @@ import finance.idem.core.TenantId
 import org.junit.jupiter.api.Test
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -64,5 +66,39 @@ class ApiCallCounterTest {
         }
 
         assertEquals((threads * incrementsPerThread).toLong(), counter.drainAndReset()[tenantId])
+    }
+
+    @Test
+    fun `concurrent increments and drains lose no counts`() {
+        val tenantId = TenantId.generate()
+        val incrementerThreads = 8
+        val incrementsPerThread = 1000
+        val totalExpected = (incrementerThreads * incrementsPerThread).toLong()
+
+        val drainedTotal = AtomicLong(0)
+        val incrementExecutor = Executors.newFixedThreadPool(incrementerThreads)
+        val drainerRunning = AtomicBoolean(true)
+        val drainerThread =
+            Thread {
+                while (drainerRunning.get()) {
+                    counter.drainAndReset()[tenantId]?.let { drainedTotal.addAndGet(it) }
+                }
+            }
+        drainerThread.start()
+        try {
+            val futures =
+                (1..incrementerThreads).map {
+                    incrementExecutor.submit { repeat(incrementsPerThread) { counter.increment(tenantId) } }
+                }
+            futures.forEach { it.get(10, TimeUnit.SECONDS) }
+        } finally {
+            incrementExecutor.shutdown()
+            drainerRunning.set(false)
+            drainerThread.join(5000)
+        }
+        // Final drain picks up anything left uncollected by the racing drainer thread.
+        drainedTotal.addAndGet(counter.drainAndReset()[tenantId] ?: 0L)
+
+        assertEquals(totalExpected, drainedTotal.get(), "no increments should be lost to a race with a concurrent drain")
     }
 }

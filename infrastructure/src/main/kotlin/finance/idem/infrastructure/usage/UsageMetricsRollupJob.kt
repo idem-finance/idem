@@ -15,11 +15,19 @@ import java.time.Instant
  * so if this run fails partway through — after committing some hours but before advancing past
  * a later one — the next run simply resumes from the watermark last successfully committed,
  * re-processing (harmlessly) at most the in-flight hour.
+ *
+ * [maxHoursPerRun] bounds how many hours a single invocation processes, so a large backlog
+ * (an extended outage, or a stalled watermark) can't make one run exceed the `@SchedulerLock`
+ * lease (`lockAtMostFor = "10m"`) — which would let a second replica acquire the lock
+ * concurrently mid-run. A bounded run simply leaves the remainder for the next scheduled
+ * run (this job runs hourly) rather than risking the lock; the watermark it leaves behind is
+ * always a real, safe resume point either way.
  */
 @Component
 class UsageMetricsRollupJob(
     private val usageMetricRepository: UsageMetricRepository,
     @Value("\${idem.usage-metering.rollup-safety-buffer-minutes:5}") private val safetyBufferMinutes: Long,
+    @Value("\${idem.usage-metering.rollup-max-hours-per-run:120}") private val maxHoursPerRun: Int,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -32,12 +40,14 @@ class UsageMetricsRollupJob(
             // before its event would otherwise be missed by this hour's rollup.
             val cutoff = Instant.now().minus(Duration.ofMinutes(safetyBufferMinutes))
             var hourStart = usageMetricRepository.currentWatermark()
-            while (true) {
+            var processed = 0
+            while (processed < maxHoursPerRun) {
                 val hourEnd = hourStart.plus(Duration.ofHours(1))
                 if (hourEnd.isAfter(cutoff)) break
                 usageMetricRepository.rollupHour(hourStart, hourEnd)
                 usageMetricRepository.advanceWatermark(hourEnd)
                 hourStart = hourEnd
+                processed++
             }
         }.onFailure { log.error("UsageMetricsRollupJob: rollup failed, will resume from last committed watermark next run", it) }
     }

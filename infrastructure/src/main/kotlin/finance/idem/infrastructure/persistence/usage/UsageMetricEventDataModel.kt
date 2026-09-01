@@ -25,6 +25,8 @@ class UsageMetricEventDataModel(
     val amount: Long,
     @Column(name = "occurred_at", nullable = false)
     val occurredAt: Instant,
+    @Column(name = "idempotency_key")
+    val idempotencyKey: String? = null,
 ) {
     protected constructor() : this(0L, UUID.randomUUID(), "", 0L, Instant.now())
 

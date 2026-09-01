@@ -4,28 +4,36 @@ import finance.idem.core.TenantId
 import java.time.Instant
 
 interface UsageMetricRepository {
-    /** Records one raw usage event. Called on the write path — keep this cheap. */
+    /**
+     * Records one raw usage event. Called on the write path — keep this cheap.
+     *
+     * [idempotencyKey], when non-null, dedups against `(tenantId, metricType, idempotencyKey)` —
+     * a second call with the same triple is a no-op. Used by callers whose own event source can
+     * redeliver/retry (chain readers and webhook receivers, keyed off the same idempotency key
+     * already used for the ledger post) so a redelivery doesn't double-count usage even though
+     * the ledger-side post is itself a safe no-op on retry.
+     */
     fun recordEvent(
         tenantId: TenantId,
         metricType: MetricType,
         amount: Long,
         occurredAt: Instant,
+        idempotencyKey: String? = null,
     )
 
-    /** Hourly rollup buckets for this tenant/metric in [from, to). */
-    fun findHourlyBuckets(
+    /** Hourly-rollup sums per metric type for this tenant in [from, to), one query. */
+    fun hourlyBucketSums(
         tenantId: TenantId,
-        metricType: MetricType,
         from: Instant,
         to: Instant,
-    ): List<UsageMetric>
+    ): Map<MetricType, Long>
 
-    /** Sum of raw (not-yet-rolled-up) events for this tenant/metric at or after [since]. */
-    fun sumRawSince(
+    /** Sum of raw (not-yet-rolled-up) events per metric type for this tenant in [from, to), one query. */
+    fun rawSumsBetween(
         tenantId: TenantId,
-        metricType: MetricType,
-        since: Instant,
-    ): Long
+        from: Instant,
+        to: Instant,
+    ): Map<MetricType, Long>
 
     /**
      * Aggregates raw events in [hourStart, hourEnd) into hourly buckets, across all tenants.

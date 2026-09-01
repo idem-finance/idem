@@ -30,10 +30,10 @@ class FlywayMigrationTest {
             .load()
 
     @Test
-    fun `all 30 migrations apply cleanly`() {
+    fun `all 32 migrations apply cleanly`() {
         flyway().migrate()
         val applied = flyway().info().applied()
-        assertEquals(30, applied.size)
+        assertEquals(32, applied.size)
         assertTrue(applied.none { it.state.isFailed() }, "No migration should be in failed state")
     }
 
@@ -304,4 +304,36 @@ class FlywayMigrationTest {
     // to it). No other FORCE RLS table in this file (e.g. agent_audit_events) has such a test
     // for the same reason; the guarantee itself relies on the app's runtime DB role not being
     // a superuser, which is outside what this test harness can exercise.
+
+    @Test
+    fun `usage_metrics_hourly has an INSERT policy allowing the rollup job's cross-tenant write`() {
+        flyway().migrate()
+
+        // Can't test RLS *enforcement* here for the same superuser reason as above -- assert
+        // the policy exists instead, which is the actual gap V31 closes (rollupHour's
+        // cross-tenant INSERT had no policy to execute under at all).
+        postgres.createConnection("").use { conn ->
+            val rs =
+                conn.createStatement().executeQuery(
+                    "SELECT policyname FROM pg_policies WHERE schemaname = 'public' " +
+                        "AND tablename = 'usage_metrics_hourly' AND cmd = 'INSERT'",
+                )
+            assertTrue(rs.next(), "usage_metrics_hourly should have an INSERT policy")
+            assertEquals("rollup_insert", rs.getString("policyname"))
+        }
+    }
+
+    @Test
+    fun `usage_metrics has a partial unique index on tenant_id, metric_type, idempotency_key`() {
+        flyway().migrate()
+
+        postgres.createConnection("").use { conn ->
+            val rs =
+                conn.createStatement().executeQuery(
+                    "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' " +
+                        "AND tablename = 'usage_metrics' AND indexname = 'uq_usage_metrics_idempotency'",
+                )
+            assertTrue(rs.next(), "usage_metrics should have the uq_usage_metrics_idempotency partial unique index")
+        }
+    }
 }

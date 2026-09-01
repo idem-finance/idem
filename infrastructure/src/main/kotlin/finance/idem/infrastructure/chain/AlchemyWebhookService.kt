@@ -67,8 +67,13 @@ class AlchemyWebhookService(
 
         for (activity in payload.event.activity) {
             val transfer = decodeActivity(activity, chainKey, watched) ?: continue
-            runCatching { usageMeteringService.recordUsage(TenantId.of(transfer.watchedAddress.tenantId), MetricType.CHAIN_EVENT_COUNT) }
-                .onFailure { log.warn("Alchemy webhook: failed to record CHAIN_EVENT_COUNT", it) }
+            runCatching {
+                usageMeteringService.recordUsage(
+                    TenantId.of(transfer.watchedAddress.tenantId),
+                    MetricType.CHAIN_EVENT_COUNT,
+                    idempotencyKey = transfer.idempotencyKey,
+                )
+            }.onFailure { log.warn("Alchemy webhook: failed to record CHAIN_EVENT_COUNT", it) }
             postTransactionUseCase.execute(transfer.toCommand("alchemy-webhook")).onFailure { error ->
                 deadLetterRecorder.record(transfer, chainKey, "alchemy-webhook", error, logPrefix = "Alchemy webhook")
             }

@@ -8,12 +8,13 @@ import java.util.UUID
 
 interface UsageMetricEventJpaRepository : JpaRepository<UsageMetricEventDataModel, Long> {
     @Query(
-        "SELECT COALESCE(SUM(e.amount), 0) FROM UsageMetricEventDataModel e " +
-            "WHERE e.tenantId = :tenantId AND e.metricType = :metricType AND e.occurredAt >= :since",
+        "SELECT e.metricType, COALESCE(SUM(e.amount), 0) FROM UsageMetricEventDataModel e " +
+            "WHERE e.tenantId = :tenantId AND e.occurredAt >= :from AND e.occurredAt < :to " +
+            "GROUP BY e.metricType",
     )
-    fun sumAmountSince(
+    fun sumAmountGroupedByMetricType(
         @Param("tenantId") tenantId: UUID,
-        @Param("metricType") metricType: String,
-        @Param("since") since: Instant,
-    ): Long
+        @Param("from") from: Instant,
+        @Param("to") to: Instant,
+    ): List<Array<Any>>
 }
