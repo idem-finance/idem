@@ -8,6 +8,7 @@ import finance.idem.core.security.ApiKeyId
 import finance.idem.core.security.ApiKeyRepository
 import finance.idem.core.security.ApiScope
 import finance.idem.core.security.ValidatedApiKey
+import finance.idem.core.tenant.TenantConfigRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -23,6 +24,7 @@ class ApiKeyService(
     private val redisTemplate: StringRedisTemplate,
     private val objectMapper: ObjectMapper,
     private val passwordEncoder: PasswordEncoder,
+    private val tenantConfigRepository: TenantConfigRepository,
 ) {
     private val cacheTtl = Duration.ofMinutes(5)
     private val log = LoggerFactory.getLogger(ApiKeyService::class.java)
@@ -51,7 +53,7 @@ class ApiKeyService(
         val cacheKey = cacheKey(prefix)
 
         redisTemplate.opsForValue().get(cacheKey)?.let { json ->
-            deserializeFromCache(json)?.let { return it }
+            deserializeFromCache(json)?.let { return it.takeUnless { v -> isSuspended(v.tenantId) } }
         }
 
         // The prefix is not unique (only ~65k values, non-unique index), so several
@@ -65,8 +67,14 @@ class ApiKeyService(
 
         val validated = ValidatedApiKey(apiKey.tenantId, apiKey.scopes)
         redisTemplate.opsForValue().set(cacheKey, serializeForCache(validated), cacheTtl)
-        return validated
+        // Checked after populating the api-key cache (scopes are still correct even while
+        // suspended) but before returning — TenantConfigRepositoryAdapter.upsert() evicts its
+        // own Redis entry after-commit, so a suspension takes effect on the very next call
+        // here, not bounded by this cache's own 5-minute TTL.
+        return validated.takeUnless { isSuspended(it.tenantId) }
     }
+
+    private fun isSuspended(tenantId: TenantId): Boolean = tenantConfigRepository.findByTenantId(tenantId)?.isSuspended == true
 
     @Transactional
     fun revoke(

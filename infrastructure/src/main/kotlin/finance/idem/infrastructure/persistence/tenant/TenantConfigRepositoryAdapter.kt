@@ -73,6 +73,8 @@ class TenantConfigRepositoryAdapter(
                 monthlyChainEventLimit = config.monthlyChainEventLimit,
                 monthlyWebhookDeliveryLimit = config.monthlyWebhookDeliveryLimit,
                 monthlyEntryLimit = config.monthlyEntryLimit,
+                organizationName = existing?.organizationName,
+                contactEmail = existing?.contactEmail,
             )
         jpaRepository.save(updated)
         evictCacheAfterCommit(config.tenantId)

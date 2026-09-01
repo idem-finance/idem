@@ -91,6 +91,17 @@ idem:
     # @SchedulerLock lease — see UsageMetricsRollupJob KDoc.
     rollup-max-hours-per-run: 120
     api-call-flush-interval-ms: 60000
+  admin:
+    # Blank by default — self-hosted installs never call /internal/admin/tenants/**, and a
+    # blank token makes the admin-token check fail closed rather than requiring this to be
+    # set just to start the app (unlike idem.audit.hmac-secret, which every install uses).
+    token: "${IDEM_ADMIN_TOKEN:}"
+  dashboard:
+    base-url: "${IDEM_DASHBOARD_BASE_URL:https://cloud.idem.finance}"
+  email:
+    # Blank by default — welcome-email delivery is best-effort; see ResendEmailAdapter.
+    resend-api-key: "${RESEND_API_KEY:}"
+    from-address: "${IDEM_EMAIL_FROM:noreply@idem.finance}"
 
 ---
 spring:

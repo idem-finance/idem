@@ -2,6 +2,7 @@ package finance.idem.application.port
 
 import finance.idem.application.tenant.TenantWebhookConfig
 import finance.idem.core.TenantId
+import finance.idem.core.tenant.Tenant
 
 interface TenantRepository {
     /**
@@ -20,4 +21,7 @@ interface TenantRepository {
         tenantId: TenantId,
         config: TenantWebhookConfig,
     )
+
+    /** Inserts a new tenant row with its identity fields. */
+    fun create(tenant: Tenant)
 }

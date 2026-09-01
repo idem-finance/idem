@@ -3,6 +3,9 @@ package finance.idem.infrastructure.persistence.tenant
 import finance.idem.application.port.TenantRepository
 import finance.idem.application.tenant.TenantWebhookConfig
 import finance.idem.core.TenantId
+import finance.idem.core.tenant.Tenant
+import finance.idem.infrastructure.persistence.setRlsTenantId
+import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -10,6 +13,7 @@ import java.time.Instant
 @Component
 class TenantRepositoryAdapter(
     private val jpaRepository: TenantJpaRepository,
+    private val entityManager: EntityManager,
 ) : TenantRepository {
     /**
      * Cross-tenant — deliberately does NOT set `app.tenant_id`. Relies on
@@ -17,7 +21,8 @@ class TenantRepositoryAdapter(
      * any tenant's webhook config while WebhookOutboxPoller iterates
      * cross-tenant dispatchable rows. That same NO FORCE exemption also covers
      * every other column on this row this class touches below (`hmac_key`,
-     * `billing_customer_id`, `plan`, rate limits, `feature_flags`) — see V28.
+     * `billing_customer_id`, `plan`, rate limits, `feature_flags`, monthly usage
+     * limits, `organization_name`, `contact_email`) — see V28/V29/V30.
      */
     @Transactional(readOnly = true)
     override fun findWebhookConfig(tenantId: TenantId): TenantWebhookConfig? {
@@ -52,7 +57,30 @@ class TenantRepositoryAdapter(
                 hmacKey = existing?.hmacKey,
                 billingCustomerId = existing?.billingCustomerId,
                 suspendedAt = existing?.suspendedAt,
+                monthlyTransactionLimit = existing?.monthlyTransactionLimit,
+                monthlyApiCallLimit = existing?.monthlyApiCallLimit,
+                monthlyChainEventLimit = existing?.monthlyChainEventLimit,
+                monthlyWebhookDeliveryLimit = existing?.monthlyWebhookDeliveryLimit,
+                monthlyEntryLimit = existing?.monthlyEntryLimit,
+                organizationName = existing?.organizationName,
+                contactEmail = existing?.contactEmail,
             )
         jpaRepository.save(updated)
+    }
+
+    @Transactional
+    override fun create(tenant: Tenant) {
+        entityManager.setRlsTenantId(tenant.id)
+        val created =
+            TenantDataModel(
+                id = tenant.id.value,
+                webhookUrl = null,
+                webhookSecret = null,
+                createdAt = tenant.createdAt,
+                updatedAt = tenant.createdAt,
+                organizationName = tenant.organizationName,
+                contactEmail = tenant.contactEmail,
+            )
+        jpaRepository.save(created)
     }
 }
