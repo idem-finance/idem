@@ -72,4 +72,24 @@ class ApiCallCounterFlushJobTest {
                 "drop every replica's counts but one. See the class KDoc.",
         )
     }
+
+    @Test
+    fun `flushOnShutdown() has no SchedulerLock annotation`() {
+        val method = ApiCallCounterFlushJob::class.java.getDeclaredMethod("flushOnShutdown")
+
+        assertNull(
+            method.getAnnotation(SchedulerLock::class.java),
+            "ApiCallCounterFlushJob.flushOnShutdown() must NOT be @SchedulerLock-guarded, for the " +
+                "same reason as flush() — see the class KDoc.",
+        )
+    }
+
+    @Test
+    fun `flushOnShutdown delegates to flush`() {
+        whenever(apiCallCounter.drainAndReset()).thenReturn(mapOf(tenantId to 7L))
+
+        job.flushOnShutdown()
+
+        verify(usageMeteringService).recordUsage(tenantId, MetricType.API_CALL_COUNT, 7L)
+    }
 }
