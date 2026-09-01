@@ -34,6 +34,16 @@ class TenantDataModel(
     val billingCustomerId: String? = null,
     @Column(name = "suspended_at")
     val suspendedAt: Instant? = null,
+    @Column(name = "monthly_transaction_limit")
+    val monthlyTransactionLimit: Long? = null,
+    @Column(name = "monthly_api_call_limit")
+    val monthlyApiCallLimit: Long? = null,
+    @Column(name = "monthly_chain_event_limit")
+    val monthlyChainEventLimit: Long? = null,
+    @Column(name = "monthly_webhook_delivery_limit")
+    val monthlyWebhookDeliveryLimit: Long? = null,
+    @Column(name = "monthly_entry_limit")
+    val monthlyEntryLimit: Long? = null,
 ) {
     protected constructor() : this(UUID.randomUUID(), null, null, Instant.now(), Instant.now())
 }

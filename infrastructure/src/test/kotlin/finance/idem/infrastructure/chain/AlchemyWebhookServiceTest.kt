@@ -3,6 +3,7 @@ package finance.idem.infrastructure.chain
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
@@ -32,6 +33,7 @@ class AlchemyWebhookServiceTest {
             objectMapper = objectMapper,
             config = ChainConfig(),
             deadLetterRecorder = mock<DeadLetterRecorder>(),
+            usageMeteringService = mock<UsageMeteringService>(),
         )
 
     private val usdcContract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"

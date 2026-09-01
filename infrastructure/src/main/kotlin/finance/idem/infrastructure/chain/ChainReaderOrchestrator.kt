@@ -1,7 +1,10 @@
 package finance.idem.infrastructure.chain
 
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.usage.UsageMeteringService
+import finance.idem.core.TenantId
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.usage.MetricType
 import net.javacrumbs.shedlock.core.LockConfiguration
 import net.javacrumbs.shedlock.core.LockingTaskExecutor
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
@@ -48,6 +51,7 @@ class ChainReaderOrchestrator(
     private val chainCheckpointRepository: ChainCheckpointRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
     private val deadLetterRecorder: DeadLetterRecorder,
+    private val usageMeteringService: UsageMeteringService,
     @Qualifier(ChainRecoveryExecutorConfig.BEAN_NAME) private val chainRecoveryExecutor: Executor,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -94,6 +98,14 @@ class ChainReaderOrchestrator(
             val transfers = reader.poll(checkpoint)
 
             transfers.forEach { transfer ->
+                // Recorded regardless of postTransactionUseCase's outcome — a chain event was
+                // genuinely detected either way.
+                runCatching {
+                    usageMeteringService.recordUsage(
+                        TenantId.of(transfer.watchedAddress.tenantId),
+                        MetricType.CHAIN_EVENT_COUNT,
+                    )
+                }.onFailure { log.warn("${reader.chainKey}: failed to record CHAIN_EVENT_COUNT", it) }
                 postTransactionUseCase.execute(transfer.toCommand(createdBy)).onFailure { error ->
                     deadLetterRecorder.record(transfer, reader.chainKey, createdBy, error, logPrefix = reader.chainKey)
                 }

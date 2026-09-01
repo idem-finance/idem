@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
@@ -35,6 +36,7 @@ class QuickNodeWebhookServiceTest {
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var deadLetterRecorder: DeadLetterRecorder
+    private lateinit var usageMeteringService: UsageMeteringService
     private lateinit var solanaReader: SolanaChainReader
     private lateinit var service: QuickNodeWebhookService
 
@@ -68,6 +70,7 @@ class QuickNodeWebhookServiceTest {
         checkpointRepository = mock()
         postTransactionUseCase = mock()
         deadLetterRecorder = mock()
+        usageMeteringService = mock()
         solanaReader = mock()
         service =
             QuickNodeWebhookService(
@@ -77,6 +80,7 @@ class QuickNodeWebhookServiceTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(quicknodeWebhookSecret = signingKey),
                 deadLetterRecorder = deadLetterRecorder,
+                usageMeteringService = usageMeteringService,
                 chainReaders = listOf(solanaReader),
             )
     }
@@ -138,6 +142,7 @@ class QuickNodeWebhookServiceTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(quicknodeWebhookSecret = ""),
                 deadLetterRecorder = deadLetterRecorder,
+                usageMeteringService = usageMeteringService,
                 chainReaders = listOf(solanaReader),
             )
         whenever(watchedAddressRepository.findByChainKey("SOLANA")).thenReturn(emptyList())
@@ -208,6 +213,7 @@ class QuickNodeWebhookServiceTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(quicknodeWebhookSecret = signingKey),
                 deadLetterRecorder = deadLetterRecorder,
+                usageMeteringService = usageMeteringService,
                 chainReaders = emptyList(),
             )
         val body = buildBody(testSignature, testSlot)

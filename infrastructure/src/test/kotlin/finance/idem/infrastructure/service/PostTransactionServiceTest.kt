@@ -17,6 +17,7 @@ import finance.idem.application.port.LgpdRetentionRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.BasicReconciliationUseCase
 import finance.idem.application.reconciliation.ReconciliationResult
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.AccountId
 import finance.idem.core.ChainId
 import finance.idem.core.EntryType
@@ -75,6 +76,8 @@ class PostTransactionServiceTest {
 
     @Mock lateinit var lgpdRetentionRepository: LgpdRetentionRepository
 
+    @Mock lateinit var usageMeteringService: UsageMeteringService
+
     private lateinit var service: PostTransactionService
 
     private val tenantId = TenantId.generate()
@@ -94,6 +97,7 @@ class PostTransactionServiceTest {
                 travelRuleValidator,
                 complianceQueueRepository,
                 lgpdRetentionRepository,
+                usageMeteringService,
             )
     }
 

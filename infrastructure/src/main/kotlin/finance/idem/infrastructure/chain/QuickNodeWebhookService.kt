@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import finance.idem.application.chain.QuickNodeWebhookUseCase
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.usage.UsageMeteringService
+import finance.idem.core.TenantId
 import finance.idem.core.chain.ChainCheckpointRepository
+import finance.idem.core.usage.MetricType
 import finance.idem.infrastructure.security.HmacSigner
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -17,6 +20,7 @@ class QuickNodeWebhookService(
     private val objectMapper: ObjectMapper,
     private val config: ChainConfig,
     private val deadLetterRecorder: DeadLetterRecorder,
+    private val usageMeteringService: UsageMeteringService,
     chainReaders: List<ChainReader>,
 ) : QuickNodeWebhookUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -85,6 +89,12 @@ class QuickNodeWebhookService(
             if (tx != null) {
                 for (watchedAddress in watched) {
                     val transfer = reader.decodeTransfer(tx, payload.signature, payload.slot, watchedAddress) ?: continue
+                    runCatching {
+                        usageMeteringService.recordUsage(
+                            TenantId.of(transfer.watchedAddress.tenantId),
+                            MetricType.CHAIN_EVENT_COUNT,
+                        )
+                    }.onFailure { log.warn("QuickNode webhook: failed to record CHAIN_EVENT_COUNT", it) }
                     postTransactionUseCase.execute(transfer.toCommand("quicknode-webhook")).onFailure { error ->
                         deadLetterRecorder.record(transfer, chainKey, "quicknode-webhook", error, logPrefix = "QuickNode webhook")
                     }

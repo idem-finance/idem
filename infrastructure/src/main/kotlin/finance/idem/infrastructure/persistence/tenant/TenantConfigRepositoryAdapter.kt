@@ -68,6 +68,11 @@ class TenantConfigRepositoryAdapter(
                 hmacKey = config.hmacKey,
                 billingCustomerId = config.billingCustomerId,
                 suspendedAt = config.suspendedAt,
+                monthlyTransactionLimit = config.monthlyTransactionLimit,
+                monthlyApiCallLimit = config.monthlyApiCallLimit,
+                monthlyChainEventLimit = config.monthlyChainEventLimit,
+                monthlyWebhookDeliveryLimit = config.monthlyWebhookDeliveryLimit,
+                monthlyEntryLimit = config.monthlyEntryLimit,
             )
         jpaRepository.save(updated)
         evictCacheAfterCommit(config.tenantId)
@@ -110,6 +115,11 @@ class TenantConfigRepositoryAdapter(
             billingCustomerId = billingCustomerId,
             createdAt = createdAt,
             suspendedAt = suspendedAt,
+            monthlyTransactionLimit = monthlyTransactionLimit,
+            monthlyApiCallLimit = monthlyApiCallLimit,
+            monthlyChainEventLimit = monthlyChainEventLimit,
+            monthlyWebhookDeliveryLimit = monthlyWebhookDeliveryLimit,
+            monthlyEntryLimit = monthlyEntryLimit,
         )
 
     private data class CachedEntry(
@@ -122,6 +132,11 @@ class TenantConfigRepositoryAdapter(
         val billingCustomerId: String?,
         val createdAt: Instant,
         val suspendedAt: Instant?,
+        val monthlyTransactionLimit: Long?,
+        val monthlyApiCallLimit: Long?,
+        val monthlyChainEventLimit: Long?,
+        val monthlyWebhookDeliveryLimit: Long?,
+        val monthlyEntryLimit: Long?,
     ) {
         fun toTenantConfig(): TenantConfig =
             TenantConfig(
@@ -134,6 +149,11 @@ class TenantConfigRepositoryAdapter(
                 billingCustomerId = billingCustomerId,
                 createdAt = createdAt,
                 suspendedAt = suspendedAt,
+                monthlyTransactionLimit = monthlyTransactionLimit,
+                monthlyApiCallLimit = monthlyApiCallLimit,
+                monthlyChainEventLimit = monthlyChainEventLimit,
+                monthlyWebhookDeliveryLimit = monthlyWebhookDeliveryLimit,
+                monthlyEntryLimit = monthlyEntryLimit,
             )
 
         companion object {
@@ -148,6 +168,11 @@ class TenantConfigRepositoryAdapter(
                     billingCustomerId = config.billingCustomerId,
                     createdAt = config.createdAt,
                     suspendedAt = config.suspendedAt,
+                    monthlyTransactionLimit = config.monthlyTransactionLimit,
+                    monthlyApiCallLimit = config.monthlyApiCallLimit,
+                    monthlyChainEventLimit = config.monthlyChainEventLimit,
+                    monthlyWebhookDeliveryLimit = config.monthlyWebhookDeliveryLimit,
+                    monthlyEntryLimit = config.monthlyEntryLimit,
                 )
         }
     }

@@ -82,6 +82,12 @@ idem:
     soft-warn-threshold: 10
   tenant-config:
     cache-ttl-minutes: 10
+  usage-metering:
+    # Cron: 5 minutes past every hour, giving the safety buffer below room before the hour
+    # it's rolling up is considered fully elapsed. Override for testing (e.g. "0 * * * * *").
+    rollup-cron: "0 5 * * * *"
+    rollup-safety-buffer-minutes: 5
+    api-call-flush-interval-ms: 60000
 
 ---
 spring:

@@ -30,10 +30,10 @@ class FlywayMigrationTest {
             .load()
 
     @Test
-    fun `all 28 migrations apply cleanly`() {
+    fun `all 30 migrations apply cleanly`() {
         flyway().migrate()
         val applied = flyway().info().applied()
-        assertEquals(28, applied.size)
+        assertEquals(30, applied.size)
         assertTrue(applied.none { it.state.isFailed() }, "No migration should be in failed state")
     }
 
@@ -63,6 +63,9 @@ class FlywayMigrationTest {
                 "lgpd_retention_schedule",
                 "policy_rules",
                 "settlement_idempotency_keys",
+                "usage_metrics",
+                "usage_metrics_hourly",
+                "usage_metrics_rollup_state",
             )
 
         postgres.createConnection("").use { conn ->
@@ -256,4 +259,49 @@ class FlywayMigrationTest {
             assertEquals(2, rs.getInt(1), "Owner role should see tenant rows across tenants without app.tenant_id set")
         }
     }
+
+    @Test
+    fun `usage_metrics is readable across tenants without app_tenant_id (NO FORCE RLS)`() {
+        flyway().migrate()
+
+        val tenantA = "e0000000-0000-0000-0000-000000000001"
+        val tenantB = "e0000000-0000-0000-0000-000000000002"
+
+        fun insertUsageEvent(tenantId: String) {
+            postgres.createConnection("").use { conn ->
+                conn.autoCommit = false
+                conn.createStatement().execute("SET LOCAL app.tenant_id = '$tenantId'")
+                conn
+                    .prepareStatement(
+                        "INSERT INTO usage_metrics (tenant_id, metric_type, amount) VALUES (?::uuid, 'TRANSACTION_COUNT', 1)",
+                    ).use {
+                        it.setString(1, tenantId)
+                        it.executeUpdate()
+                    }
+                conn.commit()
+            }
+        }
+
+        insertUsageEvent(tenantA)
+        insertUsageEvent(tenantB)
+
+        // No app.tenant_id set on this connection — NO FORCE RLS lets the owner role (idem)
+        // see rows across tenants, which the hourly rollup job relies on to aggregate in one
+        // cross-tenant query.
+        postgres.createConnection("").use { conn ->
+            val rs =
+                conn.createStatement().executeQuery(
+                    "SELECT COUNT(*) FROM usage_metrics WHERE tenant_id IN ('$tenantA'::uuid, '$tenantB'::uuid)",
+                )
+            rs.next()
+            assertEquals(2, rs.getInt(1), "Owner role should see usage_metrics rows across tenants without app.tenant_id set")
+        }
+    }
+
+    // Note: no test here verifies FORCE RLS actually hides another tenant's
+    // usage_metrics_hourly row -- the Testcontainers postgres user is a superuser, and
+    // superusers bypass RLS regardless of FORCE (only non-superuser table owners are subject
+    // to it). No other FORCE RLS table in this file (e.g. agent_audit_events) has such a test
+    // for the same reason; the guarantee itself relies on the app's runtime DB role not being
+    // a superuser, which is outside what this test harness can exercise.
 }

@@ -18,6 +18,7 @@ import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.LgpdRetentionRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.BasicReconciliationUseCase
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.LedgerInvariantViolation
 import finance.idem.core.TransactionId
 import finance.idem.core.compliance.TravelRuleData
@@ -27,6 +28,8 @@ import finance.idem.core.ledger.Transaction
 import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.ledger.TransactionStatus
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.core.usage.MetricType
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -44,7 +47,10 @@ class PostTransactionService(
     private val travelRuleValidator: TravelRuleValidator,
     private val complianceQueueRepository: ComplianceQueueRepository,
     private val lgpdRetentionRepository: LgpdRetentionRepository,
+    private val usageMeteringService: UsageMeteringService,
 ) : PostTransactionUseCase {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     override fun execute(cmd: PostTransactionCommand): Result<TransactionId> {
         val txId = TransactionId.generate()
         val now = Instant.now()
@@ -149,6 +155,13 @@ class PostTransactionService(
         if (flaggedItems.isNotEmpty()) {
             webhookOutboxRepository.save(WebhookOutboxEntry.travelRuleRequired(transaction))
         }
+
+        // Best-effort — usageMeteringService.recordUsage runs in its own REQUIRES_NEW
+        // transaction, so a metering failure can never roll back this ledger commit.
+        runCatching { usageMeteringService.recordUsage(cmd.tenantId, MetricType.TRANSACTION_COUNT) }
+            .onFailure { log.warn("PostTransactionService: failed to record TRANSACTION_COUNT for tenant=${cmd.tenantId.value}", it) }
+        runCatching { usageMeteringService.recordUsage(cmd.tenantId, MetricType.ENTRY_COUNT, lines.size.toLong()) }
+            .onFailure { log.warn("PostTransactionService: failed to record ENTRY_COUNT for tenant=${cmd.tenantId.value}", it) }
 
         return Result.success(transaction.id)
     }

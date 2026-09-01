@@ -2,6 +2,7 @@ package finance.idem.infrastructure.chain
 
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
@@ -29,6 +30,7 @@ class ChainReaderOrchestratorTest {
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var deadLetterRecorder: DeadLetterRecorder
+    private lateinit var usageMeteringService: UsageMeteringService
     private lateinit var lockingTaskExecutor: LockingTaskExecutor
 
     private val recoveryExecutor: Executor = Executor { it.run() }
@@ -42,6 +44,7 @@ class ChainReaderOrchestratorTest {
         checkpointRepository = mock()
         postTransactionUseCase = mock()
         deadLetterRecorder = mock()
+        usageMeteringService = mock()
         lockingTaskExecutor = mock()
         whenever(postTransactionUseCase.execute(any())).thenReturn(Result.success(TransactionId(UUID.randomUUID())))
         // Simulate the lock being acquired: run the recovery task synchronously.
@@ -56,6 +59,7 @@ class ChainReaderOrchestratorTest {
             checkpointRepository,
             postTransactionUseCase,
             deadLetterRecorder,
+            usageMeteringService,
             recoveryExecutor,
         ).also { it.lockingTaskExecutor = lockingTaskExecutor }
 
@@ -228,6 +232,7 @@ class ChainReaderOrchestratorTest {
                 checkpointRepository,
                 postTransactionUseCase,
                 deadLetterRecorder,
+                usageMeteringService,
                 executor,
             ).also { it.lockingTaskExecutor = lockingTaskExecutor }
         orchestrator.onApplicationStarted()

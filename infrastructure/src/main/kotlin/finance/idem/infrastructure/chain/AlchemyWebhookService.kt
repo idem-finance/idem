@@ -4,11 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import finance.idem.application.chain.AlchemyWebhookUseCase
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.ChainId
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.StablecoinToken
+import finance.idem.core.TenantId
 import finance.idem.core.chain.ChainCheckpointRepository
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.core.usage.MetricType
 import finance.idem.infrastructure.security.HmacSigner
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -22,6 +25,7 @@ class AlchemyWebhookService(
     private val objectMapper: ObjectMapper,
     private val config: ChainConfig,
     private val deadLetterRecorder: DeadLetterRecorder,
+    private val usageMeteringService: UsageMeteringService,
 ) : AlchemyWebhookUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -63,6 +67,8 @@ class AlchemyWebhookService(
 
         for (activity in payload.event.activity) {
             val transfer = decodeActivity(activity, chainKey, watched) ?: continue
+            runCatching { usageMeteringService.recordUsage(TenantId.of(transfer.watchedAddress.tenantId), MetricType.CHAIN_EVENT_COUNT) }
+                .onFailure { log.warn("Alchemy webhook: failed to record CHAIN_EVENT_COUNT", it) }
             postTransactionUseCase.execute(transfer.toCommand("alchemy-webhook")).onFailure { error ->
                 deadLetterRecorder.record(transfer, chainKey, "alchemy-webhook", error, logPrefix = "Alchemy webhook")
             }

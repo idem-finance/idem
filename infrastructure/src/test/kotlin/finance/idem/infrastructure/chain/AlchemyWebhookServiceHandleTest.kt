@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TransactionId
 import finance.idem.core.chain.ChainCheckpoint
@@ -29,6 +30,7 @@ class AlchemyWebhookServiceHandleTest {
     private lateinit var checkpointRepository: ChainCheckpointRepository
     private lateinit var postTransactionUseCase: PostTransactionUseCase
     private lateinit var deadLetterRecorder: DeadLetterRecorder
+    private lateinit var usageMeteringService: UsageMeteringService
     private lateinit var service: AlchemyWebhookService
 
     private val signingKey = "test-webhook-signing-key"
@@ -58,6 +60,7 @@ class AlchemyWebhookServiceHandleTest {
         checkpointRepository = mock()
         postTransactionUseCase = mock()
         deadLetterRecorder = mock()
+        usageMeteringService = mock()
         service =
             AlchemyWebhookService(
                 watchedAddressRepository = watchedAddressRepository,
@@ -66,6 +69,7 @@ class AlchemyWebhookServiceHandleTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(alchemyWebhookSigningKey = signingKey),
                 deadLetterRecorder = deadLetterRecorder,
+                usageMeteringService = usageMeteringService,
             )
     }
 
@@ -95,6 +99,7 @@ class AlchemyWebhookServiceHandleTest {
                 objectMapper = objectMapper,
                 config = ChainConfig(alchemyWebhookSigningKey = ""),
                 deadLetterRecorder = deadLetterRecorder,
+                usageMeteringService = usageMeteringService,
             )
         whenever(watchedAddressRepository.findByChainKey("EVM_1")).thenReturn(emptyList())
 

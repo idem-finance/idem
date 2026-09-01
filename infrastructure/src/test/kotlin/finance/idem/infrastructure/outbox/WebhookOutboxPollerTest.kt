@@ -4,7 +4,9 @@ import finance.idem.application.outbox.WebhookOutboxDispatch
 import finance.idem.application.port.TenantRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.tenant.TenantWebhookConfig
+import finance.idem.application.usage.UsageMeteringService
 import finance.idem.core.TenantId
+import finance.idem.core.usage.MetricType
 import finance.idem.infrastructure.security.HmacSigner
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -31,6 +33,7 @@ class WebhookOutboxPollerTest {
     private lateinit var tenantRepository: TenantRepository
     private lateinit var httpClient: HttpClient
     private lateinit var urlValidator: WebhookUrlValidator
+    private lateinit var usageMeteringService: UsageMeteringService
 
     private val tenantId = TenantId.generate()
     private val webhookConfig = TenantWebhookConfig(webhookUrl = "https://example.com/webhook", webhookSecret = "test-secret")
@@ -41,6 +44,7 @@ class WebhookOutboxPollerTest {
         tenantRepository = mock()
         httpClient = mock()
         urlValidator = WebhookUrlValidator { Result.success(Unit) }
+        usageMeteringService = mock()
     }
 
     private fun poller(maxAttempts: Int = 5) =
@@ -49,6 +53,7 @@ class WebhookOutboxPollerTest {
             tenantRepository = tenantRepository,
             httpClient = httpClient,
             urlValidator = urlValidator,
+            usageMeteringService = usageMeteringService,
             timeoutMs = 5000,
             maxAttempts = maxAttempts,
             batchSize = 50,
@@ -84,6 +89,7 @@ class WebhookOutboxPollerTest {
         verify(webhookOutboxRepository).markDelivered(entry.id, tenantId)
         verify(webhookOutboxRepository, never()).markFailedForRetry(any(), any(), any(), any(), any())
         verify(webhookOutboxRepository, never()).markDead(any(), any(), any())
+        verify(usageMeteringService).recordUsage(tenantId, MetricType.WEBHOOK_DELIVERY_COUNT)
     }
 
     @Test
