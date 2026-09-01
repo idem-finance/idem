@@ -7,6 +7,9 @@ import finance.idem.core.security.ApiKey
 import finance.idem.core.security.ApiKeyId
 import finance.idem.core.security.ApiKeyRepository
 import finance.idem.core.security.ApiScope
+import finance.idem.core.tenant.TenantConfig
+import finance.idem.core.tenant.TenantConfigRepository
+import finance.idem.core.tenant.TenantPlan
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -42,19 +45,25 @@ class ApiKeyServiceTest {
     @Mock
     private lateinit var passwordEncoder: PasswordEncoder
 
+    @Mock
+    private lateinit var tenantConfigRepository: TenantConfigRepository
+
     private val objectMapper = ObjectMapper().registerKotlinModule()
     private val opsForValue: ValueOperations<String, String> = mock()
 
     private val tenantId = TenantId.generate()
 
     private val service by lazy {
-        ApiKeyService(apiKeyRepository, redisTemplate, objectMapper, passwordEncoder)
+        ApiKeyService(apiKeyRepository, redisTemplate, objectMapper, passwordEncoder, tenantConfigRepository)
     }
 
     @BeforeEach
     fun setup() {
         // Lenient: only validate() calls opsForValue(); generate/revoke tests don't
         Mockito.lenient().`when`(redisTemplate.opsForValue()).thenReturn(opsForValue)
+        // Lenient: only validate() consults this; not suspended is the default for every
+        // test except the dedicated suspension tests below, which override it.
+        Mockito.lenient().`when`(tenantConfigRepository.findByTenantId(any())).thenReturn(null)
     }
 
     @Test
@@ -142,6 +151,38 @@ class ApiKeyServiceTest {
         assertNotNull(result)
         assertEquals(matching.tenantId, result.tenantId)
     }
+
+    @Test
+    fun `validate returns null for a suspended tenant even when the api-key cache hits`() {
+        val cached = """{"tenantId":"${tenantId.value}","scopes":["TRANSACTIONS_READ"]}"""
+        whenever(opsForValue.get("apikey:sk_live_test")).thenReturn(cached)
+        whenever(tenantConfigRepository.findByTenantId(tenantId)).thenReturn(suspendedConfig())
+
+        assertNull(service.validate("sk_live_testabcd1234"))
+    }
+
+    @Test
+    fun `validate returns null for a suspended tenant on a fresh DB lookup`() {
+        whenever(opsForValue.get(any())).thenReturn(null)
+        whenever(apiKeyRepository.findAllByPrefix(any())).thenReturn(listOf(apiKey()))
+        whenever(passwordEncoder.matches(any(), any())).thenReturn(true)
+        whenever(tenantConfigRepository.findByTenantId(tenantId)).thenReturn(suspendedConfig())
+
+        assertNull(service.validate("sk_live_testabcd1234"))
+    }
+
+    private fun suspendedConfig() =
+        TenantConfig(
+            tenantId = tenantId,
+            plan = TenantPlan.CLOUD,
+            rateLimitPerSecond = null,
+            rateLimitPerMinute = null,
+            featureFlags = emptySet(),
+            hmacKey = null,
+            billingCustomerId = null,
+            createdAt = Instant.now(),
+            suspendedAt = Instant.now(),
+        )
 
     @Test
     fun `revoke returns false for key not found`() {
