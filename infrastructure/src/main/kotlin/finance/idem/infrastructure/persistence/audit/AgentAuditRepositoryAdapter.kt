@@ -5,6 +5,7 @@ import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.AgentAuditView
 import finance.idem.core.TenantId
 import finance.idem.core.agentic.AgentAuditEvent
+import finance.idem.core.tenant.TenantConfigRepository
 import finance.idem.infrastructure.persistence.setRlsTenantId
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Component
@@ -17,6 +18,7 @@ class AgentAuditRepositoryAdapter(
     private val entityManager: EntityManager,
     private val objectMapper: ObjectMapper,
     private val auditProperties: AuditProperties,
+    private val tenantConfigRepository: TenantConfigRepository,
 ) : AgentAuditRepository {
     @Transactional
     override fun save(event: AgentAuditEvent) {
@@ -44,11 +46,19 @@ class AgentAuditRepositoryAdapter(
                 status = event.status.name,
                 outcome = event.outcome,
                 payload = payload,
-                hmac = event.computeHmac(auditProperties.hmacSecret),
+                hmac = event.computeHmac(resolveHmacKey(event.tenantId)),
                 occurredAt = event.occurredAt,
             ),
         )
     }
+
+    /**
+     * Per-tenant HMAC key, falling back to the global secret when a tenant has none
+     * configured — required so installs upgrading from a single global secret keep
+     * verifying previously-signed events without a backfill.
+     */
+    private fun resolveHmacKey(tenantId: TenantId): String =
+        tenantConfigRepository.findByTenantId(tenantId)?.hmacKey ?: auditProperties.hmacSecret
 
     @Transactional
     @Suppress("UNCHECKED_CAST")

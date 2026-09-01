@@ -5,20 +5,28 @@ import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.AgentAuditStatus
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.tenant.TenantConfig
+import finance.idem.core.tenant.TenantConfigRepository
+import finance.idem.core.tenant.TenantPlan
 import finance.idem.infrastructure.SharedPostgresTestBase
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import finance.idem.infrastructure.service.PostgresTestContainers
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.mockito.Mockito
+import org.mockito.kotlin.any
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
+import org.springframework.test.context.bean.override.mockito.MockitoBean
 import java.sql.DriverManager
 import java.sql.SQLException
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -59,8 +67,20 @@ class AgentAuditRepositoryAdapterTest : SharedPostgresTestBase() {
     @Autowired
     lateinit var entityManager: EntityManager
 
+    @MockitoBean
+    lateinit var tenantConfigRepository: TenantConfigRepository
+
+    @Autowired
+    lateinit var auditProperties: AuditProperties
+
     private val tenantA = TenantId.generate()
     private val tenantB = TenantId.generate()
+
+    @org.junit.jupiter.api.BeforeEach
+    fun stubTenantConfigLookup() {
+        // Lenient: most tests don't care which key was used, only that save() succeeds.
+        Mockito.lenient().whenever(tenantConfigRepository.findByTenantId(any())).thenReturn(null)
+    }
 
     private fun agentContext(planId: WorkflowPlanId) =
         AgentContext(
@@ -264,5 +284,76 @@ class AgentAuditRepositoryAdapterTest : SharedPostgresTestBase() {
             }
             conn.rollback()
         }
+    }
+
+    @Test
+    fun `save signs with tenant-specific hmacKey when TenantConfig provides one`() {
+        val planId = WorkflowPlanId.generate()
+        val event = AgentAuditEvent.pending(planId, tenantA, agentContext(planId), "offramp")
+        val tenantConfig =
+            TenantConfig(
+                tenantId = tenantA,
+                plan = TenantPlan.OPEN_SOURCE,
+                rateLimitPerSecond = null,
+                rateLimitPerMinute = null,
+                featureFlags = emptySet(),
+                hmacKey = "tenant-a-specific-hmac-key",
+                billingCustomerId = null,
+                createdAt = Instant.now(),
+                suspendedAt = null,
+            )
+        whenever(tenantConfigRepository.findByTenantId(tenantA)).thenReturn(tenantConfig)
+
+        adapter.save(event)
+        entityManager.flush()
+        entityManager.clear()
+
+        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
+        val hmac =
+            entityManager
+                .createNativeQuery("SELECT hmac FROM agent_audit_events WHERE id = '${event.id}'")
+                .singleResult as String
+
+        assertEquals(event.computeHmac("tenant-a-specific-hmac-key"), hmac)
+        assertNotEquals(event.computeHmac(auditProperties.hmacSecret), hmac)
+    }
+
+    @Test
+    fun `save falls back to global hmac secret when tenant has no TenantConfig`() {
+        val planId = WorkflowPlanId.generate()
+        val event = AgentAuditEvent.pending(planId, tenantA, agentContext(planId), "offramp")
+        whenever(tenantConfigRepository.findByTenantId(tenantA)).thenReturn(null)
+
+        adapter.save(event)
+        entityManager.flush()
+        entityManager.clear()
+
+        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
+        val hmac =
+            entityManager
+                .createNativeQuery("SELECT hmac FROM agent_audit_events WHERE id = '${event.id}'")
+                .singleResult as String
+
+        assertEquals(event.computeHmac(auditProperties.hmacSecret), hmac)
+    }
+
+    @Test
+    fun `save propagates uncaught when tenant config lookup fails — never silently drops the audit write`() {
+        val planId = WorkflowPlanId.generate()
+        val event = AgentAuditEvent.pending(planId, tenantA, agentContext(planId), "offramp")
+        whenever(tenantConfigRepository.findByTenantId(tenantA))
+            .thenThrow(RuntimeException("redis unavailable"))
+
+        assertThrows<RuntimeException> { adapter.save(event) }
+
+        entityManager.clear()
+        entityManager.createNativeQuery("SET LOCAL app.tenant_id = '${tenantA.value}'").executeUpdate()
+        val count =
+            (
+                entityManager
+                    .createNativeQuery("SELECT COUNT(*) FROM agent_audit_events WHERE id = '${event.id}'")
+                    .singleResult as Number
+            ).toLong()
+        assertEquals(0L, count, "A failed HMAC-key lookup must not leave a half-written row")
     }
 }

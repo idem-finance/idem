@@ -2,7 +2,9 @@ package finance.idem.infrastructure.security
 
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class HmacSignerTest {
     @Test
@@ -27,5 +29,28 @@ class HmacSignerTest {
         val b = HmacSigner.hexHmacSha256("secret", "payload-b")
 
         assertNotEquals(a, b)
+    }
+
+    @Test
+    fun `verify returns true for a matching signature`() {
+        val signature = HmacSigner.hexHmacSha256("secret", "payload")
+
+        assertTrue(HmacSigner.verify("secret", "payload", signature))
+    }
+
+    @Test
+    fun `verify returns false for a mismatched signature`() {
+        val signature = HmacSigner.hexHmacSha256("secret", "payload")
+
+        assertFalse(HmacSigner.verify("secret", "payload", signature.dropLast(1) + "0"))
+        assertFalse(HmacSigner.verify("wrong-secret", "payload", signature))
+        assertFalse(HmacSigner.verify("secret", "different-payload", signature))
+    }
+
+    @Test
+    fun `verify supports signing a concatenation of multiple fields, matching QuickNode's scheme`() {
+        val signature = HmacSigner.hexHmacSha256("secret", "nonce123" + "1700000000" + "{}")
+
+        assertTrue(HmacSigner.verify("secret", "nonce123" + "1700000000" + "{}", signature))
     }
 }

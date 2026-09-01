@@ -80,6 +80,8 @@ idem:
   limits:
     # Log an INFO nudge when self-hosted tenant count exceeds this value. Set to -1 to disable.
     soft-warn-threshold: 10
+  tenant-config:
+    cache-ttl-minutes: 10
 
 ---
 spring:

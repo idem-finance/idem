@@ -15,7 +15,9 @@ class TenantRepositoryAdapter(
      * Cross-tenant — deliberately does NOT set `app.tenant_id`. Relies on
      * `tenants` having NO FORCE RLS (V13): the table-owner role can resolve
      * any tenant's webhook config while WebhookOutboxPoller iterates
-     * cross-tenant dispatchable rows.
+     * cross-tenant dispatchable rows. That same NO FORCE exemption also covers
+     * every other column on this row this class touches below (`hmac_key`,
+     * `billing_customer_id`, `plan`, rate limits, `feature_flags`) — see V28.
      */
     @Transactional(readOnly = true)
     override fun findWebhookConfig(tenantId: TenantId): TenantWebhookConfig? {
@@ -43,6 +45,13 @@ class TenantRepositoryAdapter(
                 webhookSecret = config.webhookSecret,
                 createdAt = existing?.createdAt ?: now,
                 updatedAt = now,
+                plan = existing?.plan ?: "OPEN_SOURCE",
+                rateLimitPerSecond = existing?.rateLimitPerSecond,
+                rateLimitPerMinute = existing?.rateLimitPerMinute,
+                featureFlags = existing?.featureFlags ?: "",
+                hmacKey = existing?.hmacKey,
+                billingCustomerId = existing?.billingCustomerId,
+                suspendedAt = existing?.suspendedAt,
             )
         jpaRepository.save(updated)
     }

@@ -9,14 +9,20 @@ import finance.idem.core.TransactionId
 import finance.idem.core.WorkflowPlanId
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.AgentContext
+import finance.idem.core.tenant.TenantConfigRepository
 import finance.idem.infrastructure.SharedPostgresTestBase
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import jakarta.persistence.EntityManager
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito
+import org.mockito.kotlin.any
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
+import org.springframework.test.context.bean.override.mockito.MockitoBean
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -37,6 +43,14 @@ class AuditExportRepositoryAdapterTest : SharedPostgresTestBase() {
 
     @Autowired
     lateinit var auditRepositoryAdapter: AuditRepositoryAdapter
+
+    @MockitoBean
+    lateinit var tenantConfigRepository: TenantConfigRepository
+
+    @BeforeEach
+    fun stubTenantConfigLookup() {
+        Mockito.lenient().whenever(tenantConfigRepository.findByTenantId(any())).thenReturn(null)
+    }
 
     @Autowired
     lateinit var agentAuditRepositoryAdapter: AgentAuditRepositoryAdapter

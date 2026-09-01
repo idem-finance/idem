@@ -6,7 +6,6 @@ import finance.idem.application.agentic.SessionDebitPort
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
-import finance.idem.application.port.AgentAuditRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.WorkflowPlanId
@@ -30,7 +29,6 @@ import java.time.Instant
 @Transactional
 class ExecuteWorkflowService(
     private val workflowPlanRepository: WorkflowPlanRepository,
-    private val agentAuditRepository: AgentAuditRepository,
     private val agentAuditRecorder: AgentAuditRecorder,
     private val webhookOutboxRepository: WebhookOutboxRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
@@ -71,7 +69,7 @@ class ExecuteWorkflowService(
             // the business transaction, so an in-transaction write would leave no audit trail
             // of the blocked agent action.
             val violationSummary = policyResult.violations.joinToString("; ") { it.message }
-            recordDurable(
+            recordDurableOrThrow(
                 AgentAuditEvent.failed(
                     workflowPlanId = planId,
                     tenantId = cmd.tenantId,
@@ -93,7 +91,8 @@ class ExecuteWorkflowService(
         workflowPlanRepository.insert(plan)
 
         // Durable "attempt started" record — survives a later rollback of the business tx.
-        recordDurable(
+        // Must fail closed: if this can't be persisted, execution must not proceed un-audited.
+        recordDurableOrThrow(
             AgentAuditEvent.pending(
                 workflowPlanId = planId,
                 tenantId = cmd.tenantId,
@@ -126,7 +125,7 @@ class ExecuteWorkflowService(
                     workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowStatus.FAILED)
                     // Durable failure record — the throw below rolls back the business tx
                     // (plan + committed steps), so this must commit in its own transaction.
-                    recordDurable(
+                    recordDurableSwallowing(
                         AgentAuditEvent.failed(
                             workflowPlanId = planId,
                             tenantId = cmd.tenantId,
@@ -146,7 +145,9 @@ class ExecuteWorkflowService(
                 .copy(completedAt = completedAt)
         workflowPlanRepository.updateStatus(planId, cmd.tenantId, WorkflowStatus.COMMITTED, completedAt = completedAt)
 
-        agentAuditRepository.save(
+        // Durable completion record, own transaction — a failure here must not roll back
+        // a workflow status transition that already reflects an already-executed side effect.
+        recordDurableSwallowing(
             AgentAuditEvent.completed(
                 workflowPlanId = planId,
                 tenantId = cmd.tenantId,
@@ -162,10 +163,23 @@ class ExecuteWorkflowService(
 
     /**
      * Writes an audit event in its own committed transaction via [AgentAuditRecorder].
-     * A failure to persist the audit event is logged but never masks the original outcome
-     * (denial/failure) that the caller is about to propagate.
+     * Propagates on failure — used strictly pre-execution, where nothing has happened yet
+     * that would need to survive an aborted request. Never write audit records for actions
+     * that already executed via this variant: an audit-write hiccup must not roll back a
+     * state transition that already reflects reality.
      */
-    private fun recordDurable(event: AgentAuditEvent) {
+    private fun recordDurableOrThrow(event: AgentAuditEvent) {
+        agentAuditRecorder.recordDurable(event)
+    }
+
+    /**
+     * Writes an audit event in its own committed transaction via [AgentAuditRecorder].
+     * A failure to persist the audit event is logged but never masks the original outcome
+     * (failure/success) that the caller is about to propagate — used once execution has
+     * already happened (or is already known to have failed), so aborting further would not
+     * undo anything.
+     */
+    private fun recordDurableSwallowing(event: AgentAuditEvent) {
         runCatching { agentAuditRecorder.recordDurable(event) }
             .onFailure { log.error("Failed to write durable agent audit event for plan {}", event.workflowPlanId.value, it) }
     }
