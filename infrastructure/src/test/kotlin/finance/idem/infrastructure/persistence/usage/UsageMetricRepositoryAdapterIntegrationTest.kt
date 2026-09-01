@@ -153,7 +153,7 @@ class UsageMetricRepositoryAdapterIntegrationTest : SharedPostgresTestBase() {
     }
 
     @Test
-    fun `watermark defaults to the V30 seed value and advances on request`() {
+    fun `watermark defaults to the V29 seed value and advances on request`() {
         val initial = adapter.currentWatermark()
         assertTrue(initial <= Instant.now(), "seed watermark should be at or before now")
 

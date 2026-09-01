@@ -100,7 +100,7 @@ class UsageMetricRepositoryAdapter(
     override fun currentWatermark(): Instant =
         rollupStateJpaRepository
             .findById(ROLLUP_STATE_ID)
-            .orElseThrow { IllegalStateException("usage_metrics_rollup_state seed row is missing — V30 migration did not run") }
+            .orElseThrow { IllegalStateException("usage_metrics_rollup_state seed row is missing — V29 migration did not run") }
             .lastRolledUpHour
 
     @Transactional
