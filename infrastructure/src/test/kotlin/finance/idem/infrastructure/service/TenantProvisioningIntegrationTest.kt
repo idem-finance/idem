@@ -5,7 +5,6 @@ import finance.idem.application.tenant.ProvisionTenantCommand
 import finance.idem.application.tenant.TenantNotFound
 import finance.idem.core.TenantId
 import finance.idem.core.security.ApiScope
-import finance.idem.core.tenant.TenantPlan
 import finance.idem.infrastructure.SharedPostgresTestBase
 import finance.idem.infrastructure.persistence.tenant.TenantJpaRepository
 import finance.idem.infrastructure.security.ApiKeyService
@@ -51,13 +50,15 @@ class TenantProvisioningIntegrationTest : SharedPostgresTestBase() {
     @Autowired
     private lateinit var tenantJpaRepository: TenantJpaRepository
 
-    private fun command(adminToken: String? = "test-admin-token") =
-        ProvisionTenantCommand(
-            adminToken = adminToken,
-            organizationName = "Acme Corp",
-            contactEmail = "ops@acme.com",
-            plan = TenantPlan.CLOUD,
-        )
+    private fun command(
+        adminToken: String? = "test-admin-token",
+        idempotencyKey: String = "idem-key-${java.util.UUID.randomUUID()}",
+    ) = ProvisionTenantCommand(
+        adminToken = adminToken,
+        idempotencyKey = idempotencyKey,
+        organizationName = "Acme Corp",
+        contactEmail = "ops@acme.com",
+    )
 
     @Test
     fun `provision persists organization identity and plan without clobbering either column set`() {
@@ -75,20 +76,32 @@ class TenantProvisioningIntegrationTest : SharedPostgresTestBase() {
     }
 
     @Test
-    fun `the returned raw key validates successfully with the full CLOUD scope set`() {
+    fun `the returned raw key validates successfully with the default tenant scope set, excluding ADMIN and AGENTS_ROLLBACK`() {
         val provisioned = provisioningService.execute(command()).getOrThrow()
 
         val validated = apiKeyService.validate(provisioned.rawApiKey)
 
         assertNotNull(validated)
         assertEquals(provisioned.tenantId, validated.tenantId)
-        assertEquals(ApiScope.entries.toSet(), validated.scopes)
+        assertEquals(ApiScope.entries.toSet() - setOf(ApiScope.ADMIN, ApiScope.AGENTS_ROLLBACK), validated.scopes)
     }
 
     @Test
     fun `provision fails closed with a missing or wrong admin token`() {
         assertIs<InvalidAdminToken>(provisioningService.execute(command(adminToken = null)).exceptionOrNull())
         assertIs<InvalidAdminToken>(provisioningService.execute(command(adminToken = "wrong")).exceptionOrNull())
+    }
+
+    @Test
+    fun `a retry with the same Idempotency-Key replays the exact same tenant and raw key instead of double-provisioning`() {
+        val key = "idem-key-${java.util.UUID.randomUUID()}"
+        val countBefore = tenantJpaRepository.count()
+
+        val first = provisioningService.execute(command(idempotencyKey = key)).getOrThrow()
+        val second = provisioningService.execute(command(idempotencyKey = key)).getOrThrow()
+
+        assertEquals(first, second)
+        assertEquals(countBefore + 1, tenantJpaRepository.count(), "a retried Idempotency-Key must not create a second tenant row")
     }
 
     @Test

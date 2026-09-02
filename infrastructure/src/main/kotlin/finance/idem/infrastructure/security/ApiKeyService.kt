@@ -74,7 +74,17 @@ class ApiKeyService(
         return validated.takeUnless { isSuspended(it.tenantId) }
     }
 
-    private fun isSuspended(tenantId: TenantId): Boolean = tenantConfigRepository.findByTenantId(tenantId)?.isSuspended == true
+    // Fails open (treats as "not suspended") on any lookup error — mirrors RateLimitFilter's
+    // posture. Without this, a Redis/Postgres blip in the tenant-config path would propagate
+    // out of validate() and be caught by ApiKeyAuthFilter's blanket runCatching, which treats
+    // ANY exception as "unauthenticated" — silently 401ing every tenant's traffic, not just
+    // suspended ones.
+    private fun isSuspended(tenantId: TenantId): Boolean =
+        runCatching { tenantConfigRepository.findByTenantId(tenantId)?.isSuspended == true }
+            .getOrElse { e ->
+                log.warn("Suspension check failed for tenant {} — failing open", tenantId.value, e)
+                false
+            }
 
     @Transactional
     fun revoke(
