@@ -318,6 +318,24 @@ IDEM_TELEMETRY_ENABLED=false
 
 ---
 
+## Rate Limiting
+
+Idem's Cloud SaaS deployment enforces a per-tenant, Redis-backed token bucket (`RateLimitFilter`) so no single tenant can degrade the shared instance for others — requests beyond a tenant's plan limit get a `429` with a `Retry-After` header.
+
+This is off by default for self-hosted/open-source installs. Enable it via `application.yaml` or environment variable:
+
+```yaml
+idem:
+  ratelimit:
+    enabled: true
+```
+
+```bash
+IDEM_RATELIMIT_ENABLED=true
+```
+
+---
+
 ## Release verification
 
 <details>
