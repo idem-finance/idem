@@ -96,6 +96,9 @@ idem:
     # blank token makes the admin-token check fail closed rather than requiring this to be
     # set just to start the app (unlike idem.audit.hmac-secret, which every install uses).
     token: "${IDEM_ADMIN_TOKEN:}"
+    # Rotation: set to the OLD token value alongside a new IDEM_ADMIN_TOKEN, redeploy, then
+    # clear once every caller (billing/signup integration) has picked up the new token.
+    previous-token: "${IDEM_ADMIN_TOKEN_PREVIOUS:}"
   dashboard:
     base-url: "${IDEM_DASHBOARD_BASE_URL:https://cloud.idem.finance}"
   email:

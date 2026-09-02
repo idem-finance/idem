@@ -1,9 +1,13 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.port.AdminTokenAuthenticator
 import finance.idem.application.port.EmailSender
+import finance.idem.application.port.TenantProvisioningIdempotencyStore
 import finance.idem.application.port.TenantRepository
 import finance.idem.application.tenant.InvalidAdminToken
 import finance.idem.application.tenant.ProvisionTenantCommand
+import finance.idem.application.tenant.ProvisionedTenant
+import finance.idem.application.tenant.ProvisioningInProgress
 import finance.idem.application.tenant.TenantNotFound
 import finance.idem.core.TenantId
 import finance.idem.core.security.ApiKey
@@ -12,7 +16,6 @@ import finance.idem.core.tenant.Tenant
 import finance.idem.core.tenant.TenantConfig
 import finance.idem.core.tenant.TenantConfigRepository
 import finance.idem.core.tenant.TenantPlan
-import finance.idem.infrastructure.security.AdminProperties
 import finance.idem.infrastructure.security.ApiKeyService
 import finance.idem.infrastructure.tenant.DashboardProperties
 import org.junit.jupiter.api.Test
@@ -25,10 +28,23 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.TransactionStatus
+import org.springframework.transaction.support.SimpleTransactionStatus
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+
+/** Minimal fake — lets TransactionTemplate.execute { } run its callback without a real DB. */
+private class NoopTransactionManager : PlatformTransactionManager {
+    override fun getTransaction(definition: TransactionDefinition?): TransactionStatus = SimpleTransactionStatus()
+
+    override fun commit(status: TransactionStatus) {}
+
+    override fun rollback(status: TransactionStatus) {}
+}
 
 @ExtendWith(MockitoExtension::class)
 class TenantProvisioningServiceTest {
@@ -44,7 +60,12 @@ class TenantProvisioningServiceTest {
     @Mock
     private lateinit var emailSender: EmailSender
 
-    private val adminProperties = AdminProperties(token = "correct-token")
+    @Mock
+    private lateinit var idempotencyStore: TenantProvisioningIdempotencyStore
+
+    @Mock
+    private lateinit var adminTokenAuthenticator: AdminTokenAuthenticator
+
     private val dashboardProperties = DashboardProperties(baseUrl = "https://cloud.idem.finance")
 
     private val service by lazy {
@@ -53,24 +74,36 @@ class TenantProvisioningServiceTest {
             tenantConfigRepository,
             apiKeyService,
             emailSender,
-            adminProperties,
+            idempotencyStore,
+            adminTokenAuthenticator,
             dashboardProperties,
+            NoopTransactionManager(),
         )
     }
 
     private fun command(
         adminToken: String? = "correct-token",
-        plan: TenantPlan = TenantPlan.CLOUD,
+        idempotencyKey: String = "idem-key-1",
     ) = ProvisionTenantCommand(
         adminToken = adminToken,
+        idempotencyKey = idempotencyKey,
         organizationName = "Acme",
         contactEmail = "ops@acme.com",
-        plan = plan,
     )
 
+    private fun stubValidToken(valid: Boolean = true) {
+        whenever(adminTokenAuthenticator.isValid(any())).thenReturn(valid)
+    }
+
+    private fun stubFreshClaim() {
+        whenever(idempotencyStore.claim(any())).thenReturn(true)
+    }
+
     @Test
-    fun `provision creates tenant, config, key and sends email on success`() {
-        whenever(apiKeyService.generate(any(), eq(ApiScope.entries.toSet())))
+    fun `provision creates tenant, config, key with the default scope set, and sends email on success`() {
+        stubValidToken()
+        stubFreshClaim()
+        whenever(apiKeyService.generate(any(), any()))
             .thenReturn(
                 "sk_live_rawkey" to
                     ApiKey.create(
@@ -99,47 +132,73 @@ class TenantProvisioningServiceTest {
         assertEquals(100, configCaptor.firstValue.rateLimitPerSecond)
         assertEquals(1000, configCaptor.firstValue.rateLimitPerMinute)
 
+        val scopesCaptor = argumentCaptor<Set<ApiScope>>()
+        verify(apiKeyService).generate(any(), scopesCaptor.capture())
+        assertTrue(ApiScope.ADMIN !in scopesCaptor.firstValue)
+        assertTrue(ApiScope.AGENTS_ROLLBACK !in scopesCaptor.firstValue)
+        assertEquals(ApiScope.entries.toSet() - setOf(ApiScope.ADMIN, ApiScope.AGENTS_ROLLBACK), scopesCaptor.firstValue)
+
         verify(emailSender).sendWelcomeEmail(eq("ops@acme.com"), eq("Acme"), eq("sk_live_rawkey"), any())
+        verify(idempotencyStore).cache(eq("idem-key-1"), any())
     }
 
     @Test
-    fun `provision fails closed when admin token is blank`() {
-        val result = service.execute(command(adminToken = null))
+    fun `provision fails closed when admin token is invalid`() {
+        stubValidToken(false)
+
+        val result = service.execute(command())
 
         assertTrue(result.isFailure)
         assertIs<InvalidAdminToken>(result.exceptionOrNull())
         verify(tenantRepository, never()).create(any())
+        verify(idempotencyStore, never()).claim(any())
     }
 
     @Test
-    fun `provision fails closed when admin token does not match`() {
-        val result = service.execute(command(adminToken = "wrong-token"))
+    fun `provision replays the cached result when the idempotency key was already claimed`() {
+        stubValidToken()
+        val tenantId = TenantId.generate()
+        val cached = ProvisionedTenant(tenantId, "sk_live_cached", "https://cloud.idem.finance/t/${tenantId.value}")
+        whenever(idempotencyStore.claim(any())).thenReturn(false)
+        whenever(idempotencyStore.findCached("idem-key-1")).thenReturn(cached)
 
-        assertTrue(result.isFailure)
-        assertIs<InvalidAdminToken>(result.exceptionOrNull())
+        val result = service.execute(command())
+
+        assertTrue(result.isSuccess)
+        assertEquals(cached, result.getOrThrow())
         verify(tenantRepository, never()).create(any())
     }
 
     @Test
-    fun `provision fails closed when the configured admin token itself is blank`() {
-        val blankTokenService =
-            TenantProvisioningService(
-                tenantRepository,
-                tenantConfigRepository,
-                apiKeyService,
-                emailSender,
-                AdminProperties(token = ""),
-                dashboardProperties,
-            )
+    fun `provision fails with ProvisioningInProgress when a concurrent claim hasn't resolved yet`() {
+        stubValidToken()
+        whenever(idempotencyStore.claim(any())).thenReturn(false)
+        whenever(idempotencyStore.findCached("idem-key-1")).thenReturn(null)
 
-        val result = blankTokenService.execute(command(adminToken = "anything"))
+        val result = service.execute(command())
 
         assertTrue(result.isFailure)
-        assertIs<InvalidAdminToken>(result.exceptionOrNull())
+        assertIs<ProvisioningInProgress>(result.exceptionOrNull())
+    }
+
+    @Test
+    fun `provision releases the idempotency claim when the DB transaction fails`() {
+        stubValidToken()
+        stubFreshClaim()
+        whenever(tenantRepository.create(any())).thenThrow(RuntimeException("DB down"))
+
+        val result = service.execute(command())
+
+        assertTrue(result.isFailure)
+        verify(idempotencyStore).release("idem-key-1")
+        verify(idempotencyStore, never()).cache(any(), any())
+        verify(emailSender, never()).sendWelcomeEmail(any(), any(), any(), any())
     }
 
     @Test
     fun `provision still succeeds when the welcome email fails`() {
+        stubValidToken()
+        stubFreshClaim()
         whenever(apiKeyService.generate(any(), any()))
             .thenReturn(
                 "sk_live_rawkey" to
@@ -159,6 +218,7 @@ class TenantProvisioningServiceTest {
 
     @Test
     fun `suspend fails for an unknown tenant`() {
+        stubValidToken()
         val tenantId = TenantId.generate()
         whenever(tenantConfigRepository.findByTenantId(tenantId)).thenReturn(null)
 
@@ -171,6 +231,7 @@ class TenantProvisioningServiceTest {
 
     @Test
     fun `suspend sets suspendedAt while preserving the rest of the config`() {
+        stubValidToken()
         val tenantId = TenantId.generate()
         val existing =
             TenantConfig(
@@ -197,7 +258,9 @@ class TenantProvisioningServiceTest {
     }
 
     @Test
-    fun `suspend fails closed with a wrong admin token`() {
+    fun `suspend fails closed with an invalid admin token`() {
+        stubValidToken(false)
+
         val result = service.execute("wrong-token", TenantId.generate())
 
         assertTrue(result.isFailure)

@@ -171,6 +171,31 @@ class ApiKeyServiceTest {
         assertNull(service.validate("sk_live_testabcd1234"))
     }
 
+    @Test
+    fun `validate fails open when the tenant-config lookup throws on a cache hit`() {
+        val cached = """{"tenantId":"${tenantId.value}","scopes":["TRANSACTIONS_READ"]}"""
+        whenever(opsForValue.get("apikey:sk_live_test")).thenReturn(cached)
+        whenever(tenantConfigRepository.findByTenantId(tenantId)).thenThrow(RuntimeException("Redis down"))
+
+        val result = service.validate("sk_live_testabcd1234")
+
+        assertNotNull(result)
+        assertEquals(tenantId, result.tenantId)
+    }
+
+    @Test
+    fun `validate fails open when the tenant-config lookup throws on a fresh DB lookup`() {
+        whenever(opsForValue.get(any())).thenReturn(null)
+        whenever(apiKeyRepository.findAllByPrefix(any())).thenReturn(listOf(apiKey()))
+        whenever(passwordEncoder.matches(any(), any())).thenReturn(true)
+        whenever(tenantConfigRepository.findByTenantId(tenantId)).thenThrow(RuntimeException("Postgres down"))
+
+        val result = service.validate("sk_live_testabcd1234")
+
+        assertNotNull(result)
+        assertEquals(tenantId, result.tenantId)
+    }
+
     private fun suspendedConfig() =
         TenantConfig(
             tenantId = tenantId,

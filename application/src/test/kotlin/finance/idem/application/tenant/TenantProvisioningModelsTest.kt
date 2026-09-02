@@ -1,7 +1,6 @@
 package finance.idem.application.tenant
 
 import finance.idem.core.TenantId
-import finance.idem.core.tenant.TenantPlan
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -11,12 +10,12 @@ class TenantProvisioningModelsTest {
 
     @Test
     fun `ProvisionTenantCommand holds all fields`() {
-        val cmd = ProvisionTenantCommand("admin-token", "Acme", "ops@acme.com", TenantPlan.CLOUD)
+        val cmd = ProvisionTenantCommand("admin-token", "idem-key-1", "Acme", "ops@acme.com")
 
         assertEquals("admin-token", cmd.adminToken)
+        assertEquals("idem-key-1", cmd.idempotencyKey)
         assertEquals("Acme", cmd.organizationName)
         assertEquals("ops@acme.com", cmd.contactEmail)
-        assertEquals(TenantPlan.CLOUD, cmd.plan)
         assertEquals(cmd, cmd.copy())
     }
 
@@ -44,5 +43,13 @@ class TenantProvisioningModelsTest {
 
         assertIs<Exception>(error)
         assertEquals("no tenant for id", error.message)
+    }
+
+    @Test
+    fun `ProvisioningInProgress carries message and is an Exception`() {
+        val error = ProvisioningInProgress("already in progress")
+
+        assertIs<Exception>(error)
+        assertEquals("already in progress", error.message)
     }
 }
