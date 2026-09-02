@@ -52,6 +52,30 @@ class RateLimitFilterTest {
     }
 
     @Test
+    fun `exact excluded path with no trailing segment is excluded`() {
+        val request = requestFor("/actuator")
+        val response = mock<HttpServletResponse>()
+
+        filter.doFilter(request, response, chain)
+
+        verifyNoInteractions(rateLimiterService)
+        verify(chain).doFilter(request, response)
+    }
+
+    @Test
+    fun `a lookalike path sharing only the prefix text is NOT excluded`() {
+        val tenantId = authenticate()
+        whenever(rateLimiterService.tryConsume(tenantId)).thenReturn(RateLimitResult.Allowed)
+        val request = requestFor("/actuatorless-report")
+        val response = mock<HttpServletResponse>()
+
+        filter.doFilter(request, response, chain)
+
+        verify(rateLimiterService).tryConsume(tenantId)
+        verify(chain).doFilter(request, response)
+    }
+
+    @Test
     fun `no tenant resolved on the security context passes through untouched`() {
         val request = requestFor("/api/v1/transactions")
         val response = mock<HttpServletResponse>()

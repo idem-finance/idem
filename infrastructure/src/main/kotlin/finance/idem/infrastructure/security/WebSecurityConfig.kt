@@ -48,9 +48,14 @@ class WebSecurityConfig {
 
         // RateLimitFilter is a @ConditionalOnProperty bean (idem.ratelimit.enabled, off by
         // default for self-hosted installs) — ObjectProvider lets it be absent entirely
-        // rather than forcing a required constructor dependency. Registered after
-        // ApiKeyAuthFilter: it needs the tenant ID that filter resolves.
-        rateLimitFilter.ifAvailable?.let { chain.addFilterAfter(it, ApiKeyAuthFilter::class.java) }
+        // rather than forcing a required constructor dependency. Anchored after
+        // McpSseAuthBridgeFilter (not ApiKeyAuthFilter) so the total order is explicit —
+        // ApiKeyAuthFilter -> McpSseAuthBridgeFilter -> RateLimitFilter — rather than relying
+        // on Spring Security's undocumented tie-break between two filters sharing the same
+        // addFilterAfter anchor. RateLimitFilter needs whichever of the two auth filters
+        // resolved the tenant (header-based X-API-Key, or the MCP SSE session bridge for
+        // POST /mcp/messages requests that arrive without a header) to have already run.
+        rateLimitFilter.ifAvailable?.let { chain.addFilterAfter(it, McpSseAuthBridgeFilter::class.java) }
 
         return chain
             .exceptionHandling { ex ->

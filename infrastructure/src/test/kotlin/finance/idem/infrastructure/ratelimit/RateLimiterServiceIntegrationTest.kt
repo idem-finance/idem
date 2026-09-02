@@ -18,7 +18,6 @@ import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -106,7 +105,7 @@ class RateLimiterServiceIntegrationTest : SharedPostgresTestBase() {
         val results = (1..200).map { rateLimiterService.tryConsume(tenantId) }
 
         assertTrue(results.all { it == RateLimitResult.Unlimited })
-        assertFalse(stringRedisTemplate.hasKey("ratelimit:${tenantId.value}"))
+        assertTrue(stringRedisTemplate.keys("ratelimit:${tenantId.value}*").isEmpty())
     }
 
     @Test
@@ -158,6 +157,38 @@ class RateLimiterServiceIntegrationTest : SharedPostgresTestBase() {
         assertTrue(allowedCount in limit..(limit + 2), "expected allowedCount in $limit..${limit + 2}, was $allowedCount")
         assertEquals(30, results.size)
         assertTrue(results.count { it is RateLimitResult.Denied } > 0)
+    }
+
+    @Test
+    fun `a tenant's Redis bucket key carries a TTL once created, bounding key growth`() {
+        val tenantId = TenantId.generate()
+        tenantConfigRepository.upsert(cloudConfig(tenantId, rateLimitPerSecond = 5))
+
+        rateLimiterService.tryConsume(tenantId)
+
+        val keys = stringRedisTemplate.keys("ratelimit:${tenantId.value}*")
+        assertEquals(1, keys.size)
+        val ttlSeconds = stringRedisTemplate.getExpire(keys.first(), TimeUnit.SECONDS)
+        assertTrue(ttlSeconds > 0, "expected a positive TTL on the bucket key, was $ttlSeconds")
+    }
+
+    @Test
+    fun `raising a tenant's limit is enforced on the very next request, not stuck on a stale exhausted bucket`() {
+        val tenantId = TenantId.generate()
+        tenantConfigRepository.upsert(cloudConfig(tenantId, rateLimitPerSecond = 1))
+        // Exhaust the tight limit.
+        assertEquals(RateLimitResult.Allowed, rateLimiterService.tryConsume(tenantId))
+        assertTrue(rateLimiterService.tryConsume(tenantId) is RateLimitResult.Denied)
+
+        tenantConfigRepository.upsert(cloudConfig(tenantId, rateLimitPerSecond = 5))
+
+        // The bucket's limits are folded into its Redis key (see RateLimiterService) rather
+        // than reconciled in place, so a config change addresses a fresh bucket immediately —
+        // proving the raised limit took effect requires up to 5 requests to succeed here,
+        // rather than staying stuck denied forever on the old, already-exhausted capacity=1
+        // bucket.
+        val results = (1..5).map { rateLimiterService.tryConsume(tenantId) }
+        assertEquals(5, results.count { it == RateLimitResult.Allowed })
     }
 
     @Test

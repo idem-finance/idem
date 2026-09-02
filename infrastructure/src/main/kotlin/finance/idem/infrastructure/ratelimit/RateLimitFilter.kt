@@ -32,7 +32,7 @@ class RateLimitFilter(
         response: HttpServletResponse,
         chain: FilterChain,
     ) {
-        if (EXCLUDED_PREFIXES.any { request.requestURI.startsWith(it) }) {
+        if (isExcluded(request.requestURI)) {
             chain.doFilter(request, response)
             return
         }
@@ -61,4 +61,9 @@ class RateLimitFilter(
             chain.doFilter(request, response)
         }
     }
+
+    // Segment-bounded, matching WebSecurityConfig's requestMatchers("/actuator/**") semantics
+    // for the same paths — a plain startsWith would also exempt a lookalike route like
+    // "/actuatorless-report".
+    private fun isExcluded(requestUri: String): Boolean = EXCLUDED_PREFIXES.any { requestUri == it || requestUri.startsWith("$it/") }
 }
