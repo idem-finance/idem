@@ -1,6 +1,6 @@
 # Architecture overview — how Idem works, end to end
 
-This page explains the whole open-source system in plain language, from the moment a
+This page explains the whole source-available system in plain language, from the moment a
 money movement enters Idem until you fetch a balance or statement. Each step pairs an
 everyday analogy with the real component names, so it works both as a first read and
 as a map into the detailed component docs in [`docs/`](./).
