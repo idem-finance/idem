@@ -22,6 +22,11 @@ class LgpdRetentionService(
     @Transactional
     fun processExpiredData() {
         val now = Instant.now()
+        // Cross-tenant by design, no app.tenant_id set — lgpd_retention_schedule carries a
+        // SELECT-only, idem_app-scoped service_cross_tenant_read policy (V31) for exactly
+        // this sweep, same pattern as tenants/webhook_outbox/usage_metrics. Each entry's own
+        // deletion below still sets app.tenant_id (INSERT/UPDATE/DELETE aren't covered by
+        // that policy).
         val expired = scheduleRepo.findByDeletionDueAtBeforeAndProcessedAtIsNull(now)
         expired.forEach { entry ->
             when (entry.entityType) {

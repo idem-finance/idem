@@ -30,10 +30,10 @@ class FlywayMigrationTest {
             .load()
 
     @Test
-    fun `all 30 migrations apply cleanly`() {
+    fun `all 32 migrations apply cleanly`() {
         flyway().migrate()
         val applied = flyway().info().applied()
-        assertEquals(30, applied.size)
+        assertEquals(32, applied.size)
         assertTrue(applied.none { it.state.isFailed() }, "No migration should be in failed state")
     }
 
@@ -298,20 +298,20 @@ class FlywayMigrationTest {
         }
     }
 
-    // Note: no test here verifies FORCE RLS actually hides another tenant's
-    // usage_metrics_hourly row -- the Testcontainers postgres user is a superuser, and
-    // superusers bypass RLS regardless of FORCE (only non-superuser table owners are subject
-    // to it). No other FORCE RLS table in this file (e.g. agent_audit_events) has such a test
-    // for the same reason; the guarantee itself relies on the app's runtime DB role not being
-    // a superuser, which is outside what this test harness can exercise.
+    // Real FORCE RLS enforcement (a tenant genuinely cannot read/write another tenant's row,
+    // even with a crafted query) is covered in RowLevelSecurityEnforcementTest, not here --
+    // this class's Testcontainers postgres user was a superuser (bypasses RLS regardless of
+    // FORCE) until V31, so those assertions belong in a test that runs after V31 applies and
+    // opens a fresh connection to actually exercise the now-restricted role.
 
     @Test
     fun `usage_metrics_hourly has an INSERT policy allowing the rollup job's cross-tenant write`() {
         flyway().migrate()
 
-        // Can't test RLS *enforcement* here for the same superuser reason as above -- assert
-        // the policy exists instead, which is the actual gap V31 closes (rollupHour's
-        // cross-tenant INSERT had no policy to execute under at all).
+        // Policy-existence check; RowLevelSecurityEnforcementTest covers actual enforcement
+        // post-V31. What V31 closes is the app's runtime role being a superuser -- this
+        // policy's cross-tenant INSERT already had somewhere to execute under before V31,
+        // it just didn't matter yet since the bypass made every policy in the schema inert.
         postgres.createConnection("").use { conn ->
             val rs =
                 conn.createStatement().executeQuery(

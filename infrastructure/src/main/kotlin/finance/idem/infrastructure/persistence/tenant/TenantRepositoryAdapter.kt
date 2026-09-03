@@ -16,13 +16,14 @@ class TenantRepositoryAdapter(
     private val entityManager: EntityManager,
 ) : TenantRepository {
     /**
-     * Cross-tenant — deliberately does NOT set `app.tenant_id`. Relies on
-     * `tenants` having NO FORCE RLS (V13): the table-owner role can resolve
-     * any tenant's webhook config while WebhookOutboxPoller iterates
-     * cross-tenant dispatchable rows. That same NO FORCE exemption also covers
-     * every other column on this row this class touches below (`hmac_key`,
-     * `billing_customer_id`, `plan`, rate limits, `feature_flags`, monthly usage
-     * limits, `organization_name`, `contact_email`) — see V28/V29/V30.
+     * Cross-tenant — deliberately does NOT set `app.tenant_id`. `tenants` carries a
+     * SELECT-only, idem_app-scoped `service_cross_tenant_read` policy (V31) specifically
+     * for this read, so WebhookOutboxPoller can resolve any tenant's webhook config while
+     * iterating cross-tenant dispatchable rows. That same policy covers every other column
+     * on this row this class touches below (`hmac_key`, `billing_customer_id`, `plan`,
+     * rate limits, `feature_flags`, monthly usage limits, `organization_name`,
+     * `contact_email`) — see V28/V29/V30. Writes below are NOT covered by it (SELECT
+     * only) and set `app.tenant_id` like every other tenant-scoped write in this codebase.
      */
     @Transactional(readOnly = true)
     override fun findWebhookConfig(tenantId: TenantId): TenantWebhookConfig? {
@@ -41,6 +42,7 @@ class TenantRepositoryAdapter(
         tenantId: TenantId,
         config: TenantWebhookConfig,
     ) {
+        entityManager.setRlsTenantId(tenantId)
         val now = Instant.now()
         val existing = jpaRepository.findById(tenantId.value).orElse(null)
         val updated =

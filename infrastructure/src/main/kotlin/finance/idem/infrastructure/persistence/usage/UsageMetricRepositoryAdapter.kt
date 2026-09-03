@@ -24,8 +24,10 @@ class UsageMetricRepositoryAdapter(
         occurredAt: Instant,
         idempotencyKey: String?,
     ) {
-        // usage_metrics is NO FORCE RLS (the rollup job needs cross-tenant reads as owner) —
-        // setting app.tenant_id here is defense-in-depth, not a correctness requirement.
+        // usage_metrics carries a SELECT-only, idem_app-scoped service_cross_tenant_read
+        // policy (V31) for the rollup job's cross-tenant read below — setting app.tenant_id
+        // here is defense-in-depth for this INSERT, not a correctness requirement, since the
+        // regular tenant_isolation policy already covers writes correctly either way.
         entityManager.setRlsTenantId(tenantId)
         if (idempotencyKey == null) {
             eventJpaRepository.save(
