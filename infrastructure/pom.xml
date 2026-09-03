@@ -61,6 +61,24 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- Redis-backed token bucket rate limiting (#273) — Lettuce integration only,
+             matching spring-boot-starter-data-redis's default client (no bucket4j-jedis). -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j_jdk17-core</artifactId>
+            <version>${bucket4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j_jdk17-redis-common</artifactId>
+            <version>${bucket4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j_jdk17-lettuce</artifactId>
+            <version>${bucket4j.version}</version>
+        </dependency>
+
         <!-- JSON — JSONB serialization for MonetaryEntry, AgentContext, metadata -->
         <dependency>
             <groupId>com.fasterxml.jackson.module</groupId>
@@ -177,6 +195,8 @@
                         <exclude>finance/idem/infrastructure/chain/TronNetworkConfig*</exclude>
                         <!-- AuditProperties — Kotlin data class synthetic branches -->
                         <exclude>finance/idem/infrastructure/persistence/audit/AuditProperties*</exclude>
+                        <!-- RateLimitProperties — Kotlin data class synthetic branches -->
+                        <exclude>finance/idem/infrastructure/ratelimit/RateLimitProperties*</exclude>
                         <!-- WebSecurityConfig — pure Spring Security wiring, no business logic;
                              @ConditionalOnWebApplication(SERVLET) means it never loads in infra tests -->
                         <exclude>finance/idem/infrastructure/security/WebSecurityConfig*</exclude>

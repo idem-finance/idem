@@ -82,6 +82,12 @@ idem:
     soft-warn-threshold: 10
   tenant-config:
     cache-ttl-minutes: 10
+  ratelimit:
+    # Off by default for self-hosted/open-source installs — enable for the Cloud SaaS
+    # deployment via IDEM_RATELIMIT_ENABLED=true. See RateLimitFilter (#273).
+    enabled: "${IDEM_RATELIMIT_ENABLED:false}"
+    cloud-default-per-second: 100
+    cloud-default-per-minute: 1000
   usage-metering:
     # Cron: 5 minutes past every hour, giving the safety buffer below room before the hour
     # it's rolling up is considered fully elapsed. Override for testing (e.g. "0 * * * * *").

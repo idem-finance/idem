@@ -57,6 +57,7 @@
         <web3j.version>4.12.0</web3j.version>
         <wiremock.version>2.35.1</wiremock.version>
         <shedlock.version>6.6.0</shedlock.version>
+        <bucket4j.version>8.14.0</bucket4j.version>
         <dokka.version>1.9.20</dokka.version>
         <ktlint.version>1.8.0</ktlint.version>
         <detekt.version>1.23.8</detekt.version>
@@ -205,6 +206,9 @@
                                         <!-- Kotlin data class (16 fields) — generated copy$default/componentN
                                              synthetic methods contain unexercisable bytecode branches. -->
                                         <exclude>finance.idem.core.chain.FailedChainTransfer</exclude>
+                                        <!-- Kotlin data class — generated copy$default/componentN
+                                             synthetic methods contain unexercisable bytecode branches. -->
+                                        <exclude>finance.idem.core.tenant.RateLimitDecision</exclude>
                                         <!--
                                           JPA @Entity classes — protected no-arg constructor required
                                           by JPA is called by the ORM at runtime, never in unit tests.
