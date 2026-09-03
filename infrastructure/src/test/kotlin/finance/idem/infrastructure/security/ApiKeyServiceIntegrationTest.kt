@@ -2,6 +2,9 @@ package finance.idem.infrastructure.security
 
 import finance.idem.core.TenantId
 import finance.idem.core.security.ApiScope
+import finance.idem.core.tenant.TenantConfig
+import finance.idem.core.tenant.TenantConfigRepository
+import finance.idem.core.tenant.TenantPlan
 import finance.idem.infrastructure.SharedPostgresTestBase
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -36,6 +39,9 @@ class ApiKeyServiceIntegrationTest : SharedPostgresTestBase() {
 
     @Autowired
     private lateinit var apiKeyService: ApiKeyService
+
+    @Autowired
+    private lateinit var tenantConfigRepository: TenantConfigRepository
 
     private val tenantId = TenantId.generate()
 
@@ -84,5 +90,31 @@ class ApiKeyServiceIntegrationTest : SharedPostgresTestBase() {
         val otherTenant = TenantId.generate()
 
         assertFalse(apiKeyService.revoke(apiKey.id, otherTenant))
+    }
+
+    @Test
+    fun `validate returns null immediately after the tenant is suspended, even for an already-cached key`() {
+        val (rawKey, _) = apiKeyService.generate(tenantId, setOf(ApiScope.TRANSACTIONS_READ))
+
+        // Populate the api-key cache before suspension.
+        assertNotNull(apiKeyService.validate(rawKey))
+
+        tenantConfigRepository.upsert(
+            TenantConfig(
+                tenantId = tenantId,
+                plan = TenantPlan.CLOUD,
+                rateLimitPerSecond = null,
+                rateLimitPerMinute = null,
+                featureFlags = emptySet(),
+                hmacKey = null,
+                billingCustomerId = null,
+                createdAt = java.time.Instant.now(),
+                suspendedAt = java.time.Instant.now(),
+            ),
+        )
+
+        // TenantConfigRepositoryAdapter.upsert() evicts its own cache entry after-commit, so
+        // this takes effect on the very next call — not bounded by either cache's TTL.
+        assertNull(apiKeyService.validate(rawKey))
     }
 }

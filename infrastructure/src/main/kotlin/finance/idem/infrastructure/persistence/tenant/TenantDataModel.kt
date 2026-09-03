@@ -44,6 +44,10 @@ class TenantDataModel(
     val monthlyWebhookDeliveryLimit: Long? = null,
     @Column(name = "monthly_entry_limit")
     val monthlyEntryLimit: Long? = null,
+    @Column(name = "organization_name")
+    val organizationName: String? = null,
+    @Column(name = "contact_email")
+    val contactEmail: String? = null,
 ) {
     protected constructor() : this(UUID.randomUUID(), null, null, Instant.now(), Instant.now())
 }
