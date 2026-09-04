@@ -1,25 +1,13 @@
 package finance.idem.infrastructure.persistence
 
-import finance.idem.core.AccountId
-import finance.idem.core.EntryType
-import finance.idem.core.FiatCurrency
-import finance.idem.core.MonetaryAmount
-import finance.idem.core.PaymentRail
 import finance.idem.core.TenantId
-import finance.idem.core.TransactionId
-import finance.idem.core.ledger.Account
-import finance.idem.core.ledger.AccountType
-import finance.idem.core.ledger.JournalLine
-import finance.idem.core.ledger.Transaction
-import finance.idem.core.monetary.FiatEntry
 import finance.idem.infrastructure.SharedPostgresTestBase
+import finance.idem.infrastructure.seedTransaction
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import java.time.Instant
-import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -42,50 +30,7 @@ class TransactionRepositoryAdapterIntegrationTest : SharedPostgresTestBase() {
     private val tenantA = TenantId.generate()
     private val tenantB = TenantId.generate()
 
-    private fun seedTransaction(tenantId: TenantId): Transaction {
-        val debit = AccountId.generate()
-        val credit = AccountId.generate()
-        val now = Instant.now()
-        accountAdapter.save(Account.create(debit, tenantId, "Debit", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
-        accountAdapter.save(Account.create(credit, tenantId, "Credit", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
-
-        val txId = TransactionId.generate()
-        val amount = MonetaryAmount.of("50.00")
-        val lines =
-            listOf(
-                JournalLine(
-                    id = UUID.randomUUID(),
-                    transactionId = txId,
-                    accountId = debit,
-                    tenantId = tenantId,
-                    entryType = EntryType.DEBIT,
-                    monetaryEntry = FiatEntry(amount, FiatCurrency.BRL, PaymentRail.PIX),
-                    createdAt = now,
-                    createdBy = "test",
-                ),
-                JournalLine(
-                    id = UUID.randomUUID(),
-                    transactionId = txId,
-                    accountId = credit,
-                    tenantId = tenantId,
-                    entryType = EntryType.CREDIT,
-                    monetaryEntry = FiatEntry(amount, FiatCurrency.BRL, PaymentRail.PIX),
-                    createdAt = now,
-                    createdBy = "test",
-                ),
-            )
-        val transaction =
-            Transaction.create(
-                id = txId,
-                tenantId = tenantId,
-                idempotencyKey = "seed-${txId.value}",
-                lines = lines,
-                occurredAt = now,
-                createdAt = now,
-                createdBy = "test",
-            )
-        return transactionAdapter.save(transaction)
-    }
+    private fun seedTransaction(tenantId: TenantId) = seedTransaction(accountAdapter, transactionAdapter, tenantId, amount = "50.00")
 
     @Test
     fun `findById returns null when the transaction belongs to another tenant`() {
