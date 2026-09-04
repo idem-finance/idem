@@ -88,9 +88,10 @@ class WebhookOutboxRepositoryAdapter(
     }
 
     /**
-     * Cross-tenant — deliberately does NOT call `setTenantId`. Relies on
-     * `webhook_outbox` having NO FORCE RLS (V12): the table-owner role sees
-     * PENDING/FAILED rows across all tenants with no `app.tenant_id` set.
+     * Cross-tenant — deliberately does NOT call `setTenantId`. `webhook_outbox` carries a
+     * SELECT-only, idem_app-scoped `service_cross_tenant_read` policy (V31) specifically
+     * for this read, so PENDING/FAILED rows across all tenants are visible with no
+     * `app.tenant_id` set. Every write above sets it as usual — that policy is SELECT only.
      */
     @Transactional(readOnly = true)
     override fun findDispatchable(limit: Int): List<WebhookOutboxDispatch> =

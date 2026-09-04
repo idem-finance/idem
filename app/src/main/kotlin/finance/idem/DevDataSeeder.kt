@@ -12,6 +12,7 @@ import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Profile
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import kotlin.system.exitProcess
 
@@ -32,7 +33,12 @@ class DevDataSeeder(
     private val log = LoggerFactory.getLogger(javaClass)
     private val devTenantId = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
+    @Transactional
     override fun run(args: ApplicationArguments) {
+        // tenants is FORCE RLS as of V31 (idem_app, which this connection now runs as, is
+        // not its owner) -- SET LOCAL app.tenant_id to the tenant's own id, same pattern
+        // as every other first-write-for-a-new-tenant path (TenantRepositoryAdapter.create).
+        jdbcTemplate.execute("SET LOCAL app.tenant_id = '$devTenantId'")
         jdbcTemplate.update(
             "INSERT INTO tenants (id, created_at, updated_at) VALUES (?, NOW(), NOW()) ON CONFLICT (id) DO NOTHING",
             devTenantId,

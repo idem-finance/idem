@@ -134,14 +134,16 @@ class AgentAuditRepositoryAdapterTest : SharedPostgresTestBase() {
 
         assertEquals(2L, count, "Both PENDING and COMPLETED rows must be present")
 
-        val statuses =
+        // Look up each row by its own id rather than assuming occurred_at order -- pending and
+        // completed are constructed back-to-back and can land on the exact same instant at
+        // Postgres's microsecond column precision (reproduced on this machine's clock), making
+        // `ORDER BY occurred_at` alone non-deterministic between them.
+        fun statusOf(id: java.util.UUID) =
             entityManager
-                .createNativeQuery(
-                    "SELECT status FROM agent_audit_events WHERE workflow_plan_id = '${planId.value}' ORDER BY occurred_at",
-                ).resultList
-                .map { it as String }
-        assertEquals(AgentAuditStatus.PENDING.name, statuses[0])
-        assertEquals(AgentAuditStatus.COMPLETED.name, statuses[1])
+                .createNativeQuery("SELECT status FROM agent_audit_events WHERE id = '$id'")
+                .singleResult as String
+        assertEquals(AgentAuditStatus.PENDING.name, statusOf(pending.id))
+        assertEquals(AgentAuditStatus.COMPLETED.name, statusOf(completed.id))
     }
 
     @Test
