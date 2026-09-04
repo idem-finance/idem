@@ -192,6 +192,38 @@ class RateLimiterServiceIntegrationTest : SharedPostgresTestBase() {
     }
 
     @Test
+    fun `a tenant with a low sustained (per-minute) limit is denied even though the burst (per-second) limit is not exhausted`() {
+        // idem#275: prior tests only ever exhaust the per-second bandwidth. Bucket4j requires
+        // ALL bandwidths on a bucket to have capacity, so a low per-minute limit must deny on
+        // its own even while the (generous) per-second limit still has room — proving the
+        // sustained dimension is independently enforced, not just along for the ride.
+        val tenantId = TenantId.generate()
+        tenantConfigRepository.upsert(cloudConfig(tenantId, rateLimitPerSecond = 100, rateLimitPerMinute = 3))
+
+        val results = (1..4).map { rateLimiterService.tryConsume(tenantId) }
+
+        assertEquals(3, results.count { it == RateLimitResult.Allowed })
+        val denied = results.last()
+        assertTrue(denied is RateLimitResult.Denied, "the 4th request must be denied by the per-minute bandwidth alone")
+    }
+
+    @Test
+    fun `an ENTERPRISE tenant with explicit limits configured is still enforced, not unconditionally bypassed`() {
+        // Complements "ENTERPRISE tenant with no configured limits is unlimited" above: proves
+        // the ENTERPRISE bypass is plan-default-plus-config, not an unconditional plan bypass —
+        // idem#275's "enterprise tenant bypasses limit (if configured)" bullet, read literally
+        // against RateLimitPolicy.resolve, means ENTERPRISE is limited exactly when (and only
+        // when) the tenant explicitly configured a limit.
+        val tenantId = TenantId.generate()
+        tenantConfigRepository.upsert(enterpriseConfig(tenantId, rateLimitPerSecond = 2))
+
+        val results = (1..3).map { rateLimiterService.tryConsume(tenantId) }
+
+        assertEquals(2, results.count { it == RateLimitResult.Allowed })
+        assertTrue(results.last() is RateLimitResult.Denied)
+    }
+
+    @Test
     fun `bucket refills after the burst window elapses`() {
         val tenantId = TenantId.generate()
         tenantConfigRepository.upsert(cloudConfig(tenantId, rateLimitPerSecond = 1))
