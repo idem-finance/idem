@@ -70,7 +70,11 @@ class TenantProvisioningHttpE2ETest {
 
         val response = apiGet("/api/v1/accounts", apiKey)
 
-        assertEquals(HttpStatus.OK, response.statusCode, "a freshly provisioned key must work on the very next request, no propagation delay")
+        assertEquals(
+            HttpStatus.OK,
+            response.statusCode,
+            "a freshly provisioned key must work on the very next request, no propagation delay",
+        )
     }
 
     @Test
@@ -167,7 +171,10 @@ class TenantProvisioningHttpE2ETest {
         )
     }
 
-    /** Returns (debitAccountId, creditAccountId), seeded directly via SQL under [tenantId] -- a suspended tenant's key cannot write, so seeding must bypass the API. */
+    /**
+     * Returns (debitAccountId, creditAccountId), seeded directly via SQL under [tenantId] --
+     * a suspended tenant's key cannot write, so seeding must bypass the API.
+     */
     private fun seedAccounts(tenantId: TenantId): Pair<UUID, UUID> {
         val debitId = UUID.randomUUID()
         val creditId = UUID.randomUUID()

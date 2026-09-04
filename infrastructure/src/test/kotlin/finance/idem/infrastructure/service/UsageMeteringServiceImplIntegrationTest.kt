@@ -118,6 +118,9 @@ class UsageMeteringServiceImplIntegrationTest : SharedPostgresTestBase() {
 
         val summary = service.getMonthlyUsage(tenantId, YearMonth.now())
 
-        assertNull(summary.limits[MetricType.TRANSACTION_COUNT], "no persisted TenantConfig row must fall back to TenantConfig.default (unlimited)")
+        assertNull(
+            summary.limits[MetricType.TRANSACTION_COUNT],
+            "no persisted TenantConfig row must fall back to TenantConfig.default (unlimited)",
+        )
     }
 }

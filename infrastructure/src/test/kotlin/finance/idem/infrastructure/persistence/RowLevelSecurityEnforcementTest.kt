@@ -7,6 +7,7 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.Connection
 import java.sql.SQLException
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
@@ -71,8 +72,8 @@ class RowLevelSecurityEnforcementTest {
 
     /** Inserts an account, a transaction, and one journal line, all under [tenantId]. Returns (accountId, transactionId). */
     private fun insertTransaction(tenantId: String): Pair<String, String> {
-        val accountId = java.util.UUID.randomUUID().toString()
-        val transactionId = java.util.UUID.randomUUID().toString()
+        val accountId = UUID.randomUUID().toString()
+        val transactionId = UUID.randomUUID().toString()
         asIdemApp { conn ->
             conn.createStatement().execute("SET LOCAL app.tenant_id = '$tenantId'")
             conn
@@ -97,7 +98,8 @@ class RowLevelSecurityEnforcementTest {
             conn
                 .prepareStatement(
                     "INSERT INTO journal_lines " +
-                        "(transaction_id, account_id, tenant_id, entry_type, amount, currency, monetary_entry_type, monetary_entry_data, created_by) " +
+                        "(transaction_id, account_id, tenant_id, entry_type, amount, currency, " +
+                        "monetary_entry_type, monetary_entry_data, created_by) " +
                         "VALUES (?::uuid, ?::uuid, ?::uuid, 'DEBIT', 100.00, 'USD', 'FIAT', '{}'::jsonb, 'test')",
                 ).use {
                     it.setString(1, transactionId)
@@ -306,7 +308,8 @@ class RowLevelSecurityEnforcementTest {
                 conn
                     .prepareStatement(
                         "INSERT INTO journal_lines " +
-                            "(transaction_id, account_id, tenant_id, entry_type, amount, currency, monetary_entry_type, monetary_entry_data, created_by) " +
+                            "(transaction_id, account_id, tenant_id, entry_type, amount, currency, " +
+                            "monetary_entry_type, monetary_entry_data, created_by) " +
                             "VALUES (?::uuid, ?::uuid, ?::uuid, 'CREDIT', 100.00, 'USD', 'FIAT', '{}'::jsonb, 'test')",
                     ).use {
                         it.setString(1, otherTransactionId)
