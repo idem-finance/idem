@@ -17,6 +17,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean
 import java.time.Duration
 import java.time.Instant
 import java.time.YearMonth
+import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -29,6 +30,14 @@ import kotlin.test.assertNull
  * methods. Simulates what [UsageMetricsRollupJob] does on a schedule by calling
  * [UsageMetricRepositoryAdapter.rollupHour] directly for a past hour, then records additional
  * raw events "now" (not yet rolled up), and asserts the monthly total correctly sums both.
+ *
+ * [UsageMetricRepositoryAdapter.advanceWatermark] mutates a single global, non-tenant-scoped
+ * row (`usage_metrics_rollup_state`, id fixed to 1 by design -- rollup is cross-tenant, so
+ * there is no per-tenant row to scope it to). Isolation between this class's watermark writes
+ * and any other test currently depends entirely on `@DataJpaTest`'s per-method transaction
+ * rollback -- adding `@Commit` here, or running this suite against a shared non-rolled-back
+ * schema, would let one test's watermark advance shift the rollup/raw split point for every
+ * other in-flight `getMonthlyUsage` call.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -44,10 +53,22 @@ class UsageMeteringServiceImplIntegrationTest : SharedPostgresTestBase() {
     private val tenantId = TenantId.generate()
 
     private fun rollUpPastHour(amount: Long) {
-        val hourStart = Instant.now().minus(Duration.ofHours(3)).truncatedTo(ChronoUnit.HOURS)
+        // Clamped to the current UTC month's start so a run within ~3h of UTC midnight on the
+        // 1st can't compute an hourStart in the *previous* month: advanceWatermark(hourEnd)
+        // below must never trail monthStart, or getMonthlyUsage's
+        // splitPoint = maxOf(watermark, monthStart) collapses back to monthStart and silently
+        // drops this rolled-up event from the sum.
+        val monthStart =
+            YearMonth
+                .now(ZoneOffset.UTC)
+                .atDay(1)
+                .atStartOfDay(ZoneOffset.UTC)
+                .toInstant()
+        val hourStart = maxOf(monthStart, Instant.now().minus(Duration.ofHours(3)).truncatedTo(ChronoUnit.HOURS))
         val hourEnd = hourStart.plus(Duration.ofHours(1))
         adapter.recordEvent(tenantId, MetricType.TRANSACTION_COUNT, amount, hourStart.plusSeconds(60))
         adapter.rollupHour(hourStart, hourEnd)
+        // Global, non-tenant-scoped watermark write -- see class doc comment above.
         adapter.advanceWatermark(hourEnd)
     }
 
