@@ -5,6 +5,8 @@ import finance.idem.TestcontainersConfiguration
 import finance.idem.core.TenantId
 import finance.idem.core.security.ApiScope
 import finance.idem.infrastructure.security.ApiKeyService
+import finance.idem.postTransaction
+import finance.idem.seedAccounts
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -15,9 +17,7 @@ import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
-import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.assertEquals
 
@@ -49,10 +49,10 @@ class UsageHttpE2ETest {
     @Test
     fun `posting a transaction increments TRANSACTION_COUNT visible via GET usage current-period`() {
         val tenantId = TenantId.generate()
-        val (debitId, creditId) = seedAccounts(tenantId)
+        val (debitId, creditId) = seedAccounts(dataSource, tenantId, "Usage E2E Account", "usage-e2e-test")
         val (apiKey, _) = apiKeyService.generate(tenantId, setOf(ApiScope.TRANSACTIONS_WRITE, ApiScope.ADMIN))
 
-        val postResponse = postTransaction(apiKey, debitId, creditId, idempotencyKey = "usage-e2e-1")
+        val postResponse = postTransaction(restTemplate, port, apiKey, debitId, creditId, idempotencyKey = "usage-e2e-1")
         assertEquals(HttpStatus.CREATED, postResponse.statusCode)
 
         val usageResponse = getUsage(apiKey)
@@ -64,22 +64,20 @@ class UsageHttpE2ETest {
     fun `tenant A's usage summary never includes tenant B's recorded events`() {
         val tenantA = TenantId.generate()
         val tenantB = TenantId.generate()
-        val (debitA, creditA) = seedAccounts(tenantA)
-        val (debitB, creditB) = seedAccounts(tenantB)
+        val (debitA, creditA) = seedAccounts(dataSource, tenantA, "Usage E2E Account", "usage-e2e-test")
+        val (debitB, creditB) = seedAccounts(dataSource, tenantB, "Usage E2E Account", "usage-e2e-test")
         val (keyA, _) = apiKeyService.generate(tenantA, setOf(ApiScope.TRANSACTIONS_WRITE, ApiScope.ADMIN))
         val (keyB, _) = apiKeyService.generate(tenantB, setOf(ApiScope.TRANSACTIONS_WRITE, ApiScope.ADMIN))
 
-        postTransaction(keyA, debitA, creditA, idempotencyKey = "usage-e2e-isolation-a-1")
-        postTransaction(keyB, debitB, creditB, idempotencyKey = "usage-e2e-isolation-b-1")
-        postTransaction(keyB, debitB, creditB, idempotencyKey = "usage-e2e-isolation-b-2")
-        postTransaction(keyB, debitB, creditB, idempotencyKey = "usage-e2e-isolation-b-3")
+        postTransaction(restTemplate, port, keyA, debitA, creditA, idempotencyKey = "usage-e2e-isolation-a-1")
+        postTransaction(restTemplate, port, keyB, debitB, creditB, idempotencyKey = "usage-e2e-isolation-b-1")
 
         val usageResponseA = getUsage(keyA)
 
         assertEquals(
             1L,
             transactionCountUsage(usageResponseA),
-            "tenant A's usage must reflect only its own transaction, never tenant B's three",
+            "tenant A's usage must reflect only its own transaction, never tenant B's",
         )
     }
 
@@ -96,61 +94,4 @@ class UsageHttpE2ETest {
             HttpEntity<Void>(HttpHeaders().apply { set("X-API-Key", apiKey) }),
             String::class.java,
         )
-
-    private fun postTransaction(
-        apiKey: String,
-        debitAccountId: UUID,
-        creditAccountId: UUID,
-        idempotencyKey: String,
-    ): ResponseEntity<String> {
-        val body =
-            """
-            {
-              "lines": [
-                { "accountId": "$debitAccountId", "entryType": "DEBIT",
-                  "monetaryEntry": { "type": "FIAT", "amount": "10.00", "currency": "USD", "rail": "ACH" } },
-                { "accountId": "$creditAccountId", "entryType": "CREDIT",
-                  "monetaryEntry": { "type": "FIAT", "amount": "10.00", "currency": "USD", "rail": "ACH" } }
-              ]
-            }
-            """.trimIndent()
-        val headers =
-            HttpHeaders().apply {
-                contentType = MediaType.APPLICATION_JSON
-                set("X-API-Key", apiKey)
-                set("Idempotency-Key", idempotencyKey)
-            }
-        return restTemplate.postForEntity(
-            "http://localhost:$port/api/v1/transactions",
-            HttpEntity(body, headers),
-            String::class.java,
-        )
-    }
-
-    /** Returns (debitAccountId, creditAccountId), both seeded directly via SQL under [tenantId]. */
-    private fun seedAccounts(tenantId: TenantId): Pair<UUID, UUID> {
-        val debitId = UUID.randomUUID()
-        val creditId = UUID.randomUUID()
-        dataSource.connection.use { conn ->
-            conn.autoCommit = false
-            conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            listOf(debitId to "ASSET", creditId to "LIABILITY").forEach { (id, type) ->
-                conn
-                    .prepareStatement(
-                        """INSERT INTO accounts(id, tenant_id, name, currency, type, created_by, created_at)
-                       VALUES(?::UUID, ?::UUID, ?, ?, ?, ?, now())""",
-                    ).apply {
-                        setString(1, id.toString())
-                        setString(2, tenantId.value.toString())
-                        setString(3, "Usage E2E Account")
-                        setString(4, "USD")
-                        setString(5, type)
-                        setString(6, "usage-e2e-test")
-                        executeUpdate()
-                    }
-            }
-            conn.commit()
-        }
-        return debitId to creditId
-    }
 }

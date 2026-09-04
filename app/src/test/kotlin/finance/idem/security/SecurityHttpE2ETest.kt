@@ -4,6 +4,7 @@ import finance.idem.TestcontainersConfiguration
 import finance.idem.core.TenantId
 import finance.idem.core.security.ApiScope
 import finance.idem.infrastructure.security.ApiKeyService
+import finance.idem.insertAccount
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -88,7 +89,7 @@ class SecurityHttpE2ETest {
         val tenantB = TenantId.generate()
         val accountId = UUID.randomUUID()
 
-        insertAccount(accountId, tenantA)
+        insertAccount(dataSource, accountId, tenantA, "E2E Test Account", "BRL", "ASSET", "e2e-test")
 
         // tenantB's key with ACCOUNTS_READ — should return 404 because adapter filters by tenant_id
         val (rawKey, _) = apiKeyService.generate(tenantB, setOf(ApiScope.ACCOUNTS_READ))
@@ -102,7 +103,7 @@ class SecurityHttpE2ETest {
         val tenantA = TenantId.generate()
         val accountId = UUID.randomUUID()
 
-        insertAccount(accountId, tenantA)
+        insertAccount(dataSource, accountId, tenantA, "E2E Test Account", "BRL", "ASSET", "e2e-test")
 
         val (rawKey, _) = apiKeyService.generate(tenantA, setOf(ApiScope.ACCOUNTS_READ))
         val response = apiGet("/api/v1/accounts/$accountId/balance", rawKey)
@@ -117,7 +118,7 @@ class SecurityHttpE2ETest {
         val tenantA = TenantId.generate()
         val accountId = UUID.randomUUID()
 
-        insertAccount(accountId, tenantA)
+        insertAccount(dataSource, accountId, tenantA, "E2E Test Account", "BRL", "ASSET", "e2e-test")
 
         val (rawKey, _) = apiKeyService.generate(tenantA, setOf(ApiScope.ACCOUNTS_READ))
         val response = apiGet("/api/v1/accounts/$accountId/entries", rawKey)
@@ -171,28 +172,4 @@ class SecurityHttpE2ETest {
         HttpEntity<Void>(HttpHeaders().apply { set("X-API-Key", apiKey) }),
         String::class.java,
     )
-
-    private fun insertAccount(
-        accountId: UUID,
-        tenantId: TenantId,
-    ) {
-        dataSource.connection.use { conn ->
-            conn.autoCommit = false
-            conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            conn
-                .prepareStatement(
-                    """INSERT INTO accounts(id, tenant_id, name, currency, type, created_by, created_at)
-                   VALUES(?::UUID, ?::UUID, ?, ?, ?, ?, now())""",
-                ).apply {
-                    setString(1, accountId.toString())
-                    setString(2, tenantId.value.toString())
-                    setString(3, "E2E Test Account")
-                    setString(4, "BRL")
-                    setString(5, "ASSET")
-                    setString(6, "e2e-test")
-                    executeUpdate()
-                }
-            conn.commit()
-        }
-    }
 }

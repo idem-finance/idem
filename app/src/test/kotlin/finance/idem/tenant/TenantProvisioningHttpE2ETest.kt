@@ -3,6 +3,8 @@ package finance.idem.tenant
 import com.fasterxml.jackson.databind.ObjectMapper
 import finance.idem.TestcontainersConfiguration
 import finance.idem.core.TenantId
+import finance.idem.postTransaction
+import finance.idem.seedAccounts
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -80,9 +82,10 @@ class TenantProvisioningHttpE2ETest {
     @Test
     fun `suspending a tenant rejects its key on the next call while leaving previously-written data intact`() {
         val (tenantId, apiKey) = provisionTenantAndExtract()
-        val (debitId, creditId) = seedAccounts(tenantId)
+        val (debitId, creditId) = seedAccounts(dataSource, tenantId, "Provisioning E2E Account", "provisioning-e2e-test")
 
-        val postResponse = postTransaction(apiKey, debitId, creditId, idempotencyKey = "tenant-provisioning-e2e-1")
+        val postResponse =
+            postTransaction(restTemplate, port, apiKey, debitId, creditId, idempotencyKey = "tenant-provisioning-e2e-1")
         assertEquals(HttpStatus.CREATED, postResponse.statusCode)
 
         val suspendResponse = suspendTenant(tenantId)
@@ -140,66 +143,6 @@ class TenantProvisioningHttpE2ETest {
             HttpEntity<Void>(HttpHeaders().apply { set("X-API-Key", apiKey) }),
             String::class.java,
         )
-
-    private fun postTransaction(
-        apiKey: String,
-        debitAccountId: UUID,
-        creditAccountId: UUID,
-        idempotencyKey: String,
-    ): ResponseEntity<String> {
-        val body =
-            """
-            {
-              "lines": [
-                { "accountId": "$debitAccountId", "entryType": "DEBIT",
-                  "monetaryEntry": { "type": "FIAT", "amount": "10.00", "currency": "USD", "rail": "ACH" } },
-                { "accountId": "$creditAccountId", "entryType": "CREDIT",
-                  "monetaryEntry": { "type": "FIAT", "amount": "10.00", "currency": "USD", "rail": "ACH" } }
-              ]
-            }
-            """.trimIndent()
-        val headers =
-            HttpHeaders().apply {
-                contentType = MediaType.APPLICATION_JSON
-                set("X-API-Key", apiKey)
-                set("Idempotency-Key", idempotencyKey)
-            }
-        return restTemplate.postForEntity(
-            "http://localhost:$port/api/v1/transactions",
-            HttpEntity(body, headers),
-            String::class.java,
-        )
-    }
-
-    /**
-     * Returns (debitAccountId, creditAccountId), seeded directly via SQL under [tenantId] --
-     * a suspended tenant's key cannot write, so seeding must bypass the API.
-     */
-    private fun seedAccounts(tenantId: TenantId): Pair<UUID, UUID> {
-        val debitId = UUID.randomUUID()
-        val creditId = UUID.randomUUID()
-        dataSource.connection.use { conn ->
-            conn.autoCommit = false
-            conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            listOf(debitId to "ASSET", creditId to "LIABILITY").forEach { (id, type) ->
-                conn
-                    .prepareStatement(
-                        """INSERT INTO accounts(id, tenant_id, name, currency, type, created_by, created_at)
-                       VALUES(?::UUID, ?::UUID, ?, ?, ?, ?, now())""",
-                    ).apply {
-                        setString(1, id.toString())
-                        setString(2, tenantId.value.toString())
-                        setString(3, "Provisioning E2E Account")
-                        setString(4, "USD")
-                        setString(5, type)
-                        setString(6, "provisioning-e2e-test")
-                        executeUpdate()
-                    }
-            }
-            conn.commit()
-        }
-        return debitId to creditId
-    }
 
     /** Reads the transaction count directly, under a fresh out-of-band tenant context -- not the now-suspended key. */
     private fun countTransactions(tenantId: TenantId): Long {
