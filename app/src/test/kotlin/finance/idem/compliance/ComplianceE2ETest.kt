@@ -33,7 +33,6 @@ import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
-import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.test.context.TestPropertySource
 import java.math.BigInteger
@@ -49,6 +48,7 @@ import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import finance.idem.postTransaction as sharedPostTransaction
 
 private const val AUDIT_HMAC_SECRET = "test-only-insecure-compliance-hmac-secret"
 
@@ -432,19 +432,7 @@ class ComplianceE2ETest {
         apiKey: String,
         body: String,
         idempotencyKey: String,
-    ): ResponseEntity<String> {
-        val headers =
-            HttpHeaders().apply {
-                contentType = MediaType.APPLICATION_JSON
-                set("X-API-Key", apiKey)
-                set("Idempotency-Key", idempotencyKey)
-            }
-        return restTemplate.postForEntity(
-            "http://localhost:$port/api/v1/transactions",
-            HttpEntity(body, headers),
-            String::class.java,
-        )
-    }
+    ): ResponseEntity<String> = sharedPostTransaction(restTemplate, port, apiKey, body, idempotencyKey)
 
     private fun extractTransactionId(response: ResponseEntity<String>): UUID =
         UUID.fromString(objectMapper.readTree(response.body!!).get("transactionId").asText())

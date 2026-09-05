@@ -4,6 +4,7 @@ import finance.idem.TestcontainersConfiguration
 import finance.idem.core.TenantId
 import finance.idem.core.security.ApiScope
 import finance.idem.infrastructure.security.ApiKeyService
+import finance.idem.insertAccount
 import finance.idem.sdk.exception.ApiException
 import finance.idem.sdk.model.EntryType
 import finance.idem.sdk.model.FiatCurrency
@@ -42,32 +43,6 @@ class IdemClientE2ETest {
     lateinit var dataSource: DataSource
 
     private fun idemClient(apiKey: String) = IdemClient(baseUrl = "http://localhost:$port", apiKey = apiKey)
-
-    private fun insertAccount(
-        accountId: UUID,
-        tenantId: TenantId,
-        name: String,
-        type: String,
-    ) {
-        dataSource.connection.use { conn ->
-            conn.autoCommit = false
-            conn.createStatement().execute("SET LOCAL app.tenant_id = '${tenantId.value}'")
-            conn
-                .prepareStatement(
-                    """INSERT INTO accounts(id, tenant_id, name, currency, type, created_by, created_at)
-                   VALUES(?::UUID, ?::UUID, ?, ?, ?, ?, now())""",
-                ).apply {
-                    setString(1, accountId.toString())
-                    setString(2, tenantId.value.toString())
-                    setString(3, name)
-                    setString(4, "BRL")
-                    setString(5, type)
-                    setString(6, "sdk-e2e-test")
-                    executeUpdate()
-                }
-            conn.commit()
-        }
-    }
 
     private fun countTransactionsById(
         tenantId: TenantId,
@@ -144,8 +119,8 @@ class IdemClientE2ETest {
             val (rawKey, _) = apiKeyService.generate(tenantId, setOf(ApiScope.TRANSACTIONS_WRITE, ApiScope.ACCOUNTS_READ))
             val cashAccount = UUID.randomUUID()
             val payableAccount = UUID.randomUUID()
-            insertAccount(cashAccount, tenantId, "Cash", "ASSET")
-            insertAccount(payableAccount, tenantId, "Customer Payable", "LIABILITY")
+            insertAccount(dataSource, cashAccount, tenantId, "Cash", "BRL", "ASSET", "sdk-e2e-test")
+            insertAccount(dataSource, payableAccount, tenantId, "Customer Payable", "BRL", "LIABILITY", "sdk-e2e-test")
 
             val client = idemClient(rawKey)
             val response = client.postTransaction(balancedPixRequest(cashAccount, payableAccount))
@@ -160,8 +135,8 @@ class IdemClientE2ETest {
             val (rawKey, _) = apiKeyService.generate(tenantId, setOf(ApiScope.TRANSACTIONS_WRITE, ApiScope.ACCOUNTS_READ))
             val cashAccount = UUID.randomUUID()
             val payableAccount = UUID.randomUUID()
-            insertAccount(cashAccount, tenantId, "Cash", "ASSET")
-            insertAccount(payableAccount, tenantId, "Customer Payable", "LIABILITY")
+            insertAccount(dataSource, cashAccount, tenantId, "Cash", "BRL", "ASSET", "sdk-e2e-test")
+            insertAccount(dataSource, payableAccount, tenantId, "Customer Payable", "BRL", "LIABILITY", "sdk-e2e-test")
 
             val client = idemClient(rawKey)
             val idempotencyKey = "fixed-key-${UUID.randomUUID()}"
@@ -179,8 +154,8 @@ class IdemClientE2ETest {
             val (rawKey, _) = apiKeyService.generate(tenantId, setOf(ApiScope.TRANSACTIONS_WRITE, ApiScope.ACCOUNTS_READ))
             val cashAccount = UUID.randomUUID()
             val payableAccount = UUID.randomUUID()
-            insertAccount(cashAccount, tenantId, "Cash", "ASSET")
-            insertAccount(payableAccount, tenantId, "Customer Payable", "LIABILITY")
+            insertAccount(dataSource, cashAccount, tenantId, "Cash", "BRL", "ASSET", "sdk-e2e-test")
+            insertAccount(dataSource, payableAccount, tenantId, "Customer Payable", "BRL", "LIABILITY", "sdk-e2e-test")
 
             val client = idemClient(rawKey)
             client.postTransaction(balancedPixRequest(cashAccount, payableAccount))
@@ -199,8 +174,8 @@ class IdemClientE2ETest {
             val (rawKey, _) = apiKeyService.generate(tenantId, setOf(ApiScope.TRANSACTIONS_WRITE, ApiScope.ACCOUNTS_READ))
             val cashAccount = UUID.randomUUID()
             val payableAccount = UUID.randomUUID()
-            insertAccount(cashAccount, tenantId, "Cash", "ASSET")
-            insertAccount(payableAccount, tenantId, "Customer Payable", "LIABILITY")
+            insertAccount(dataSource, cashAccount, tenantId, "Cash", "BRL", "ASSET", "sdk-e2e-test")
+            insertAccount(dataSource, payableAccount, tenantId, "Customer Payable", "BRL", "LIABILITY", "sdk-e2e-test")
 
             val client = idemClient(rawKey)
             client.postTransaction(balancedPixRequest(cashAccount, payableAccount))
@@ -226,8 +201,8 @@ class IdemClientE2ETest {
             val (rawKey, _) = apiKeyService.generate(tenantId, setOf(ApiScope.TRANSACTIONS_WRITE, ApiScope.ACCOUNTS_READ))
             val cashAccount = UUID.randomUUID()
             val payableAccount = UUID.randomUUID()
-            insertAccount(cashAccount, tenantId, "Cash", "ASSET")
-            insertAccount(payableAccount, tenantId, "Customer Payable", "LIABILITY")
+            insertAccount(dataSource, cashAccount, tenantId, "Cash", "BRL", "ASSET", "sdk-e2e-test")
+            insertAccount(dataSource, payableAccount, tenantId, "Customer Payable", "BRL", "LIABILITY", "sdk-e2e-test")
 
             val client = idemClient(rawKey)
             val from = Instant.now().minus(1, ChronoUnit.HOURS)
@@ -262,8 +237,8 @@ class IdemClientE2ETest {
             val (rawKey, _) = apiKeyService.generate(tenantId, setOf(ApiScope.ACCOUNTS_READ))
             val cashAccount = UUID.randomUUID()
             val payableAccount = UUID.randomUUID()
-            insertAccount(cashAccount, tenantId, "Cash", "ASSET")
-            insertAccount(payableAccount, tenantId, "Customer Payable", "LIABILITY")
+            insertAccount(dataSource, cashAccount, tenantId, "Cash", "BRL", "ASSET", "sdk-e2e-test")
+            insertAccount(dataSource, payableAccount, tenantId, "Customer Payable", "BRL", "LIABILITY", "sdk-e2e-test")
 
             val client = idemClient(rawKey)
 
