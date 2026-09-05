@@ -26,6 +26,7 @@ import finance.idem.infrastructure.persistence.TransactionRepositoryAdapter
 import finance.idem.infrastructure.persistence.audit.AgentAuditRepositoryAdapter
 import finance.idem.infrastructure.persistence.audit.AuditConfig
 import finance.idem.infrastructure.persistence.audit.AuditRepositoryAdapter
+import finance.idem.infrastructure.persistence.events.DomainEventRepositoryAdapter
 import finance.idem.infrastructure.persistence.idempotency.PostgresIdempotencyStore
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxJpaRepository
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
@@ -57,6 +58,7 @@ import kotlin.test.assertNull
     AuditConfig::class,
     AuditRepositoryAdapter::class,
     WebhookOutboxRepositoryAdapter::class,
+    DomainEventRepositoryAdapter::class,
     TransactionRepositoryAdapter::class,
     AccountRepositoryAdapter::class,
     PostgresIdempotencyStore::class,
@@ -226,5 +228,6 @@ class RollbackWorkflowServiceIntegrationTest : PostgresServiceIntegrationTestBas
         assertEquals(1L, outboxCount("workflow.committed"), "execute() must produce workflow.committed")
         assertEquals(1L, outboxCount("workflow.rolled_back"), "rollback() must produce workflow.rolled_back")
         assertEquals(0L, outboxCount("workflow.failed"))
+        assertEquals(1L, domainEventCount("WORKFLOW_ROLLED_BACK"))
     }
 }

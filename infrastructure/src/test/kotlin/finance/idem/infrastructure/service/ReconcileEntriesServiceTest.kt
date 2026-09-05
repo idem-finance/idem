@@ -1,5 +1,6 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.ReconcileEntriesCommand
 import finance.idem.core.AccountId
@@ -20,6 +21,7 @@ import finance.idem.core.monetary.OnChainEntry
 import finance.idem.infrastructure.persistence.AccountRepositoryAdapter
 import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import finance.idem.infrastructure.persistence.TransactionRepositoryAdapter
+import finance.idem.infrastructure.persistence.events.DomainEventRepositoryAdapter
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxJpaRepository
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
@@ -42,6 +44,7 @@ import kotlin.test.assertTrue
     ReconcileEntriesService::class,
     SettlementRepositoryAdapter::class,
     WebhookOutboxRepositoryAdapter::class,
+    DomainEventRepositoryAdapter::class,
     AccountRepositoryAdapter::class,
     TransactionRepositoryAdapter::class,
     PersistenceTestConfig::class,
@@ -56,6 +59,8 @@ class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
     @Autowired lateinit var transactionAdapter: TransactionRepositoryAdapter
 
     @Autowired lateinit var webhookOutboxRepository: WebhookOutboxRepository
+
+    @Autowired lateinit var domainEventRepository: DomainEventRepository
 
     @Autowired lateinit var txManager: PlatformTransactionManager
 
@@ -195,6 +200,8 @@ class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
         assertEquals("SETTLED", settlementStatus(unmatched.id))
         assertEquals(1L, outboxCount("transaction.settled"))
         assertEquals(0L, outboxCount("reconciliation.exception"))
+        assertEquals(1L, domainEventCount("TRANSACTION_SETTLED"))
+        assertEquals(0L, domainEventCount("RECONCILIATION_EXCEPTION"))
     }
 
     // ── no match ─────────────────────────────────────────────────────────────
@@ -212,6 +219,8 @@ class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
         assertEquals(unmatched.id, result.exceptions[0].settlementId)
         assertEquals(0L, outboxCount("transaction.settled"))
         assertEquals(1L, outboxCount("reconciliation.exception"))
+        assertEquals(0L, domainEventCount("TRANSACTION_SETTLED"))
+        assertEquals(1L, domainEventCount("RECONCILIATION_EXCEPTION"))
     }
 
     // ── amount mismatch ───────────────────────────────────────────────────────
@@ -326,7 +335,8 @@ class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
 
     @Test
     fun `tolerance of 1 percent matches entry within range`() {
-        val toleranceService = ReconcileEntriesService(settlementAdapter, webhookOutboxRepository, txManager, BigDecimal("1"))
+        val toleranceService =
+            ReconcileEntriesService(settlementAdapter, webhookOutboxRepository, domainEventRepository, txManager, BigDecimal("1"))
         val txId = createOnChainTx(tenantA, accountA, accountA2, amount = "100.000000")
         settlementAdapter.save(unmatchedSettlement(amount = "100.000000", matchedTransactionId = txId))
         // 0.5% deviation — within 1% tolerance
@@ -341,7 +351,8 @@ class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
 
     @Test
     fun `tolerance of 1 percent rejects entry outside range`() {
-        val toleranceService = ReconcileEntriesService(settlementAdapter, webhookOutboxRepository, txManager, BigDecimal("1"))
+        val toleranceService =
+            ReconcileEntriesService(settlementAdapter, webhookOutboxRepository, domainEventRepository, txManager, BigDecimal("1"))
         val txId = createOnChainTx(tenantA, accountA, accountA2, amount = "100.000000")
         settlementAdapter.save(unmatchedSettlement(amount = "100.000000", matchedTransactionId = txId))
         // 2% deviation — outside 1% tolerance
@@ -370,5 +381,6 @@ class ReconcileEntriesServiceTest : PostgresServiceIntegrationTestBase() {
         assertEquals(0, result.unmatched)
         assertTrue(result.exceptions.isEmpty())
         assertEquals(2L, outboxCount("transaction.settled"))
+        assertEquals(2L, domainEventCount("TRANSACTION_SETTLED"))
     }
 }

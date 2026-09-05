@@ -3,6 +3,7 @@ package finance.idem.infrastructure.service
 import finance.idem.application.audit.AuditEntry
 import finance.idem.application.compliance.TravelRuleValidationResult
 import finance.idem.application.compliance.TravelRuleValidator
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.ledger.IdempotencyConflict
 import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.JournalLineRequest
@@ -12,6 +13,7 @@ import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AuditRepository
 import finance.idem.application.port.ComplianceQueueRepository
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.LgpdRetentionRepository
 import finance.idem.application.port.WebhookOutboxRepository
@@ -30,6 +32,7 @@ import finance.idem.core.TransactionId
 import finance.idem.core.compliance.LegalPerson
 import finance.idem.core.compliance.TravelRuleData
 import finance.idem.core.compliance.VaspTransferParty
+import finance.idem.core.events.DomainEventType
 import finance.idem.core.ledger.AccountRepository
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Transaction
@@ -66,6 +69,8 @@ class PostTransactionServiceTest {
 
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
 
+    @Mock lateinit var domainEventRepository: DomainEventRepository
+
     @Mock lateinit var idempotencyStore: IdempotencyStore
 
     @Mock lateinit var reconciliationService: BasicReconciliationUseCase
@@ -92,6 +97,7 @@ class PostTransactionServiceTest {
                 accountRepository,
                 auditRepository,
                 webhookOutboxRepository,
+                domainEventRepository,
                 idempotencyStore,
                 reconciliationService,
                 travelRuleValidator,
@@ -160,7 +166,7 @@ class PostTransactionServiceTest {
     }
 
     @Test
-    fun `all four writes are performed on success`() {
+    fun `all five writes are performed on success`() {
         whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
         stubAccountsExist()
         stubSave()
@@ -170,7 +176,24 @@ class PostTransactionServiceTest {
         verify(transactionRepository).save(any())
         verify(auditRepository).save(any<AuditEntry>())
         verify(webhookOutboxRepository).save(any<WebhookOutboxEntry>())
+        verify(domainEventRepository).save(any<DomainEvent>())
         verify(idempotencyStore).tryRecord(any(), any(), any())
+    }
+
+    @Test
+    fun `domain event TRANSACTION_COMMITTED is saved on success`() {
+        whenever(idempotencyStore.tryRecord(any(), any(), any())).thenReturn(true)
+        stubAccountsExist()
+        val saved = stubSave()
+        val captor = argumentCaptor<DomainEvent>()
+
+        service.execute(command())
+
+        verify(domainEventRepository).save(captor.capture())
+        val event = captor.firstValue
+        assertEquals(DomainEventType.TRANSACTION_COMMITTED, event.eventType)
+        assertEquals(saved.first().id.value, event.referenceId)
+        assertEquals(tenantId, event.tenantId)
     }
 
     @Test
@@ -490,10 +513,12 @@ class PostTransactionServiceTest {
 
         service.execute(command())
 
-        val order = inOrder(auditRepository, transactionRepository, webhookOutboxRepository, reconciliationService)
+        val order =
+            inOrder(auditRepository, transactionRepository, webhookOutboxRepository, domainEventRepository, reconciliationService)
         order.verify(auditRepository).save(any())
         order.verify(transactionRepository).save(any())
         order.verify(webhookOutboxRepository).save(any())
+        order.verify(domainEventRepository).save(any())
         order.verify(reconciliationService).reconcile(any())
     }
 

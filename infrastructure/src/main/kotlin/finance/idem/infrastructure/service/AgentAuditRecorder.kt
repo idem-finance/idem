@@ -1,6 +1,8 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.port.AgentAuditRepository
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.core.agentic.AgentAuditEvent
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Propagation
@@ -29,9 +31,25 @@ import org.springframework.transaction.annotation.Transactional
 @Component
 class AgentAuditRecorder(
     private val agentAuditRepository: AgentAuditRepository,
+    private val domainEventRepository: DomainEventRepository,
 ) {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     fun recordDurable(event: AgentAuditEvent) {
         agentAuditRepository.save(event)
+    }
+
+    /**
+     * Same `REQUIRES_NEW` transaction as [recordDurable], but also durably records a
+     * `domain_events` row (e.g. `AGENT_ACTION_FLAGGED` for a PolicyGuard denial) — both writes
+     * commit or roll back together, independent of the caller's business transaction, for the
+     * same reason [recordDurable] itself is `REQUIRES_NEW` (see class KDoc).
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    fun recordDurable(
+        event: AgentAuditEvent,
+        domainEvent: DomainEvent,
+    ) {
+        agentAuditRepository.save(event)
+        domainEventRepository.save(domainEvent)
     }
 }

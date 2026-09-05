@@ -206,6 +206,7 @@
                         <exclude>finance/idem/infrastructure/persistence/workflow/WorkflowPlanDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/workflow/WorkflowPlanStepDataModel*</exclude>
                         <exclude>finance/idem/infrastructure/persistence/audit/AgentAuditEventDataModel*</exclude>
+                        <exclude>finance/idem/infrastructure/persistence/events/DomainEventDataModel*</exclude>
                         <!-- MCP SSE session auth bridge — ServletOutputStream adapter boilerplate:
                              write(int), isReady(), setWriteListener() are unconditional delegates
                              required by the abstract class contract; not exercisable in unit tests. -->

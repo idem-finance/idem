@@ -23,6 +23,7 @@ import finance.idem.infrastructure.persistence.PersistenceTestConfig
 import finance.idem.infrastructure.persistence.TransactionRepositoryAdapter
 import finance.idem.infrastructure.persistence.audit.AuditConfig
 import finance.idem.infrastructure.persistence.audit.AuditRepositoryAdapter
+import finance.idem.infrastructure.persistence.events.DomainEventRepositoryAdapter
 import finance.idem.infrastructure.persistence.idempotency.PostgresIdempotencyStore
 import finance.idem.infrastructure.persistence.outbox.WebhookOutboxRepositoryAdapter
 import finance.idem.infrastructure.persistence.reconciliation.SettlementRepositoryAdapter
@@ -61,6 +62,7 @@ import kotlin.test.assertFailsWith
     AuditConfig::class,
     AuditRepositoryAdapter::class,
     WebhookOutboxRepositoryAdapter::class,
+    DomainEventRepositoryAdapter::class,
     TransactionRepositoryAdapter::class,
     AccountRepositoryAdapter::class,
     PostgresIdempotencyStore::class,
@@ -100,6 +102,14 @@ class PostTransactionServiceIntegrationTest : SharedPostgresTestBase() {
         accountAdapter.save(Account.create(debitId, tenantId, "Debit", FiatCurrency.BRL, AccountType.ASSET, now, "test"))
         accountAdapter.save(Account.create(creditId, tenantId, "Credit", FiatCurrency.BRL, AccountType.LIABILITY, now, "test"))
     }
+
+    private fun domainEventCount(eventType: String): Long =
+        (
+            entityManager
+                .createNativeQuery("SELECT COUNT(*) FROM domain_events WHERE event_type = ?")
+                .setParameter(1, eventType)
+                .singleResult as Number
+        ).toLong()
 
     private fun command(idempotencyKey: String) =
         PostTransactionCommand(
@@ -157,6 +167,11 @@ class PostTransactionServiceIntegrationTest : SharedPostgresTestBase() {
                     .singleResult as Number
             ).toLong()
         assertEquals(0L, count, "the transaction row must roll back along with the usage-metering failure")
+        assertEquals(
+            0L,
+            domainEventCount("TRANSACTION_COMMITTED"),
+            "the domain_events row must roll back along with the usage-metering failure, same as transactions/audit_log/webhook_outbox",
+        )
     }
 
     @Test
@@ -167,5 +182,6 @@ class PostTransactionServiceIntegrationTest : SharedPostgresTestBase() {
 
         verify(usageMetricRepository).recordEvent(any(), eq(MetricType.TRANSACTION_COUNT), eq(1L), any(), eq(null))
         verify(usageMetricRepository).recordEvent(any(), eq(MetricType.ENTRY_COUNT), eq(2L), any(), eq(null))
+        assertEquals(1L, domainEventCount("TRANSACTION_COMMITTED"))
     }
 }

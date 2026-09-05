@@ -1,6 +1,7 @@
 package finance.idem.infrastructure.persistence
 
 import finance.idem.core.StablecoinToken
+import finance.idem.core.events.DomainEventType
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Test
 import org.testcontainers.containers.PostgreSQLContainer
@@ -30,10 +31,10 @@ class FlywayMigrationTest {
             .load()
 
     @Test
-    fun `all 32 migrations apply cleanly`() {
+    fun `all 33 migrations apply cleanly`() {
         flyway().migrate()
         val applied = flyway().info().applied()
-        assertEquals(32, applied.size)
+        assertEquals(33, applied.size)
         assertTrue(applied.none { it.state.isFailed() }, "No migration should be in failed state")
     }
 
@@ -66,6 +67,7 @@ class FlywayMigrationTest {
                 "usage_metrics",
                 "usage_metrics_hourly",
                 "usage_metrics_rollup_state",
+                "domain_events",
             )
 
         postgres.createConnection("").use { conn ->
@@ -218,6 +220,41 @@ class FlywayMigrationTest {
                 enumValues,
                 constraintValues,
                 "transfer_asset CHECK constraint must list exactly the same values as StablecoinToken",
+            )
+        }
+    }
+
+    @Test
+    fun `domain_events event_type CHECK constraint matches DomainEventType enum`() {
+        flyway().migrate()
+
+        val enumValues = DomainEventType.values().map { it.name }.toSet()
+
+        postgres.createConnection("").use { conn ->
+            val rs =
+                conn
+                    .prepareStatement(
+                        """
+                        SELECT pg_get_constraintdef(oid)
+                        FROM pg_constraint
+                        WHERE conrelid = 'domain_events'::regclass
+                          AND contype = 'c'
+                          AND pg_get_constraintdef(oid) LIKE '%event_type%'
+                        """.trimIndent(),
+                    ).executeQuery()
+            assertTrue(rs.next(), "domain_events should have a CHECK constraint on event_type")
+            val constraintDef = rs.getString(1)
+
+            val constraintValues =
+                Regex("'([^']+)'")
+                    .findAll(constraintDef)
+                    .map { it.groupValues[1] }
+                    .toSet()
+
+            assertEquals(
+                enumValues,
+                constraintValues,
+                "event_type CHECK constraint must list exactly the same values as DomainEventType",
             )
         }
     }

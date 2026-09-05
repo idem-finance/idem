@@ -1,6 +1,8 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.outbox.WebhookOutboxEntry
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.BasicReconciliationUseCase
 import finance.idem.application.reconciliation.ReconciliationResult
@@ -12,6 +14,7 @@ import finance.idem.core.ledger.Settlement
 import finance.idem.core.ledger.SettlementRepository
 import finance.idem.core.ledger.Transaction
 import finance.idem.core.monetary.OnChainEntry
+import finance.idem.infrastructure.observability.TraceContext
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -22,6 +25,7 @@ import java.util.UUID
 class BasicReconciliationService(
     private val settlementRepository: SettlementRepository,
     private val webhookOutboxRepository: WebhookOutboxRepository,
+    private val domainEventRepository: DomainEventRepository,
     @Value("\${idem.reconciliation.enabled:true}") private val enabled: Boolean,
     @Value("\${idem.reconciliation.matching-window-hours:24}") private val matchingWindowHours: Long,
 ) : BasicReconciliationUseCase {
@@ -103,6 +107,7 @@ class BasicReconciliationService(
                 ),
             )
         webhookOutboxRepository.save(WebhookOutboxEntry.transactionSettled(transaction))
+        domainEventRepository.save(DomainEvent.transactionSettled(transaction, TraceContext.currentOrNew()))
         return ReconciliationResult.Settled(saved)
     }
 
@@ -146,6 +151,7 @@ class BasicReconciliationService(
                 ),
             )
         webhookOutboxRepository.save(WebhookOutboxEntry.reconciliationUnmatched(transaction))
+        domainEventRepository.save(DomainEvent.reconciliationUnmatched(transaction, TraceContext.currentOrNew()))
         log.warn(
             "Reconciliation: no PENDING match for tx={} tenant={} amount={} token={} chainId={} " +
                 "wallet={} txHash={} — flagged UNMATCHED (id={})",
