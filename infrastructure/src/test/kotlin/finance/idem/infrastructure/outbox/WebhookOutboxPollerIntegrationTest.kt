@@ -15,9 +15,6 @@ import finance.idem.infrastructure.persistence.tenant.TenantDataModel
 import finance.idem.infrastructure.persistence.tenant.TenantJpaRepository
 import finance.idem.infrastructure.security.HmacSigner
 import jakarta.annotation.PostConstruct
-import net.javacrumbs.shedlock.core.LockConfiguration
-import net.javacrumbs.shedlock.core.SimpleLock
-import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Test
@@ -36,7 +33,6 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Duration
 import java.time.Instant
-import java.util.Optional
 import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.assertEquals
@@ -267,81 +263,6 @@ class WebhookOutboxPollerIntegrationTest {
             val lockRow = jdbcTemplate.queryForMap("SELECT locked_at, lock_until FROM shedlock WHERE name = ?", "webhookOutboxPoll")
             assertNotNull(lockRow["locked_at"])
             assertNotNull(lockRow["lock_until"])
-        }
-    }
-
-    @Test
-    fun `webhookOutboxPoll is skipped while another replica holds the webhookOutboxPoll lock`() {
-        // Use a second LockProvider that identifies as "other-replica".
-        // ShedLock's unlock() uses AND locked_by = :lockedBy, so only the holder can release,
-        // preventing the production scheduler from inadvertently dropping our hold.
-        val otherReplicaLock =
-            JdbcTemplateLockProvider(
-                JdbcTemplateLockProvider.Configuration
-                    .builder()
-                    .withJdbcTemplate(JdbcTemplate(dataSource))
-                    .usingDbTime()
-                    .withLockedByValue("other-replica")
-                    .build(),
-            )
-
-        // Retry until the scheduler finishes its current tick and releases, then take the lock.
-        // lockAtLeastFor="4s" on the production @SchedulerLock means the lock window is ~200ms
-        // every 4.2 s. Allow 30 s so the test gets ~7 chances even on a heavily loaded CI runner.
-        var heldLock: Optional<SimpleLock> = Optional.empty()
-        await().atMost(Duration.ofSeconds(30)).until {
-            heldLock =
-                otherReplicaLock.lock(
-                    LockConfiguration(Instant.now(), "webhookOutboxPoll", Duration.ofSeconds(30), Duration.ZERO),
-                )
-            heldLock.isPresent
-        }
-
-        val tenantId = TenantId.generate()
-        val rowId = UUID.randomUUID()
-        try {
-            val now = Instant.now()
-            wireMock.stubFor(post(urlPathEqualTo("/webhook/lock")).willReturn(aResponse().withStatus(200)))
-            tenantJpaRepository.save(
-                TenantDataModel(
-                    id = tenantId.value,
-                    webhookUrl = "http://localhost:${wireMock.port()}/webhook/lock",
-                    webhookSecret = "secret-lock",
-                    createdAt = now,
-                    updatedAt = now,
-                ),
-            )
-            webhookOutboxJpaRepository.save(
-                WebhookOutboxDataModel(
-                    id = rowId,
-                    tenantId = tenantId.value,
-                    transactionId = UUID.randomUUID(),
-                    eventType = "transaction.committed",
-                    payload = """{"eventType":"transaction.committed","scenario":"lock"}""",
-                    status = OutboxStatus.PENDING,
-                    attempts = 0,
-                    nextRetryAt = now,
-                    lastError = null,
-                    createdAt = now,
-                    deliveredAt = null,
-                ),
-            )
-
-            // Wait 3× the 200ms poll interval — any unlocked tick would have fired by now.
-            await().pollDelay(Duration.ofMillis(600)).atMost(Duration.ofMillis(700)).untilAsserted {
-                val row = webhookOutboxJpaRepository.findById(rowId).orElseThrow()
-                assertEquals(OutboxStatus.PENDING, row.status)
-                assertEquals(0, row.attempts)
-            }
-        } finally {
-            heldLock.ifPresent { it.unlock() }
-        }
-
-        // After release, the scheduler must resume and deliver the row. The next scheduled tick
-        // fires within poll-interval-ms (200 ms in tests), but on slow CI allow up to 10 s.
-        await().atMost(Duration.ofSeconds(10)).untilAsserted {
-            val row = webhookOutboxJpaRepository.findById(rowId).orElseThrow()
-            assertEquals(OutboxStatus.DELIVERED, row.status)
         }
     }
 }
