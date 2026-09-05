@@ -39,4 +39,12 @@ abstract class PostgresServiceIntegrationTestBase : SharedPostgresTestBase() {
                 .setParameter(1, eventType)
                 .singleResult as Number
         ).toLong()
+
+    protected fun domainEventCount(eventType: String): Long =
+        (
+            entityManager
+                .createNativeQuery("SELECT COUNT(*) FROM domain_events WHERE event_type = ?")
+                .setParameter(1, eventType)
+                .singleResult as Number
+        ).toLong()
 }

@@ -4,6 +4,7 @@ import finance.idem.application.agentic.RollbackWorkflowCommand
 import finance.idem.application.agentic.WorkflowPlanNotFound
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
@@ -50,6 +51,8 @@ class RollbackWorkflowServiceTest {
 
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
 
+    @Mock lateinit var domainEventRepository: DomainEventRepository
+
     @Mock lateinit var transactionRepository: TransactionRepository
 
     @Mock lateinit var postTransactionUseCase: PostTransactionUseCase
@@ -70,6 +73,7 @@ class RollbackWorkflowServiceTest {
                 workflowPlanRepository,
                 agentAuditRecorder,
                 webhookOutboxRepository,
+                domainEventRepository,
                 transactionRepository,
                 postTransactionUseCase,
             )
@@ -344,6 +348,11 @@ class RollbackWorkflowServiceTest {
         verify(webhookOutboxRepository).save(captor.capture())
         assertEquals("workflow.rolled_back", captor.firstValue.eventType)
         assertEquals(planId.value, captor.firstValue.transactionId.value)
+
+        val domainEventCaptor = argumentCaptor<finance.idem.application.events.DomainEvent>()
+        verify(domainEventRepository).save(domainEventCaptor.capture())
+        assertEquals(finance.idem.core.events.DomainEventType.WORKFLOW_ROLLED_BACK, domainEventCaptor.firstValue.eventType)
+        assertEquals(planId.value, domainEventCaptor.firstValue.referenceId)
     }
 
     @Test

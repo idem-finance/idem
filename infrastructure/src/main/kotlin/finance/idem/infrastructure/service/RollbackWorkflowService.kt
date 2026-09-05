@@ -5,16 +5,19 @@ import finance.idem.application.agentic.RollbackWorkflowCommand
 import finance.idem.application.agentic.RollbackWorkflowSummary
 import finance.idem.application.agentic.RollbackWorkflowUseCase
 import finance.idem.application.agentic.WorkflowPlanNotFound
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.EntryType
 import finance.idem.core.agentic.AgentAuditEvent
 import finance.idem.core.agentic.WorkflowPlanRepository
 import finance.idem.core.agentic.WorkflowStatus
 import finance.idem.core.ledger.TransactionRepository
+import finance.idem.infrastructure.observability.TraceContext
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -26,6 +29,7 @@ class RollbackWorkflowService(
     private val workflowPlanRepository: WorkflowPlanRepository,
     private val agentAuditRecorder: AgentAuditRecorder,
     private val webhookOutboxRepository: WebhookOutboxRepository,
+    private val domainEventRepository: DomainEventRepository,
     private val transactionRepository: TransactionRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
 ) : RollbackWorkflowUseCase {
@@ -138,6 +142,7 @@ class RollbackWorkflowService(
         )
 
         webhookOutboxRepository.save(WebhookOutboxEntry.workflowRolledBack(rolledBackPlan))
+        domainEventRepository.save(DomainEvent.workflowRolledBack(rolledBackPlan, TraceContext.currentOrNew()))
 
         val compensated =
             rolledBackPlan.steps

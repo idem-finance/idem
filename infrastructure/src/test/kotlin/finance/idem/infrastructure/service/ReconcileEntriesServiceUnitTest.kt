@@ -1,6 +1,8 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.outbox.WebhookOutboxEntry
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.ReconcileEntriesCommand
 import finance.idem.core.AccountId
@@ -66,6 +68,14 @@ class ReconcileEntriesServiceUnitTest {
                 tenantId: TenantId,
                 lastError: String?,
             ) = Unit
+        }
+
+    private val savedDomainEvents = mutableListOf<DomainEvent>()
+    private val domainEventRepo =
+        object : DomainEventRepository {
+            override fun save(event: DomainEvent) {
+                savedDomainEvents.add(event)
+            }
         }
 
     private fun unmatchedSettlement(
@@ -134,7 +144,7 @@ class ReconcileEntriesServiceUnitTest {
 
     @Test
     fun `tolerancePercent above 100 is rejected`() {
-        val service = ReconcileEntriesService(emptySettlementRepo, outboxRepo, txManager, BigDecimal.ZERO)
+        val service = ReconcileEntriesService(emptySettlementRepo, outboxRepo, domainEventRepo, txManager, BigDecimal.ZERO)
         assertFailsWith<IllegalArgumentException> {
             service.execute(cmd().copy(tolerancePercent = BigDecimal("100.01"))).getOrThrow()
         }
@@ -142,7 +152,7 @@ class ReconcileEntriesServiceUnitTest {
 
     @Test
     fun `negative tolerancePercent is rejected`() {
-        val service = ReconcileEntriesService(emptySettlementRepo, outboxRepo, txManager, BigDecimal.ZERO)
+        val service = ReconcileEntriesService(emptySettlementRepo, outboxRepo, domainEventRepo, txManager, BigDecimal.ZERO)
         assertFailsWith<IllegalArgumentException> {
             service.execute(cmd().copy(tolerancePercent = BigDecimal("-0.01"))).getOrThrow()
         }
@@ -150,7 +160,7 @@ class ReconcileEntriesServiceUnitTest {
 
     @Test
     fun `tolerancePercent at boundary values 0 and 100 are accepted`() {
-        val service = ReconcileEntriesService(emptySettlementRepo, outboxRepo, txManager, BigDecimal.ZERO)
+        val service = ReconcileEntriesService(emptySettlementRepo, outboxRepo, domainEventRepo, txManager, BigDecimal.ZERO)
         service.execute(cmd().copy(tolerancePercent = BigDecimal.ZERO)).getOrThrow()
         service.execute(cmd().copy(tolerancePercent = BigDecimal("100"))).getOrThrow()
     }
@@ -199,7 +209,7 @@ class ReconcileEntriesServiceUnitTest {
                 ) = emptyList<Settlement>()
             }
 
-        val service = ReconcileEntriesService(repo, outboxRepo, txManager, BigDecimal.ZERO)
+        val service = ReconcileEntriesService(repo, outboxRepo, domainEventRepo, txManager, BigDecimal.ZERO)
         val result = service.execute(cmd()).getOrThrow()
 
         assertEquals(0, result.matched)
@@ -216,5 +226,7 @@ class ReconcileEntriesServiceUnitTest {
         // Outbox written only for the surviving (Unmatched) group, not for the Failed one.
         assertEquals(1, savedOutbox.size)
         assertEquals("reconciliation.exception", savedOutbox[0].eventType)
+        assertEquals(1, savedDomainEvents.size)
+        assertEquals(finance.idem.core.events.DomainEventType.RECONCILIATION_EXCEPTION, savedDomainEvents[0].eventType)
     }
 }

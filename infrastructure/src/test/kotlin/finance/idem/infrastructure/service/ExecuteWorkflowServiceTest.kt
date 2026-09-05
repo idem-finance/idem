@@ -3,9 +3,11 @@ package finance.idem.infrastructure.service
 import finance.idem.application.agentic.ExecuteWorkflowCommand
 import finance.idem.application.agentic.SessionDebitPort
 import finance.idem.application.agentic.WorkflowStepCommand
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
@@ -24,6 +26,7 @@ import finance.idem.core.agentic.StepStatus
 import finance.idem.core.agentic.WorkflowPlanRepository
 import finance.idem.core.agentic.WorkflowStatus
 import finance.idem.core.agentic.WorkflowStep
+import finance.idem.core.events.DomainEventType
 import finance.idem.core.monetary.FiatEntry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -54,6 +57,8 @@ class ExecuteWorkflowServiceTest {
 
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
 
+    @Mock lateinit var domainEventRepository: DomainEventRepository
+
     @Mock lateinit var postTransactionUseCase: PostTransactionUseCase
 
     @Mock lateinit var policyRepository: PolicyRepository
@@ -74,6 +79,7 @@ class ExecuteWorkflowServiceTest {
                 workflowPlanRepository,
                 agentAuditRecorder,
                 webhookOutboxRepository,
+                domainEventRepository,
                 postTransactionUseCase,
                 policyRepository,
                 sessionDebitPort,
@@ -139,6 +145,10 @@ class ExecuteWorkflowServiceTest {
         val outboxCaptor = argumentCaptor<WebhookOutboxEntry>()
         verify(webhookOutboxRepository).save(outboxCaptor.capture())
         assertEquals("workflow.committed", outboxCaptor.firstValue.eventType)
+
+        val domainEventCaptor = argumentCaptor<DomainEvent>()
+        verify(domainEventRepository).save(domainEventCaptor.capture())
+        assertEquals(DomainEventType.WORKFLOW_COMMITTED, domainEventCaptor.firstValue.eventType)
     }
 
     @Test
@@ -152,11 +162,16 @@ class ExecuteWorkflowServiceTest {
 
         verify(workflowPlanRepository, times(0)).insert(any())
         verify(workflowPlanRepository, times(0)).updateStatus(any(), any(), any(), anyOrNull(), anyOrNull(), anyOrNull())
-        // No plan/status changes, but the denied attempt is recorded durably as FAILED.
+        // No plan/status changes, but the denied attempt is recorded durably as FAILED, along
+        // with an AGENT_ACTION_FLAGGED domain event — both via the two-arg recordDurable
+        // overload, in the same REQUIRES_NEW transaction (see AgentAuditRecorder).
         val deniedCaptor = argumentCaptor<AgentAuditEvent>()
-        verify(agentAuditRecorder, times(1)).recordDurable(deniedCaptor.capture())
+        val deniedDomainEventCaptor = argumentCaptor<DomainEvent>()
+        verify(agentAuditRecorder, times(1)).recordDurable(deniedCaptor.capture(), deniedDomainEventCaptor.capture())
         assertEquals(AgentAuditStatus.FAILED, deniedCaptor.firstValue.status)
         assertTrue(deniedCaptor.firstValue.outcome!!.startsWith("Policy denied"))
+        assertEquals(DomainEventType.AGENT_ACTION_FLAGGED, deniedDomainEventCaptor.firstValue.eventType)
+        assertEquals(deniedCaptor.firstValue.workflowPlanId.value, deniedDomainEventCaptor.firstValue.referenceId)
     }
 
     @Test

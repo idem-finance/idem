@@ -1,6 +1,8 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.outbox.WebhookOutboxEntry
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.ReconcileEntriesCommand
 import finance.idem.application.reconciliation.ReconcileEntriesResult
@@ -11,6 +13,7 @@ import finance.idem.core.StablecoinToken
 import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.ledger.Settlement
 import finance.idem.core.ledger.SettlementRepository
+import finance.idem.infrastructure.observability.TraceContext
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -23,6 +26,7 @@ import java.time.Instant
 class ReconcileEntriesService(
     private val settlementRepository: SettlementRepository,
     private val webhookOutboxRepository: WebhookOutboxRepository,
+    private val domainEventRepository: DomainEventRepository,
     txManager: PlatformTransactionManager,
     @Value("\${idem.reconciliation.amount-tolerance-percent:0}") private val tolerancePercent: BigDecimal,
 ) : ReconcileEntriesUseCase {
@@ -142,6 +146,7 @@ class ReconcileEntriesService(
             )
             settlementRepository.save(entry.copy(status = EntryStatus.SETTLED))
             webhookOutboxRepository.save(WebhookOutboxEntry.transactionSettled(entry))
+            domainEventRepository.save(DomainEvent.transactionSettled(entry, TraceContext.currentOrNew()))
             log.info(
                 "ReconcileEntries: settled UNMATCHED={} against PENDING={} tenant={} amount={} token={} txHash={}",
                 entry.id,
@@ -154,6 +159,7 @@ class ReconcileEntriesService(
             EntryOutcome.Settled(entry.id.toString())
         } else {
             webhookOutboxRepository.save(WebhookOutboxEntry.reconciliationException(entry))
+            domainEventRepository.save(DomainEvent.reconciliationException(entry, TraceContext.currentOrNew()))
             val exception =
                 ReconciliationException(
                     settlementId = entry.id,

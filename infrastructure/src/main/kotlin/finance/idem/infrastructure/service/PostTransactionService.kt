@@ -4,6 +4,7 @@ import finance.idem.application.audit.AuditEntry
 import finance.idem.application.compliance.ComplianceQueueItem
 import finance.idem.application.compliance.TravelRuleValidationResult
 import finance.idem.application.compliance.TravelRuleValidator
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.ledger.IdempotencyConflict
 import finance.idem.application.ledger.InvariantViolation
 import finance.idem.application.ledger.JournalLineRequest
@@ -14,6 +15,7 @@ import finance.idem.application.ledger.TransactionAccountNotFound
 import finance.idem.application.outbox.WebhookOutboxEntry
 import finance.idem.application.port.AuditRepository
 import finance.idem.application.port.ComplianceQueueRepository
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.IdempotencyStore
 import finance.idem.application.port.LgpdRetentionRepository
 import finance.idem.application.port.WebhookOutboxRepository
@@ -29,6 +31,7 @@ import finance.idem.core.ledger.TransactionRepository
 import finance.idem.core.ledger.TransactionStatus
 import finance.idem.core.monetary.OnChainEntry
 import finance.idem.core.usage.MetricType
+import finance.idem.infrastructure.observability.TraceContext
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -41,6 +44,7 @@ class PostTransactionService(
     private val accountRepository: AccountRepository,
     private val auditRepository: AuditRepository,
     private val webhookOutboxRepository: WebhookOutboxRepository,
+    private val domainEventRepository: DomainEventRepository,
     private val idempotencyStore: IdempotencyStore,
     private val reconciliationService: BasicReconciliationUseCase,
     private val travelRuleValidator: TravelRuleValidator,
@@ -119,6 +123,7 @@ class PostTransactionService(
         auditRepository.save(AuditEntry.from(transaction, cmd.agentContext, cmd.createdBy))
         transactionRepository.save(transaction)
         webhookOutboxRepository.save(WebhookOutboxEntry.transactionCommitted(transaction))
+        domainEventRepository.save(DomainEvent.transactionCommitted(transaction, TraceContext.currentOrNew()))
         reconciliationService.reconcile(transaction)
 
         val flaggedItems =
@@ -151,6 +156,7 @@ class PostTransactionService(
         flaggedItems.forEach { complianceQueueRepository.enqueue(it) }
         if (flaggedItems.isNotEmpty()) {
             webhookOutboxRepository.save(WebhookOutboxEntry.travelRuleRequired(transaction))
+            domainEventRepository.save(DomainEvent.travelRuleRequired(transaction, TraceContext.currentOrNew()))
         }
 
         // recordUsage joins this method's ambient transaction (see UsageMeteringService KDoc)

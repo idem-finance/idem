@@ -5,6 +5,7 @@ import finance.idem.application.agentic.SessionDebitPort
 import finance.idem.application.agentic.WorkflowStepCommand
 import finance.idem.application.ledger.JournalLineRequest
 import finance.idem.application.ledger.PostTransactionUseCase
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.AccountId
 import finance.idem.core.EntryType
@@ -42,6 +43,8 @@ class ExecuteWorkflowServicePolicyTest {
 
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
 
+    @Mock lateinit var domainEventRepository: DomainEventRepository
+
     @Mock lateinit var postTransactionUseCase: PostTransactionUseCase
 
     @Mock lateinit var policyRepository: PolicyRepository
@@ -62,6 +65,7 @@ class ExecuteWorkflowServicePolicyTest {
                 workflowPlanRepository,
                 agentAuditRecorder,
                 webhookOutboxRepository,
+                domainEventRepository,
                 postTransactionUseCase,
                 policyRepository,
                 sessionDebitPort,

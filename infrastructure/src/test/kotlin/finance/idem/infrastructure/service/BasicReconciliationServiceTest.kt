@@ -1,6 +1,8 @@
 package finance.idem.infrastructure.service
 
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.outbox.WebhookOutboxEntry
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.application.reconciliation.ReconciliationResult
 import finance.idem.core.AccountId
@@ -12,6 +14,7 @@ import finance.idem.core.PaymentRail
 import finance.idem.core.StablecoinToken
 import finance.idem.core.TenantId
 import finance.idem.core.TransactionId
+import finance.idem.core.events.DomainEventType
 import finance.idem.core.ledger.EntryStatus
 import finance.idem.core.ledger.JournalLine
 import finance.idem.core.ledger.Settlement
@@ -45,6 +48,8 @@ class BasicReconciliationServiceTest {
 
     @Mock lateinit var webhookOutboxRepository: WebhookOutboxRepository
 
+    @Mock lateinit var domainEventRepository: DomainEventRepository
+
     private val tenantId = TenantId.generate()
     private val debitAccountId = AccountId.generate() // Nostro / on-chain custody account
     private val creditAccountId = AccountId.generate() // customer-facing account
@@ -56,7 +61,8 @@ class BasicReconciliationServiceTest {
     private fun service(
         enabled: Boolean = true,
         matchingWindowHours: Long = 24,
-    ): BasicReconciliationService = BasicReconciliationService(settlementRepository, webhookOutboxRepository, enabled, matchingWindowHours)
+    ): BasicReconciliationService =
+        BasicReconciliationService(settlementRepository, webhookOutboxRepository, domainEventRepository, enabled, matchingWindowHours)
 
     private fun onChainEntry(
         amount: MonetaryAmount = MonetaryAmount.of("100.000000"),
@@ -174,6 +180,10 @@ class BasicReconciliationServiceTest {
         val webhookCaptor = argumentCaptor<WebhookOutboxEntry>()
         verify(webhookOutboxRepository).save(webhookCaptor.capture())
         assertEquals("transaction.settled", webhookCaptor.firstValue.eventType)
+
+        val domainEventCaptor = argumentCaptor<DomainEvent>()
+        verify(domainEventRepository).save(domainEventCaptor.capture())
+        assertEquals(DomainEventType.TRANSACTION_SETTLED, domainEventCaptor.firstValue.eventType)
     }
 
     @Test
@@ -197,6 +207,10 @@ class BasicReconciliationServiceTest {
         val webhookCaptor = argumentCaptor<WebhookOutboxEntry>()
         verify(webhookOutboxRepository).save(webhookCaptor.capture())
         assertEquals("reconciliation.unmatched", webhookCaptor.firstValue.eventType)
+
+        val domainEventCaptor = argumentCaptor<DomainEvent>()
+        verify(domainEventRepository).save(domainEventCaptor.capture())
+        assertEquals(DomainEventType.RECONCILIATION_UNMATCHED, domainEventCaptor.firstValue.eventType)
     }
 
     @Test
@@ -297,6 +311,7 @@ class BasicReconciliationServiceTest {
         assertEquals(ReconciliationResult.NotApplicable, result)
         verify(settlementRepository, never()).save(any())
         verify(webhookOutboxRepository, never()).save(any())
+        verify(domainEventRepository, never()).save(any())
     }
 
     @Test

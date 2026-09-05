@@ -3,9 +3,11 @@ package finance.idem.infrastructure.service
 import finance.idem.application.agentic.ExecuteWorkflowCommand
 import finance.idem.application.agentic.ExecuteWorkflowUseCase
 import finance.idem.application.agentic.SessionDebitPort
+import finance.idem.application.events.DomainEvent
 import finance.idem.application.ledger.PostTransactionCommand
 import finance.idem.application.ledger.PostTransactionUseCase
 import finance.idem.application.outbox.WebhookOutboxEntry
+import finance.idem.application.port.DomainEventRepository
 import finance.idem.application.port.WebhookOutboxRepository
 import finance.idem.core.MonetaryAmount
 import finance.idem.core.WorkflowPlanId
@@ -20,6 +22,7 @@ import finance.idem.core.agentic.PolicyViolationException
 import finance.idem.core.agentic.WorkflowPlan
 import finance.idem.core.agentic.WorkflowPlanRepository
 import finance.idem.core.agentic.WorkflowStatus
+import finance.idem.infrastructure.observability.TraceContext
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -31,6 +34,7 @@ class ExecuteWorkflowService(
     private val workflowPlanRepository: WorkflowPlanRepository,
     private val agentAuditRecorder: AgentAuditRecorder,
     private val webhookOutboxRepository: WebhookOutboxRepository,
+    private val domainEventRepository: DomainEventRepository,
     private val postTransactionUseCase: PostTransactionUseCase,
     private val policyRepository: PolicyRepository,
     private val sessionDebitPort: SessionDebitPort,
@@ -75,6 +79,12 @@ class ExecuteWorkflowService(
                     tenantId = cmd.tenantId,
                     agentContext = cmd.agentContext,
                     outcome = "Policy denied: $violationSummary",
+                ),
+                DomainEvent.agentActionFlagged(
+                    workflowPlanId = planId,
+                    tenantId = cmd.tenantId,
+                    correlationId = TraceContext.currentOrNew(),
+                    occurredAt = now,
                 ),
             )
             throw PolicyViolationException(policyResult.violations)
@@ -157,19 +167,28 @@ class ExecuteWorkflowService(
         )
 
         webhookOutboxRepository.save(WebhookOutboxEntry.workflowCommitted(committedPlan))
+        domainEventRepository.save(DomainEvent.workflowCommitted(committedPlan, TraceContext.currentOrNew()))
 
         return Result.success(planId)
     }
 
     /**
-     * Writes an audit event in its own committed transaction via [AgentAuditRecorder].
-     * Propagates on failure — used strictly pre-execution, where nothing has happened yet
-     * that would need to survive an aborted request. Never write audit records for actions
-     * that already executed via this variant: an audit-write hiccup must not roll back a
-     * state transition that already reflects reality.
+     * Writes an audit event — and, when supplied, a [DomainEvent] in the same transaction —
+     * in its own committed transaction via [AgentAuditRecorder]. Propagates on failure — used
+     * strictly pre-execution, where nothing has happened yet that would need to survive an
+     * aborted request. Never write audit records for actions that already executed via this
+     * variant: an audit-write hiccup must not roll back a state transition that already
+     * reflects reality.
      */
-    private fun recordDurableOrThrow(event: AgentAuditEvent) {
-        agentAuditRecorder.recordDurable(event)
+    private fun recordDurableOrThrow(
+        event: AgentAuditEvent,
+        domainEvent: DomainEvent? = null,
+    ) {
+        if (domainEvent != null) {
+            agentAuditRecorder.recordDurable(event, domainEvent)
+        } else {
+            agentAuditRecorder.recordDurable(event)
+        }
     }
 
     /**
